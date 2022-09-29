@@ -38,6 +38,7 @@ package slayers
 
 import (
 	"encoding/binary"
+	"github.com/scionproto/scion/pkg/addr"
 
 	"github.com/scionproto/scion/pkg/private/serrors"
 )
@@ -126,35 +127,29 @@ func MakePacketAuthSPIDRKey(
 
 // PacketAuthAlg is the enumerator for authenticator algorithm types in the
 // packet authenticator option.
-type PacketAuthAlg uint8
+type PacketHeliaSetupReqFlags uint8
 
-const (
-	PacketAuthCMAC PacketAuthAlg = iota
-	PacketAuthSHA1_AES_CBC
-)
-
-type PacketAuthOptionParams struct {
-	SPI            PacketAuthSPI
-	Algorithm      PacketAuthAlg
-	Timestamp      uint32
-	SequenceNumber uint32
-	Auth           []byte
+type PacketHeliaSetupReqParams struct {
+	Source    addr.IA
+	Timestamp uint32
+	Flags     PacketHeliaSetupReqFlags
+	Auth      []byte
 }
 
 // PacketAuthOption wraps an EndToEndOption of OptTypeAuthenticator.
 // This can be used to serialize and parse the internal structure of the packet authenticator
 // option.
-type PacketAuthOption struct {
-	*EndToEndOption
+type PacketHeliaSetupReqOption struct {
+	*HopByHopOption
 }
 
 // NewPacketAuthOption creates a new EndToEndOption of
 // OptTypeAuthenticator, initialized with the given SPAO data.
-func NewPacketAuthOption(
-	p PacketAuthOptionParams,
-) (PacketAuthOption, error) {
+func NewPacketHeliaSetupReqOption(
+	p PacketHeliaSetupReqParams,
+) (PacketHeliaSetupReqOption, error) {
 
-	o := PacketAuthOption{EndToEndOption: new(EndToEndOption)}
+	o := PacketHeliaSetupReqOption{HopByHopOption: new(HopByHopOption)}
 	err := o.Reset(p)
 	return o, err
 }
@@ -178,8 +173,8 @@ func ParsePacketAuthOption(o *EndToEndOption) (PacketAuthOption, error) {
 
 // Reset reinitializes the underlying EndToEndOption with the SPAO data.
 // Reuses the OptData buffer if it is of sufficient capacity.
-func (o PacketAuthOption) Reset(
-	p PacketAuthOptionParams,
+func (o PacketHeliaSetupReqOption) Reset(
+	p PacketHeliaSetupReqParams,
 ) error {
 
 	if p.Timestamp >= (1 << 24) {
@@ -189,7 +184,7 @@ func (o PacketAuthOption) Reset(
 		return serrors.New("Sequence number should be smaller than 2^24")
 	}
 
-	o.OptType = OptTypeAuthenticator
+	o.OptType = OptTypeHeliaSetupReq
 
 	n := MinPacketAuthDataLen + len(p.Auth)
 	if n <= cap(o.OptData) {

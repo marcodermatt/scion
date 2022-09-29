@@ -34,6 +34,7 @@ const (
 	OptTypePad1 OptionType = iota
 	OptTypePadN
 	OptTypeAuthenticator
+	OptTypeHeliaSetupReq
 )
 
 type tlvOption struct {
