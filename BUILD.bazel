@@ -83,6 +83,7 @@ pkg_tar(
         "//tools/pktgen/cmd/pktgen",
         "//tools/scion_integration",
         "//tools/udpproxy",
+        "//tools/helia",
     ],
     mode = "0755",
     package_dir = "",
