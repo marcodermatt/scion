@@ -15,193 +15,105 @@
 // This file includes the SPAO header implementation as specified
 // in https://scion.docs.anapaya.net/en/latest/protocols/authenticator-option.html
 
-// The Authenticator option format is as follows:
+// The Authenticator option format is as follows
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |   NextHdr=UDP |     ExtLen    |  OptType=2    |  OptDataLen   |
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |                   Security Parameter Index                    |
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |    Algorithm  |                    Timestamp                  |
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |      RSV      |                  Sequence Number              |
+// |  NextHdr=200  |    ExtLen=6   |  OptType=3/4  | OptDataLen=24 |
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 // |                                                               |
-// +                                                               +
-// |                                                               |
-// +                        16-octet MAC data                      +
-// |                                                               |
-// +                                                               +
+// +                Target AS Identifier: targetIA                 +
 // |                                                               |
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |                                                               |
+// +                       Timestamp: tsReq                        +
+// |                                                               |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |           Counter: cnt        |                               |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               +
+// |                     MAC(tsReq,cnt): auth                      |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+:
 
 package slayers
 
 import (
 	"encoding/binary"
 	"github.com/scionproto/scion/pkg/addr"
-
 	"github.com/scionproto/scion/pkg/private/serrors"
-)
-
-const (
-	PacketAuthASHost uint8 = iota
-	PacketAuthHostHost
-)
-
-const (
-	PacketAuthSenderSide uint8 = iota
-	PacketAuthReceiverSide
-)
-
-const (
-	PacketAuthLater uint8 = iota
-	PacketAuthEarlier
 )
 
 // MinPacketAuthDataLen is the minimum size of the SPAO OptData.
 // The SPAO header contains the following fixed-length fields:
 // SPI (4 Bytes), Algorithm (1 Byte), Timestamp (3 Bytes),
-// RSV (1 Byte) and Sequence Number (3 Bytes).
-const MinPacketAuthDataLen = 12
 
-// PacketAuthSPI (Security Parameter Index) is the identifier for the key
-// used for the packet authentication option. DRKey values are in the
-// range [1, 2^21-1].
-type PacketAuthSPI uint32
+// PacketCounter is used for duplicate suppression and consists of a Core id and a PerCoreCount
+type PacketCounter uint16
 
-func (p PacketAuthSPI) Type() uint8 {
-	if p&(1<<18) == 0 {
-		return PacketAuthASHost
-	}
-	return PacketAuthHostHost
+func (p PacketCounter) Core() uint8 {
+	return uint8(p >> 8)
 }
 
-func (p PacketAuthSPI) Direction() uint8 {
-	if p&(1<<17) == 0 {
-		return PacketAuthSenderSide
-	}
-	return PacketAuthReceiverSide
+func (p PacketCounter) PerCoreCount() uint8 {
+	return uint8(p & (0xFF))
 }
 
-func (p PacketAuthSPI) Epoch() uint8 {
-	if p&(1<<16) == 0 {
-		return PacketAuthLater
-	}
-	return PacketAuthEarlier
-}
-
-func (p PacketAuthSPI) DRKeyProto() uint16 {
-	return uint16(p)
-}
-
-func (p PacketAuthSPI) IsDRKey() bool {
-	return p > 0 && p < (1<<21)
-}
-
-func MakePacketAuthSPIDRKey(
-	proto uint16,
-	drkeyType uint8,
-	dir uint8,
-	epoch uint8,
-) (PacketAuthSPI, error) {
-
-	if proto < 1 {
-		return 0, serrors.New("Invalid proto identifier value")
-	}
-	if drkeyType > 1 {
-		return 0, serrors.New("Invalid DRKeyType value")
-	}
-	if dir > 1 {
-		return 0, serrors.New("Invalid DRKeyDirection value")
-	}
-	if epoch > 1 {
-		return 0, serrors.New("Invalid DRKeyEpochType value")
-	}
-	spi := uint32((drkeyType & 0x1)) << 18
-	spi |= uint32((dir & 0x1)) << 17
-	spi |= uint32((epoch & 0x1)) << 16
-	spi |= uint32(proto)
-
-	return PacketAuthSPI(spi), nil
-}
-
-// PacketAuthAlg is the enumerator for authenticator algorithm types in the
-// packet authenticator option.
-type PacketHeliaSetupReqFlags uint8
-
-type PacketHeliaSetupReqParams struct {
-	Source    addr.IA
-	Timestamp uint32
-	Flags     PacketHeliaSetupReqFlags
+type PacketReservReqParams struct {
+	Target    addr.IA
+	Timestamp uint64
+	Counter   PacketCounter
 	Auth      []byte
 }
 
-// PacketAuthOption wraps an EndToEndOption of OptTypeAuthenticator.
-// This can be used to serialize and parse the internal structure of the packet authenticator
+type PacketReservResponseParams struct {
+	ReservAS  addr.IA
+	AuthEnc   []byte
+	bandwidth uint32
+	TsExp     uint64
+	IngressIF uint16
+	EgressIF  uint16
+	Tag       []byte
+}
+
+// PacketReservReqForwardOption wraps a HopByHopOption of OptTypeReservReqForward.
+// This can be used to serialize and parse the internal structure of the reservation request forward
 // option.
-type PacketHeliaSetupReqOption struct {
+type PacketReservReqForwardOption struct {
 	*HopByHopOption
 }
 
-// NewPacketAuthOption creates a new EndToEndOption of
-// OptTypeAuthenticator, initialized with the given SPAO data.
-func NewPacketHeliaSetupReqOption(
-	p PacketHeliaSetupReqParams,
-) (PacketHeliaSetupReqOption, error) {
+type PacketReservReqBackwardOption struct {
+	*HopByHopOption
+}
 
-	o := PacketHeliaSetupReqOption{HopByHopOption: new(HopByHopOption)}
+// NewPacketReservReqForwardOption creates a new HopByHopOption of
+// OptTypeReservReqForward, initialized with the given PacketReservReqParams.
+func NewPacketReservReqForwardOption(
+	p PacketReservReqParams,
+) (PacketReservReqForwardOption, error) {
+
+	o := PacketReservReqForwardOption{HopByHopOption: new(HopByHopOption)}
 	err := o.Reset(p)
 	return o, err
 }
 
-// ParsePacketAuthOption parses o as a packet authenticator option.
-// Performs minimal checks to ensure that SPI, algorithm, timestamp, RSV, and
-// sequence number are set.
-// Checking the size and content of the Authenticator data must be done by the
-// caller.
-func ParsePacketAuthOption(o *EndToEndOption) (PacketAuthOption, error) {
-	if o.OptType != OptTypeAuthenticator {
-		return PacketAuthOption{},
-			serrors.New("wrong option type", "expected", OptTypeAuthenticator, "actual", o.OptType)
+// ParsePacketReservReqForwardOption parses o as a packet reservation request forward option.
+func ParsePacketReservReqForwardOption(o *HopByHopOption) (PacketReservReqForwardOption, error) {
+	if o.OptType != OptTypeReservReqForward {
+		return PacketReservReqForwardOption{},
+			serrors.New("wrong option type", "expected", OptTypeReservReqForward, "actual", o.OptType)
 	}
-	if len(o.OptData) < MinPacketAuthDataLen {
-		return PacketAuthOption{},
-			serrors.New("buffer too short", "expected at least", 12, "actual", len(o.OptData))
-	}
-	return PacketAuthOption{o}, nil
+	return PacketReservReqForwardOption{o}, nil
 }
 
-// Reset reinitializes the underlying EndToEndOption with the SPAO data.
-// Reuses the OptData buffer if it is of sufficient capacity.
-func (o PacketHeliaSetupReqOption) Reset(
-	p PacketHeliaSetupReqParams,
+// Reset reinitializes the underlying HopByHopOption with the give PacketReservReqParams.
+func (o PacketReservReqForwardOption) Reset(
+	p PacketReservReqParams,
 ) error {
 
-	if p.Timestamp >= (1 << 24) {
-		return serrors.New("Timestamp value should be smaller than 2^24")
-	}
-	if p.SequenceNumber >= (1 << 24) {
-		return serrors.New("Sequence number should be smaller than 2^24")
-	}
+	o.OptType = OptTypeReservReqForward
 
-	o.OptType = OptTypeHeliaSetupReq
-
-	n := MinPacketAuthDataLen + len(p.Auth)
-	if n <= cap(o.OptData) {
-		o.OptData = o.OptData[:n]
-	} else {
-		o.OptData = make([]byte, n)
-	}
-	binary.BigEndian.PutUint32(o.OptData[:4], uint32(p.SPI))
-	o.OptData[4] = byte(p.Algorithm)
-	o.OptData[5] = byte(p.Timestamp >> 16)
-	o.OptData[6] = byte(p.Timestamp >> 8)
-	o.OptData[7] = byte(p.Timestamp)
-	o.OptData[8] = byte(0)
-	o.OptData[9] = byte(p.SequenceNumber >> 16)
-	o.OptData[10] = byte(p.SequenceNumber >> 8)
-	o.OptData[11] = byte(p.SequenceNumber)
-	copy(o.OptData[12:], p.Auth)
+	binary.BigEndian.PutUint64(o.OptData[:8], uint64(p.Target))
+	binary.BigEndian.PutUint64(o.OptData[8:16], p.Timestamp)
+	binary.BigEndian.PutUint16(o.OptData[16:18], uint16(p.Counter))
+	copy(o.OptData[18:], p.Auth)
 
 	o.OptAlign = [2]uint8{4, 2}
 	// reset unused/implicit fields
@@ -210,29 +122,22 @@ func (o PacketHeliaSetupReqOption) Reset(
 	return nil
 }
 
-// SPI returns the value set in the Security Parameter Index in the extension.
-func (o PacketAuthOption) SPI() PacketAuthSPI {
-	return PacketAuthSPI(binary.BigEndian.Uint32(o.OptData[:4]))
+// Target returns the IA address value set in the extension
+func (o PacketReservReqForwardOption) Target() addr.IA {
+	return addr.IA(binary.BigEndian.Uint64(o.OptData[:8]))
 }
 
-// Algorithm returns the algorithm type stored in the data buffer.
-func (o PacketAuthOption) Algorithm() PacketAuthAlg {
-	return PacketAuthAlg(o.OptData[4])
+func (o PacketReservReqForwardOption) Timestamp() uint64 {
+	return binary.BigEndian.Uint64(o.OptData[8:16])
 }
 
-// Timestamp returns the value set in the homonym field in the extension.
-func (o PacketAuthOption) Timestamp() uint32 {
-	return uint32(o.OptData[5])<<16 + uint32(o.OptData[6])<<8 + uint32(o.OptData[7])
+func (o PacketReservReqForwardOption) PacketCounter() PacketCounter {
+	return PacketCounter(binary.BigEndian.Uint64(o.OptData[16:18]))
 }
 
-// SequenceNumber returns the value set in the homonym field in the extension.
-func (o PacketAuthOption) SequenceNumber() uint32 {
-	return uint32(o.OptData[9])<<16 + uint32(o.OptData[10])<<8 + uint32(o.OptData[11])
-}
-
-// Authenticator returns slice of the underlying auth buffer.
+// Auth returns slice of the underlying auth buffer.
 // Changes to this slice will be reflected on the wire when
 // the extension is serialized.
-func (o PacketAuthOption) Authenticator() []byte {
-	return o.OptData[12:]
+func (o PacketReservReqForwardOption) Auth() []byte {
+	return o.OptData[18:]
 }
