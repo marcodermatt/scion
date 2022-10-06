@@ -38,6 +38,7 @@ import (
 	"encoding/binary"
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/private/serrors"
+	"time"
 )
 
 // MinPacketAuthDataLen is the minimum size of the SPAO OptData.
@@ -47,17 +48,23 @@ import (
 // PacketCounter is used for duplicate suppression and consists of a Core id and a PerCoreCount
 type PacketCounter uint16
 
-func (p PacketCounter) Core() uint8 {
-	return uint8(p >> 8)
+// PktCounterFromCore creates a counter for the packet identifier
+// based on the core ID and the core counter.
+func PktCounterFromCore(coreID uint8, coreCounter uint8) PacketCounter {
+	return PacketCounter(uint16(coreID)<<8 | uint16(coreCounter))
 }
 
-func (p PacketCounter) PerCoreCount() uint8 {
-	return uint8(p & (0xFF))
+// CoreFromPktCounter reads the core ID and the core counter
+// from a counter belonging to a packet identifier.
+func CoreFromPktCounter(counter PacketCounter) (uint8, uint8) {
+	coreID := uint8(counter >> 8)
+	coreCounter := uint8(counter & 0x00FF)
+	return coreID, coreCounter
 }
 
 type PacketReservReqParams struct {
 	Target    addr.IA
-	Timestamp uint64
+	Timestamp int64
 	Counter   PacketCounter
 	Auth      []byte
 }
@@ -66,7 +73,7 @@ type PacketReservResponseParams struct {
 	ReservAS  addr.IA
 	AuthEnc   []byte
 	bandwidth uint32
-	TsExp     uint64
+	TsExp     int64
 	IngressIF uint16
 	EgressIF  uint16
 	Tag       []byte
@@ -111,7 +118,7 @@ func (o PacketReservReqForwardOption) Reset(
 	o.OptType = OptTypeReservReqForward
 
 	binary.BigEndian.PutUint64(o.OptData[:8], uint64(p.Target))
-	binary.BigEndian.PutUint64(o.OptData[8:16], p.Timestamp)
+	binary.BigEndian.PutUint64(o.OptData[8:16], uint64(p.Timestamp))
 	binary.BigEndian.PutUint16(o.OptData[16:18], uint16(p.Counter))
 	copy(o.OptData[18:], p.Auth)
 
@@ -140,4 +147,21 @@ func (o PacketReservReqForwardOption) PacketCounter() PacketCounter {
 // the extension is serialized.
 func (o PacketReservReqForwardOption) Auth() []byte {
 	return o.OptData[18:]
+}
+
+func CreateSetupRequest(target addr.IA, isBackwardReq bool) *HopByHopOption {
+	tsReq := time.Now().UnixNano()
+	counter := PktCounterFromCore(1, 2)
+	auth := []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+	optSetup, err := NewPacketReservReqForwardOption(
+		PacketReservReqParams{
+			Target:    target,
+			Timestamp: tsReq,
+			Counter:   counter,
+			Auth:      auth,
+		})
+	if err != nil {
+		return nil
+	}
+	return optSetup.HopByHopOption
 }

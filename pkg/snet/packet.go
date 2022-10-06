@@ -577,7 +577,20 @@ func (p *Packet) Serialize() error {
 	}
 
 	packetLayers = append(packetLayers, &scionLayer)
-	packetLayers = append(packetLayers, p.Payload.toLayers(&scionLayer)...)
+
+	// Payload layers
+	payloadLayers := p.Payload.toLayers(&scionLayer)
+
+	// Add HopByHopExtension
+	if p.HopByHopOption != nil {
+		hbh := &slayers.HopByHopExtn{}
+		hbh.NextHdr = scionLayer.NextHdr
+		scionLayer.NextHdr = slayers.HopByHopClass
+		hbh.Options = []*slayers.HopByHopOption{p.HopByHopOption}
+
+		packetLayers = append(packetLayers, hbh)
+	}
+	packetLayers = append(packetLayers, payloadLayers...)
 
 	buffer := gopacket.NewSerializeBuffer()
 	options := gopacket.SerializeOptions{
@@ -611,6 +624,8 @@ type PacketInfo struct {
 	Path DataplanePath
 	// Payload is the Payload of the message.
 	Payload Payload
+	//HopByHopOptions are the options of the HopByHopExtension
+	HopByHopOption *slayers.HopByHopOption
 }
 
 func netAddrToHostAddr(a net.Addr) (addr.HostAddr, error) {

@@ -35,6 +35,7 @@ import (
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/private/util"
+	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/snet"
 	"github.com/scionproto/scion/pkg/snet/metrics"
 	snetpath "github.com/scionproto/scion/pkg/snet/path"
@@ -69,6 +70,8 @@ var (
 	scionPacketConnMetrics = metrics.NewSCIONPacketConnMetrics()
 	scmpErrorsCounter      = scionPacketConnMetrics.SCMPErrors
 	epic                   bool
+	reservationTarget      addr.IA
+	isBackwardsReq         bool
 )
 
 func main() {
@@ -104,6 +107,8 @@ func addFlags() {
 	flag.Var(&remote, "remote", "(Mandatory for clients) address to connect to")
 	flag.Var(timeout, "timeout", "The timeout for each attempt")
 	flag.BoolVar(&epic, "epic", false, "Enable EPIC.")
+	flag.Var(&reservationTarget, "target", "IA to request reservation from")
+	flag.BoolVar(&isBackwardsReq, "backwards-reservation", false, "Request a backwards reservation")
 }
 
 func validateFlags() {
@@ -323,11 +328,14 @@ func (c *client) ping(ctx context.Context, n int, path snet.Path) error {
 		return serrors.WrapStr("packing ping", err)
 	}
 	c.conn.SetWriteDeadline(getDeadline(ctx))
+	var heliaSetupOpt *slayers.HopByHopOption
 	if remote.NextHop == nil {
 		remote.NextHop = &net.UDPAddr{
 			IP:   remote.Host.IP,
 			Port: topology.EndhostPort,
 		}
+	} else {
+		heliaSetupOpt = slayers.CreateSetupRequest(reservationTarget, isBackwardsReq)
 	}
 	pkt := &snet.Packet{
 		PacketInfo: snet.PacketInfo{
@@ -345,6 +353,7 @@ func (c *client) ping(ctx context.Context, n int, path snet.Path) error {
 				DstPort: uint16(remote.Host.Port),
 				Payload: rawPing,
 			},
+			HopByHopOption: heliaSetupOpt,
 		},
 	}
 	log.Info("sending ping", "attempt", n, "path", path)
