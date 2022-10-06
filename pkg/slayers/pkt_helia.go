@@ -44,6 +44,7 @@ import (
 // MinPacketAuthDataLen is the minimum size of the SPAO OptData.
 // The SPAO header contains the following fixed-length fields:
 // SPI (4 Bytes), Algorithm (1 Byte), Timestamp (3 Bytes),
+const PacketSetupReqDataLen = 24
 
 // PacketCounter is used for duplicate suppression and consists of a Core id and a PerCoreCount
 type PacketCounter uint16
@@ -117,6 +118,11 @@ func (o PacketReservReqForwardOption) Reset(
 
 	o.OptType = OptTypeReservReqForward
 
+	if PacketSetupReqDataLen <= cap(o.OptData) {
+		o.OptData = o.OptData[:PacketSetupReqDataLen]
+	} else {
+		o.OptData = make([]byte, PacketSetupReqDataLen)
+	}
 	binary.BigEndian.PutUint64(o.OptData[:8], uint64(p.Target))
 	binary.BigEndian.PutUint64(o.OptData[8:16], uint64(p.Timestamp))
 	binary.BigEndian.PutUint16(o.OptData[16:18], uint16(p.Counter))
