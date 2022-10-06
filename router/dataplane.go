@@ -87,7 +87,7 @@ type BatchConn interface {
 //
 // XXX(lukedirtwalker): this is still in development and not feature complete.
 // Currently, only the following features are supported:
-//  - initializing connections; MUST be done prior to calling Run
+//   - initializing connections; MUST be done prior to calling Run
 type DataPlane struct {
 	external          map[uint16]BatchConn
 	linkTypes         map[uint16]topology.LinkType
@@ -578,6 +578,7 @@ func (p *scionPacketProcessor) reset() error {
 	}
 	p.mac.Reset()
 	p.cachedMac = nil
+	p.hbhLayer.Options = nil
 	return nil
 }
 
@@ -619,6 +620,21 @@ func (p *scionPacketProcessor) processPkt(rawPkt []byte,
 	default:
 		return processResult{}, serrors.WithCtx(unsupportedPathType, "type", pathType)
 	}
+}
+
+func (p *scionPacketProcessor) processHeliaSetup() error {
+	for _, opt := range p.hbhLayer.Options {
+		setupReq, err := slayers.ParsePacketReservReqForwardOption(opt)
+		if err == nil {
+			target := setupReq.Target()
+			if target == p.d.localIA {
+				log.Debug("Helia Packet for this AS", "target", setupReq.Target())
+			} else {
+				log.Debug("Helia Packet for different AS", "target", setupReq.Target())
+			}
+		}
+	}
+	return nil
 }
 
 func (p *scionPacketProcessor) processInterBFD(oh *onehop.Path, data []byte) error {
@@ -742,7 +758,7 @@ type scionPacketProcessor struct {
 
 	// scionLayer is the SCION gopacket layer.
 	scionLayer slayers.SCION
-	hbhLayer   slayers.HopByHopExtnSkipper
+	hbhLayer   slayers.HopByHopExtn
 	e2eLayer   slayers.EndToEndExtnSkipper
 	// last is the last parsed layer, i.e. either &scionLayer, &hbhLayer or &e2eLayer
 	lastLayer gopacket.DecodingLayer
@@ -1180,6 +1196,12 @@ func (p *scionPacketProcessor) process() (processResult, error) {
 	}
 
 	egressID := p.egressInterface()
+
+	// After retrieving egressID, check if there is a reservation setup to process
+	if err := p.processHeliaSetup(); err != nil {
+		return processResult{}, err
+	}
+
 	if c, ok := p.d.external[egressID]; ok {
 		if err := p.processEgress(); err != nil {
 			return processResult{}, err
