@@ -63,6 +63,11 @@ type Config struct {
 	Local      *snet.UDPAddr
 	Remote     *snet.UDPAddr
 
+	// Target is the AS for which to request a reservation.
+	TargetAS addr.IA
+	// Backward indicates if the reservation is for the reverse path.
+	Backward bool
+
 	// Attempts is the number of pings to send.
 	Attempts uint16
 	// Interval is the time between sending pings.
@@ -123,7 +128,7 @@ func Run(ctx context.Context, cfg Config) (Stats, error) {
 		errHandler:    cfg.ErrHandler,
 		updateHandler: cfg.UpdateHandler,
 	}
-	return p.Ping(ctx, cfg.Remote)
+	return p.Ping(ctx, cfg.Remote, cfg.TargetAS, cfg.Backward)
 }
 
 type pinger struct {
@@ -148,7 +153,7 @@ type pinger struct {
 	stats            Stats
 }
 
-func (p *pinger) Ping(ctx context.Context, remote *snet.UDPAddr) (Stats, error) {
+func (p *pinger) Ping(ctx context.Context, remote *snet.UDPAddr, targetAS addr.IA, backward bool) (Stats, error) {
 	p.sentSequence, p.receivedSequence = -1, -1
 	send := time.NewTicker(p.interval)
 	defer send.Stop()
@@ -166,7 +171,7 @@ func (p *pinger) Ping(ctx context.Context, remote *snet.UDPAddr) (Stats, error) 
 	go func() {
 		defer log.HandlePanic()
 		for i := uint16(0); i < p.attempts; i++ {
-			if err := p.send(remote); err != nil {
+			if err := p.send(remote, targetAS, backward); err != nil {
 				errSend <- serrors.WrapStr("sending", err)
 				return
 			}
@@ -198,11 +203,11 @@ func (p *pinger) Ping(ctx context.Context, remote *snet.UDPAddr) (Stats, error) 
 	return p.stats, nil
 }
 
-func (p *pinger) send(remote *snet.UDPAddr) error {
+func (p *pinger) send(remote *snet.UDPAddr, targetAS addr.IA, backward bool) error {
 	sequence := p.sentSequence + 1
 
 	binary.BigEndian.PutUint64(p.pld, uint64(time.Now().UnixNano()))
-	pkt, err := pack(p.local, remote, snet.SCMPEchoRequest{
+	pkt, err := pack(p.local, remote, targetAS, backward, snet.SCMPEchoRequest{
 		Identifier: uint16(p.id),
 		SeqNumber:  uint16(sequence),
 		Payload:    p.pld,

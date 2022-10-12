@@ -25,6 +25,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/daemon"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
@@ -42,6 +43,8 @@ import (
 func newHelia(pather CommandPather) *cobra.Command {
 	var envFlags flag.SCIONEnvironment
 	var flags struct {
+		target      string
+		backward    bool
 		count       uint16
 		features    []string
 		interactive bool
@@ -143,6 +146,25 @@ On other errors, helia will exit with code 2.
 				return err
 			}
 
+			var targetAS addr.IA
+			if len(flags.target) > 0 {
+				targetAS, err = addr.ParseIA(flags.target)
+				if err != nil {
+					return err
+				}
+			} else if flags.interactive {
+				targetAS, err = helia.ChooseAS(path, remote.IA)
+				if err != nil {
+					return err
+				}
+			} else {
+				return serrors.New("no reservation target defined")
+			}
+			directionStr := "forward"
+			if flags.backward {
+				directionStr = "backward"
+			}
+			fmt.Printf("\nRequesting %s reservation from %s\n\n", directionStr, targetAS)
 			// If the EPIC flag is set, use the EPIC-HP path type
 			if flags.epic {
 				switch s := path.Dataplane().(type) {
@@ -215,6 +237,8 @@ On other errors, helia will exit with code 2.
 			}
 			stats, err := helia.Run(ctx, helia.Config{
 				Dispatcher:  reliable.NewDispatcher(dispatcher),
+				TargetAS:    targetAS,
+				Backward:    flags.backward,
 				Attempts:    count,
 				Interval:    flags.interval,
 				Timeout:     flags.timeout,
@@ -251,6 +275,8 @@ On other errors, helia will exit with code 2.
 	}
 
 	envFlags.Register(cmd.Flags())
+	cmd.Flags().StringVar(&flags.target, "target", "", "target AS for reservation")
+	cmd.Flags().BoolVarP(&flags.backward, "backward", "b", false, "request backward reservation")
 	cmd.Flags().BoolVarP(&flags.interactive, "interactive", "i", false, "interactive mode")
 	cmd.Flags().BoolVar(&flags.noColor, "no-color", false, "disable colored output")
 	cmd.Flags().DurationVar(&flags.timeout, "timeout", time.Second, "timeout per packet")

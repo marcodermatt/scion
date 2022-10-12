@@ -15,19 +15,23 @@
 package helia
 
 import (
+	"bufio"
 	"encoding/binary"
+	"fmt"
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/snet"
 	"github.com/scionproto/scion/pkg/snet/path"
+	"os"
+	"strconv"
 	"time"
 )
 
 // Size computes the full SCION packet size for an address pair with a given
 // payload size.
 func Size(local, remote *snet.UDPAddr, pldSize int) (int, error) {
-	pkt, err := pack(local, remote, snet.SCMPEchoRequest{Payload: make([]byte, pldSize)})
+	pkt, err := pack(local, remote, addr.IA(0), false, snet.SCMPEchoRequest{Payload: make([]byte, pldSize)})
 	if err != nil {
 		return 0, err
 	}
@@ -37,13 +41,12 @@ func Size(local, remote *snet.UDPAddr, pldSize int) (int, error) {
 	return len(pkt.Bytes), nil
 }
 
-func pack(local, remote *snet.UDPAddr, req snet.SCMPEchoRequest) (*snet.Packet, error) {
+func pack(local, remote *snet.UDPAddr, target addr.IA, backward bool, req snet.SCMPEchoRequest) (*snet.Packet, error) {
 	_, isEmpty := remote.Path.(path.Empty)
 	if isEmpty && !local.IA.Equal(remote.IA) {
 		return nil, serrors.New("no path for remote ISD-AS", "local", local.IA, "remote", remote.IA)
 	}
-	target, _ := addr.ParseIA("2-ff00:0:210")
-	heliaSetupOpt := createSetupRequest(target, false)
+	heliaSetupOpt := createSetupRequest(target, backward)
 	pkt := &snet.Packet{
 		PacketInfo: snet.PacketInfo{
 			Destination: snet.SCIONAddress{
@@ -62,20 +65,52 @@ func pack(local, remote *snet.UDPAddr, req snet.SCMPEchoRequest) (*snet.Packet, 
 	return pkt, nil
 }
 
+func ChooseAS(path snet.Path, remote addr.IA) (addr.IA, error) {
+	fmt.Printf("Available AS on path to %s:\n", remote)
+	intfs := path.Metadata().Interfaces
+	n := (len(intfs) - 1) / 2
+	for i := 0; i < n; i++ {
+		inIntf := intfs[i*2+1]
+		outIntf := intfs[i*2+2]
+		fmt.Printf("[%2d] %s %s>%s\n", i, inIntf.IA, inIntf.ID, outIntf.ID)
+	}
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Printf("Choose AS: ")
+		asIndexStr, err := reader.ReadString('\n')
+		if err != nil {
+			return addr.IA(0), err
+		}
+		idx, err := strconv.Atoi(asIndexStr[:len(asIndexStr)-1])
+		if err == nil && 0 <= idx && idx < n {
+			return intfs[idx*2+1].IA, nil
+		}
+		fmt.Fprintf(os.Stderr, "Path index outside of valid range: [0, %v]\n", n-1)
+	}
+}
+
 func createSetupRequest(target addr.IA, isBackwardReq bool) *slayers.HopByHopOption {
 	counter := slayers.PktCounterFromCore(1, 1, 2)
 	auth := [16]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 	var tsReq [6]byte
 	binary.BigEndian.PutUint32(tsReq[:], uint32(time.Now().UnixMilli()))
-	optSetup, err := slayers.NewPacketReservReqForwardOption(
-		slayers.PacketReservReqParams{
-			TargetAS:  target,
-			Timestamp: tsReq,
-			Counter:   counter,
-			Auth:      auth,
-		})
-	if err != nil {
-		return nil
+	reqParams := slayers.PacketReservReqParams{
+		TargetAS:  target,
+		Timestamp: tsReq,
+		Counter:   counter,
+		Auth:      auth,
 	}
-	return optSetup.HopByHopOption
+	if !isBackwardReq {
+		optSetup, err := slayers.NewPacketReservReqForwardOption(reqParams)
+		if err != nil {
+			return nil
+		}
+		return optSetup.HopByHopOption
+	} else {
+		optSetup, err := slayers.NewPacketReservReqBackwardOption(reqParams)
+		if err != nil {
+			return nil
+		}
+		return optSetup.HopByHopOption
+	}
 }
