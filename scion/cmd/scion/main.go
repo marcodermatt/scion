@@ -54,6 +54,7 @@ func main() {
 		newTraceroute(cmd),
 		newAddress(cmd),
 		newGendocs(cmd),
+		newHelia(cmd),
 	)
 	// This Templatefunc allows use some escape characters for the rst
 	// documentation conversion without compromising the readability of the help

@@ -6,6 +6,7 @@ go_library(
     srcs = [
         "address.go",
         "gendocs.go",
+        "helia.go",
         "main.go",
         "observability.go",
         "ping.go",
