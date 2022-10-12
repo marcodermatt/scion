@@ -36,7 +36,7 @@ import (
 	"github.com/scionproto/scion/private/app/flag"
 	"github.com/scionproto/scion/private/app/path"
 	"github.com/scionproto/scion/private/tracing"
-	"github.com/scionproto/scion/scion/ping"
+	"github.com/scionproto/scion/scion/helia"
 )
 
 func newHelia(pather CommandPather) *cobra.Command {
@@ -61,19 +61,19 @@ func newHelia(pather CommandPather) *cobra.Command {
 
 	var cmd = &cobra.Command{
 		Use:   "helia [flags] <remote>",
-		Short: "Test connectivity to a remote SCION host using SCMP echo packets",
-		Example: fmt.Sprintf(`  %[1]s ping 1-ff00:0:110,10.0.0.1
-  %[1]s ping 1-ff00:0:110,10.0.0.1 -c 5`, pather.CommandPath()),
-		Long: fmt.Sprintf(`'ping' test connectivity to a remote SCION host using SCMP echo packets.
+		Short: "Setup Helia reservation for target AS, built on SCMP echo packets",
+		Example: fmt.Sprintf(`  %[1]s helia 1-ff00:0:110,10.0.0.1
+  %[1]s helia 1-ff00:0:110,10.0.0.1 -c 5`, pather.CommandPath()),
+		Long: fmt.Sprintf(`'helia' Setup Helia reservation for target AS, built on SCMP echo packets.
 
-When the \--count option is set, ping sends the specified number of SCMP echo packets
+When the \--count option is set, helia sends the specified number of SCMP echo packets
 and reports back the statistics.
 
-When the \--healthy-only option is set, ping first determines healthy paths through probing and
+When the \--healthy-only option is set, helia first determines healthy paths through probing and
 chooses amongst them.
 
-If no reply packet is received at all, ping will exit with code 1.
-On other errors, ping will exit with code 2.
+If no reply packet is received at all, helia will exit with code 1.
+On other errors, helia will exit with code 2.
 
 %s`, app.SequenceHelp),
 		Args: cobra.ExactArgs(1),
@@ -183,7 +183,7 @@ On other errors, ping will exit with code 2.
 			pldSize := int(flags.size)
 
 			if cmd.Flags().Changed("packet-size") {
-				overhead, err := ping.Size(local, remote, 0)
+				overhead, err := helia.Size(local, remote, 0)
 				if err != nil {
 					return err
 				}
@@ -201,7 +201,7 @@ On other errors, ping will exit with code 2.
 					return err
 				}
 			}
-			pktSize, err := ping.Size(local, remote, pldSize)
+			pktSize, err := helia.Size(local, remote, pldSize)
 			if err != nil {
 				return err
 			}
@@ -213,7 +213,7 @@ On other errors, ping will exit with code 2.
 			if count == 0 {
 				count = math.MaxUint16
 			}
-			stats, err := ping.Run(ctx, ping.Config{
+			stats, err := helia.Run(ctx, helia.Config{
 				Dispatcher:  reliable.NewDispatcher(dispatcher),
 				Attempts:    count,
 				Interval:    flags.interval,
@@ -224,14 +224,14 @@ On other errors, ping will exit with code 2.
 				ErrHandler: func(err error) {
 					fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 				},
-				UpdateHandler: func(update ping.Update) {
+				UpdateHandler: func(update helia.Update) {
 					var additional string
 					switch update.State {
-					case ping.AfterTimeout:
+					case helia.AfterTimeout:
 						additional = " state=After timeout"
-					case ping.OutOfOrder:
+					case helia.OutOfOrder:
 						additional = " state=Out of Order"
-					case ping.Duplicate:
+					case helia.Duplicate:
 						additional = " state=Duplicate"
 					}
 					fmt.Fprintf(os.Stdout, "%d bytes from %s,%s: scmp_seq=%d time=%s%s\n",
@@ -239,7 +239,7 @@ On other errors, ping will exit with code 2.
 						update.RTT, additional)
 				},
 			})
-			pingSummary(stats, remote, time.Since(start))
+			heliaSummary(stats, remote, time.Since(start))
 			if err != nil {
 				return err
 			}
@@ -277,4 +277,14 @@ SCMP echo header and payload are equal to the MTU of the path. This flag overrid
 	cmd.Flags().StringVar(&flags.tracer, "tracing.agent", "", "Tracing agent address")
 	cmd.Flags().BoolVar(&flags.epic, "epic", false, "Enable EPIC for path probing.")
 	return cmd
+}
+
+func heliaSummary(stats helia.Stats, remote *snet.UDPAddr, run time.Duration) {
+	var pktLoss int
+	if stats.Sent != 0 {
+		pktLoss = 100 - stats.Received*100/stats.Sent
+	}
+	fmt.Printf("\n--- %s,%s statistics ---\n", remote.IA, remote.Host.IP)
+	fmt.Printf("%d packets transmitted, %d received, %d%% packet loss, time %v\n",
+		stats.Sent, stats.Received, pktLoss, run.Round(time.Microsecond))
 }

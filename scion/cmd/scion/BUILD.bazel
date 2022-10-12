@@ -32,6 +32,7 @@ go_library(
         "//private/topology:go_default_library",
         "//private/tracing:go_default_library",
         "//scion/ping:go_default_library",
+        "//scion/helia:go_default_library",
         "//scion/showpaths:go_default_library",
         "//scion/traceroute:go_default_library",
         "@com_github_opentracing_opentracing_go//:go_default_library",
