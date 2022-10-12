@@ -33,7 +33,7 @@
 // |                                                               |
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 // |                                                               |
-// +          Timestamp: tsReq     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               +
+// +          Timestamp: tsReq     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 // |                               |   OptType=1   |       0       |
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //
@@ -60,7 +60,7 @@
 // +                  Expiration Timestamp: tsExp                  +
 // |                                                               |
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// | Ingress Interface: ingressIF  |  Egress Interface: egressIF   |                                                            |
+// | Ingress Interface: ingressIF  |  Egress Interface: egressIF   |
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 // |                                                               |
 // +                                                               +
@@ -75,6 +75,7 @@ package slayers
 
 import (
 	"encoding/binary"
+
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/private/serrors"
 )
@@ -118,7 +119,7 @@ type PacketReservResponseParams struct {
 	Tag       [16]byte
 }
 
-// PacketReservReqOptions and PacketReservRespOption wrap a HopByHopOption of OptTypeReservReqForward.
+// PacketReservReqOptions and PacketReservRespOption wrap a HopByHopOption.
 // This can be used to serialize and parse the internal structure of the reservation option.
 type PacketReservReqForwardOption struct {
 	*HopByHopOption
@@ -165,7 +166,9 @@ func NewPacketReservResponseOption(
 func ParsePacketReservReqForwardOption(o *HopByHopOption) (PacketReservReqForwardOption, error) {
 	if o.OptType != OptTypeReservReqForward {
 		return PacketReservReqForwardOption{},
-			serrors.New("wrong option type", "expected", OptTypeReservReqForward, "actual", o.OptType)
+			serrors.New(
+				"wrong option type", "expected", OptTypeReservReqForward, "actual", o.OptType,
+			)
 	}
 	return PacketReservReqForwardOption{o}, nil
 }
@@ -173,7 +176,9 @@ func ParsePacketReservReqForwardOption(o *HopByHopOption) (PacketReservReqForwar
 func ParsePacketReservReqBackwardOption(o *HopByHopOption) (PacketReservReqBackwardOption, error) {
 	if o.OptType != OptTypeReservReqBackward {
 		return PacketReservReqBackwardOption{},
-			serrors.New("wrong option type", "expected", OptTypeReservReqBackward, "actual", o.OptType)
+			serrors.New(
+				"wrong option type", "expected", OptTypeReservReqBackward, "actual", o.OptType,
+			)
 	}
 	return PacketReservReqBackwardOption{o}, nil
 }

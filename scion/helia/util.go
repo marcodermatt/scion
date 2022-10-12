@@ -18,20 +18,23 @@ import (
 	"bufio"
 	"encoding/binary"
 	"fmt"
+	"os"
+	"strconv"
+	"time"
+
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/snet"
 	"github.com/scionproto/scion/pkg/snet/path"
-	"os"
-	"strconv"
-	"time"
 )
 
 // Size computes the full SCION packet size for an address pair with a given
 // payload size.
 func Size(local, remote *snet.UDPAddr, pldSize int) (int, error) {
-	pkt, err := pack(local, remote, addr.IA(0), false, snet.SCMPEchoRequest{Payload: make([]byte, pldSize)})
+	pkt, err := pack(
+		local, remote, addr.IA(0), false, snet.SCMPEchoRequest{Payload: make([]byte, pldSize)},
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -41,7 +44,9 @@ func Size(local, remote *snet.UDPAddr, pldSize int) (int, error) {
 	return len(pkt.Bytes), nil
 }
 
-func pack(local, remote *snet.UDPAddr, target addr.IA, backward bool, req snet.SCMPEchoRequest) (*snet.Packet, error) {
+func pack(
+	local, remote *snet.UDPAddr, target addr.IA, backward bool, req snet.SCMPEchoRequest,
+) (*snet.Packet, error) {
 	_, isEmpty := remote.Path.(path.Empty)
 	if isEmpty && !local.IA.Equal(remote.IA) {
 		return nil, serrors.New("no path for remote ISD-AS", "local", local.IA, "remote", remote.IA)
@@ -91,7 +96,10 @@ func ChooseAS(path snet.Path, remote addr.IA) (addr.IA, error) {
 
 func createSetupRequest(target addr.IA, isBackwardReq bool) *slayers.HopByHopOption {
 	counter := slayers.PktCounterFromCore(1, 1, 2)
-	auth := [16]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+	auth := [16]byte{
+		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+		0xFF,
+	}
 	var tsReq [6]byte
 	binary.BigEndian.PutUint32(tsReq[:], uint32(time.Now().UnixMilli()))
 	reqParams := slayers.PacketReservReqParams{

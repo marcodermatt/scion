@@ -67,7 +67,7 @@ func newHelia(pather CommandPather) *cobra.Command {
 		Short: "Setup Helia reservation for target AS, built on SCMP echo packets",
 		Example: fmt.Sprintf(`  %[1]s helia 1-ff00:0:110,10.0.0.1
   %[1]s helia 1-ff00:0:110,10.0.0.1 -c 5`, pather.CommandPath()),
-		Long: fmt.Sprintf(`'helia' Setup Helia reservation for target AS, built on SCMP echo packets.
+		Long: fmt.Sprintf(`'helia' Setup Helia reservation for target AS
 
 When the \--count option is set, helia sends the specified number of SCMP echo packets
 and reports back the statistics.

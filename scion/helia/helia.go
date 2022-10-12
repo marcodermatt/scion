@@ -153,7 +153,9 @@ type pinger struct {
 	stats            Stats
 }
 
-func (p *pinger) Ping(ctx context.Context, remote *snet.UDPAddr, targetAS addr.IA, backward bool) (Stats, error) {
+func (p *pinger) Ping(
+	ctx context.Context, remote *snet.UDPAddr, targetAS addr.IA, backward bool,
+) (Stats, error) {
 	p.sentSequence, p.receivedSequence = -1, -1
 	send := time.NewTicker(p.interval)
 	defer send.Stop()
