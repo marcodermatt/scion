@@ -624,13 +624,33 @@ func (p *scionPacketProcessor) processPkt(rawPkt []byte,
 
 func (p *scionPacketProcessor) processHeliaSetup() error {
 	for _, opt := range p.hbhLayer.Options {
-		setupReq, err := slayers.ParsePacketReservReqForwardOption(opt)
-		if err == nil {
+		if opt.OptType == slayers.OptTypeReservReqForward {
+			setupReq, err := slayers.ParsePacketReservReqForwardOption(opt)
+			if err != nil {
+				return err
+			}
 			target := setupReq.TargetAS()
 			if target == p.d.localIA {
-				log.Debug("Helia Packet for this AS", "target", setupReq.TargetAS())
-			} else {
-				log.Debug("Helia Packet for different AS", "target", setupReq.TargetAS())
+				clientID, coreID, coreCounter :=
+					slayers.CoreFromPktCounter(setupReq.PacketCounter())
+				log.Debug(
+					"Helia forward reservation", "target-as", target,
+					"clientID", clientID, "coreID", coreID, "coreCounter", coreCounter, "timestamp",
+					time.UnixMilli(int64(setupReq.Timestamp())),
+				)
+			}
+		}
+		if opt.OptType == slayers.OptTypeReservReqBackward {
+			setupReq, err := slayers.ParsePacketReservReqBackwardOption(opt)
+			if err != nil {
+				return err
+			}
+			target := setupReq.TargetAS()
+			if target == p.d.localIA {
+				log.Debug(
+					"Helia backward reservation", "target-as", setupReq.TargetAS(),
+					"counter", setupReq.PacketCounter(), "timestamp", setupReq.Timestamp(),
+				)
 			}
 		}
 	}

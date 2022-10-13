@@ -16,7 +16,6 @@ package helia
 
 import (
 	"bufio"
-	"encoding/binary"
 	"fmt"
 	"os"
 	"strconv"
@@ -100,11 +99,9 @@ func createSetupRequest(target addr.IA, isBackwardReq bool) *slayers.HopByHopOpt
 		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 		0xFF,
 	}
-	var tsReq [6]byte
-	binary.BigEndian.PutUint32(tsReq[:], uint32(time.Now().UnixMilli()))
 	reqParams := slayers.PacketReservReqParams{
 		TargetAS:  target,
-		Timestamp: tsReq,
+		Timestamp: uint64(time.Now().UnixMilli()),
 		Counter:   counter,
 		Auth:      auth,
 	}

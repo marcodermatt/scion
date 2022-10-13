@@ -106,7 +106,7 @@ type PacketReservReqParams struct {
 	TargetAS  addr.IA
 	Counter   PacketCounter
 	Auth      [16]byte
-	Timestamp [6]byte
+	Timestamp uint64
 }
 
 type PacketReservResponseParams struct {
@@ -206,7 +206,8 @@ func (o PacketReservReqForwardOption) Reset(
 	binary.BigEndian.PutUint64(o.OptData[:8], uint64(p.TargetAS))
 	binary.BigEndian.PutUint32(o.OptData[8:12], uint32(p.Counter))
 	copy(o.OptData[12:28], p.Auth[:])
-	copy(o.OptData[28:34], p.Timestamp[:])
+	binary.BigEndian.PutUint16(o.OptData[28:30], uint16(p.Timestamp>>32))
+	binary.BigEndian.PutUint32(o.OptData[30:34], uint32(p.Timestamp))
 
 	o.OptAlign = [2]uint8{4, 2}
 	// reset unused/implicit fields
@@ -229,7 +230,8 @@ func (o PacketReservReqBackwardOption) Reset(
 	binary.BigEndian.PutUint64(o.OptData[:8], uint64(p.TargetAS))
 	binary.BigEndian.PutUint32(o.OptData[8:12], uint32(p.Counter))
 	copy(o.OptData[12:28], p.Auth[:])
-	copy(o.OptData[28:34], p.Timestamp[:])
+	binary.BigEndian.PutUint16(o.OptData[28:30], uint16(p.Timestamp>>32))
+	binary.BigEndian.PutUint32(o.OptData[30:34], uint32(p.Timestamp))
 
 	o.OptAlign = [2]uint8{4, 2}
 	// reset unused/implicit fields
@@ -277,11 +279,11 @@ func (o PacketReservReqBackwardOption) TargetAS() addr.IA {
 
 // PacketCounter returns the packet counter value set in the option
 func (o PacketReservReqForwardOption) PacketCounter() PacketCounter {
-	return PacketCounter(binary.BigEndian.Uint64(o.OptData[8:12]))
+	return PacketCounter(binary.BigEndian.Uint32(o.OptData[8:12]))
 }
 
 func (o PacketReservReqBackwardOption) PacketCounter() PacketCounter {
-	return PacketCounter(binary.BigEndian.Uint64(o.OptData[8:12]))
+	return PacketCounter(binary.BigEndian.Uint32(o.OptData[8:12]))
 }
 
 // Auth returns slice of the underlying auth buffer.
@@ -297,11 +299,13 @@ func (o PacketReservReqBackwardOption) Auth() []byte {
 
 // Timestamp returns the timestamp value set in the option
 func (o PacketReservReqForwardOption) Timestamp() uint64 {
-	return binary.BigEndian.Uint64(o.OptData[28:34])
+	return uint64(binary.BigEndian.Uint16(o.OptData[28:30]))<<32 +
+		uint64(binary.BigEndian.Uint32(o.OptData[30:34]))
 }
 
 func (o PacketReservReqBackwardOption) Timestamp() uint64 {
-	return binary.BigEndian.Uint64(o.OptData[28:34])
+	return uint64(binary.BigEndian.Uint16(o.OptData[28:30]))<<32 +
+		uint64(binary.BigEndian.Uint32(o.OptData[30:34]))
 }
 
 // ResponseOption field accessors
