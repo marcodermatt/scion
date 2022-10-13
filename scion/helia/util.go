@@ -19,10 +19,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/scionproto/scion/pkg/addr"
-	libhelia "github.com/scionproto/scion/pkg/experimental/helia"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/snet"
@@ -45,13 +43,12 @@ func Size(local, remote *snet.UDPAddr, pldSize int) (int, error) {
 }
 
 func pack(
-	local, remote *snet.UDPAddr, target addr.IA, backward bool, req snet.SCMPEchoRequest,
+	local, remote *snet.UDPAddr, heliaSetupOpt *slayers.HopByHopOption, req snet.SCMPEchoRequest,
 ) (*snet.Packet, error) {
 	_, isEmpty := remote.Path.(path.Empty)
 	if isEmpty && !local.IA.Equal(remote.IA) {
 		return nil, serrors.New("no path for remote ISD-AS", "local", local.IA, "remote", remote.IA)
 	}
-	heliaSetupOpt := createSetupRequest(target, backward)
 	pkt := &snet.Packet{
 		PacketInfo: snet.PacketInfo{
 			Destination: snet.SCIONAddress{
@@ -91,31 +88,5 @@ func ChooseAS(path snet.Path, remote addr.IA) (addr.IA, error) {
 			return intfs[idx*2+1].IA, nil
 		}
 		fmt.Fprintf(os.Stderr, "Path index outside of valid range: [0, %v]\n", n-1)
-	}
-}
-
-func createSetupRequest(target addr.IA, isBackwardReq bool) *slayers.HopByHopOption {
-	auth := [16]byte{
-		0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-		0xff,
-	}
-	reqParams := slayers.PacketReservReqParams{
-		TargetAS:  target,
-		Timestamp: uint64(time.Now().UnixMilli()),
-		Counter:   libhelia.PktCounterFromCore(1, 2, 3),
-		Auth:      auth,
-	}
-	if !isBackwardReq {
-		optSetup, err := slayers.NewPacketReservReqForwardOption(reqParams)
-		if err != nil {
-			return nil
-		}
-		return optSetup.HopByHopOption
-	} else {
-		optSetup, err := slayers.NewPacketReservReqBackwardOption(reqParams)
-		if err != nil {
-			return nil
-		}
-		return optSetup.HopByHopOption
 	}
 }

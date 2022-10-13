@@ -27,6 +27,7 @@ import (
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/daemon"
+	libhelia "github.com/scionproto/scion/pkg/experimental/helia"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/snet"
@@ -146,25 +147,38 @@ On other errors, helia will exit with code 2.
 				return err
 			}
 
-			var targetAS addr.IA
+			reservReq := &libhelia.ReservationRequest{Backward: flags.backward}
 			if len(flags.target) > 0 {
-				targetAS, err = addr.ParseIA(flags.target)
+				reservReq.Target, err = addr.ParseIA(flags.target)
 				if err != nil {
 					return err
 				}
 			} else if flags.interactive {
-				targetAS, err = helia.ChooseAS(path, remote.IA)
+				reservReq.Target, err = helia.ChooseAS(
+					path, remote.IA,
+				)
 				if err != nil {
 					return err
 				}
 			} else {
 				return serrors.New("no reservation target defined")
 			}
+			intfs := path.Metadata().Interfaces
+			n := (len(intfs) - 1) / 2
+			for i := 0; i < n; i++ {
+				inIntf := intfs[i*2+1]
+				if inIntf.IA.Equal(reservReq.Target) {
+					reservReq.IngressIF = uint16(inIntf.ID)
+					reservReq.EgressIF = uint16(intfs[i*2+2].ID)
+					break
+				}
+			}
 			directionStr := "forward"
-			if flags.backward {
+			if reservReq.Backward {
+				reservReq.IngressIF, reservReq.EgressIF = reservReq.EgressIF, reservReq.IngressIF
 				directionStr = "backward"
 			}
-			fmt.Printf("\nRequesting %s reservation from %s\n\n", directionStr, targetAS)
+			fmt.Printf("\nRequesting %s reservation from %s\n\n", directionStr, reservReq.Target)
 			// If the EPIC flag is set, use the EPIC-HP path type
 			if flags.epic {
 				switch s := path.Dataplane().(type) {
@@ -236,15 +250,14 @@ On other errors, helia will exit with code 2.
 				count = math.MaxUint16
 			}
 			stats, err := helia.Run(ctx, helia.Config{
-				Dispatcher:  reliable.NewDispatcher(dispatcher),
-				TargetAS:    targetAS,
-				Backward:    flags.backward,
-				Attempts:    count,
-				Interval:    flags.interval,
-				Timeout:     flags.timeout,
-				Local:       local,
-				Remote:      remote,
-				PayloadSize: pldSize,
+				Dispatcher:         reliable.NewDispatcher(dispatcher),
+				ReservationRequest: reservReq,
+				Attempts:           count,
+				Interval:           flags.interval,
+				Timeout:            flags.timeout,
+				Local:              local,
+				Remote:             remote,
+				PayloadSize:        pldSize,
 				ErrHandler: func(err error) {
 					fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 				},

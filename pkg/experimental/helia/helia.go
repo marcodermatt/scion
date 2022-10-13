@@ -19,7 +19,6 @@ import (
 	"crypto/cipher"
 	"crypto/subtle"
 	"encoding/binary"
-	"math"
 	"time"
 
 	"github.com/scionproto/scion/pkg/addr"
@@ -38,10 +37,41 @@ const (
 	// TimestampResolution denotes the resolution of the epic timestamp
 	TimestampResolution = 21 * time.Microsecond
 	// MACBufferSize denotes the buffer size of the CBC input and output.
-	MACBufferSize = 48
+	MACBufferSize = 16
 )
 
+type ReservationRequest struct {
+	Target    addr.IA
+	IngressIF uint16
+	EgressIF  uint16
+	Backward  bool
+}
+
 var zeroInitVector [16]byte
+
+func CreateSetupRequest(reservReq *ReservationRequest) *slayers.HopByHopOption {
+	var auth [16]byte
+	reqParams := slayers.PacketReservReqParams{
+		TargetAS:  reservReq.Target,
+		Timestamp: uint64(time.Now().UnixMilli()),
+		Counter:   PktCounterFromCore(1, 2, 3),
+		Auth:      auth,
+	}
+	CalcMac()
+	if !reservReq.Backward {
+		optSetup, err := slayers.NewPacketReservReqForwardOption(reqParams)
+		if err != nil {
+			return nil
+		}
+		return optSetup.HopByHopOption
+	} else {
+		optSetup, err := slayers.NewPacketReservReqBackwardOption(reqParams)
+		if err != nil {
+			return nil
+		}
+		return optSetup.HopByHopOption
+	}
+}
 
 // CreateTimestamp returns the epic timestamp, which encodes the current time (now) relative to the
 // input timestamp. The input timestamp must not be in the future (compared to the current time),
@@ -90,12 +120,8 @@ func VerifyTimestamp(timestamp time.Time, epicTS uint32, now time.Time) error {
 // If the same buffer is provided in subsequent calls to this function, the previously returned
 // EPIC MAC may get overwritten. Only the most recently returned EPIC MAC is guaranteed to be
 // valid.
-func CalcMac(auth []byte, pktID epic.PktID, s *slayers.SCION,
-	timestamp uint32, buffer []byte) ([]byte, error) {
-
-	if len(buffer) < MACBufferSize {
-		buffer = make([]byte, MACBufferSize)
-	}
+func CalcMac(counter uint32, ingressIF uint16, egressIF uint16, timestamp uint64, optType uint8,
+	buffer [16]byte) ([]byte, error) {
 
 	// Initialize cryptographic MAC function
 	f, err := initEpicMac(auth)
@@ -103,14 +129,10 @@ func CalcMac(auth []byte, pktID epic.PktID, s *slayers.SCION,
 		return nil, err
 	}
 	// Prepare the input for the MAC function
-	inputLength, err := prepareMacInput(pktID, s, timestamp, buffer)
-	if err != nil {
-		return nil, err
-	}
+	prepareMacInput(counter, ingressIF, egressIF, timestamp, optType, buffer)
 	// Calculate Epic MAC = first 4 bytes of the last CBC block
-	input := buffer[:inputLength]
-	f.CryptBlocks(input, input)
-	return input[len(input)-f.BlockSize() : len(input)-f.BlockSize()+4], nil
+	f.CryptBlocks(buffer[:], buffer[:])
+	return buffer[:], nil
 }
 
 // VerifyHVF verifies the correctness of the HVF (PHVF or the LHVF) field in the EPIC packet by
@@ -163,42 +185,34 @@ func initEpicMac(key []byte) (cipher.BlockMode, error) {
 	return mode, nil
 }
 
-func prepareMacInput(pktID epic.PktID, s *slayers.SCION, timestamp uint32,
-	inputBuffer []byte) (int, error) {
-
-	//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	//   | flags (1B) | timestamp (4B) |    packet ID (8B)     |
-	//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	//   | srcIA (8B) | srcAddr (4/8/12/16B) | payloadLen (2B) |
-	//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	//   | zero padding (0-15B)                                |
-	//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	// The "flags" field only encodes the length of the source address.
-
-	if s == nil {
-		return 0, serrors.New("SCION common+address header must not be nil")
-	}
-	srcAddr := s.RawSrcAddr
-	l := len(srcAddr)
-
-	// Calculate a multiple of 16 such that the input fits in
-	nrBlocks := int(math.Ceil((23 + float64(l)) / 16))
-	inputLength := 16 * nrBlocks
+// prepareMacInput returns the MAC input data block with the following layout:
+//
+//	 0                   1                   2                   3
+//	 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	|                          counter (4B)                         |
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	|          ingressIF (2B)       |         egressIF (2B)         |
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	|                         timestamp (6B)                        |
+//	+                               +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	|                               | OptType (2B)  |       0       |
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+func prepareMacInput(counter uint32, ingressIF uint16, egressIF uint16, timestamp uint64,
+	optType uint8, inputBuffer [16]byte) {
 
 	// Fill input
 	offset := 0
-	inputBuffer[0] = uint8(s.SrcAddrLen)
-	offset += 1
-	binary.BigEndian.PutUint32(inputBuffer[offset:], timestamp)
+	binary.BigEndian.PutUint32(inputBuffer[offset:], counter)
 	offset += 4
-	pktID.SerializeTo(inputBuffer[offset:])
-	offset += epic.PktIDLen
-	binary.BigEndian.PutUint64(inputBuffer[offset:], uint64(s.SrcIA))
-	offset += addr.IABytes
-	copy(inputBuffer[offset:], srcAddr)
-	offset += l
-	binary.BigEndian.PutUint16(inputBuffer[offset:], s.PayloadLen)
+	binary.BigEndian.PutUint16(inputBuffer[offset:], ingressIF)
 	offset += 2
-	copy(inputBuffer[offset:inputLength], zeroInitVector[:])
-	return inputLength, nil
+	binary.BigEndian.PutUint16(inputBuffer[offset:], egressIF)
+	offset += 2
+	binary.BigEndian.PutUint16(inputBuffer[offset:], uint16(timestamp>>32))
+	binary.BigEndian.PutUint32(inputBuffer[offset+2:], uint32(timestamp))
+	offset += 6
+	inputBuffer[offset] = optType
+	offset += 1
+	inputBuffer[offset] = 0
 }

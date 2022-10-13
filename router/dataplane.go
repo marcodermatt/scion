@@ -631,7 +631,7 @@ func (p *scionPacketProcessor) processHeliaSetup() error {
 				return err
 			}
 			target := setupReq.TargetAS()
-			if target == p.d.localIA {
+			if p.d.localIA.Equal(target) {
 				clientID, coreID, coreCounter :=
 					libhelia.CoreFromPktCounter(setupReq.PacketCounter())
 				log.Debug(

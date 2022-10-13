@@ -23,9 +23,11 @@ import (
 	"time"
 
 	"github.com/scionproto/scion/pkg/addr"
+	libhelia "github.com/scionproto/scion/pkg/experimental/helia"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/serrors"
+	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/snet"
 	"github.com/scionproto/scion/pkg/sock/reliable"
 	"github.com/scionproto/scion/private/topology/underlay"
@@ -63,10 +65,8 @@ type Config struct {
 	Local      *snet.UDPAddr
 	Remote     *snet.UDPAddr
 
-	// Target is the AS for which to request a reservation.
-	TargetAS addr.IA
-	// Backward indicates if the reservation is for the reverse path.
-	Backward bool
+	//ReservationRequest contains all information for a Helia reservation setup
+	ReservationRequest *libhelia.ReservationRequest
 
 	// Attempts is the number of pings to send.
 	Attempts uint16
@@ -128,7 +128,7 @@ func Run(ctx context.Context, cfg Config) (Stats, error) {
 		errHandler:    cfg.ErrHandler,
 		updateHandler: cfg.UpdateHandler,
 	}
-	return p.Ping(ctx, cfg.Remote, cfg.TargetAS, cfg.Backward)
+	return p.Ping(ctx, cfg.Remote, cfg.ReservationRequest)
 }
 
 type pinger struct {
@@ -154,7 +154,7 @@ type pinger struct {
 }
 
 func (p *pinger) Ping(
-	ctx context.Context, remote *snet.UDPAddr, targetAS addr.IA, backward bool,
+	ctx context.Context, remote *snet.UDPAddr, reservReq *libhelia.ReservationRequest,
 ) (Stats, error) {
 	p.sentSequence, p.receivedSequence = -1, -1
 	send := time.NewTicker(p.interval)
@@ -173,7 +173,8 @@ func (p *pinger) Ping(
 	go func() {
 		defer log.HandlePanic()
 		for i := uint16(0); i < p.attempts; i++ {
-			if err := p.send(remote, targetAS, backward); err != nil {
+			heliaSetupOpt := libhelia.CreateSetupRequest(reservReq)
+			if err := p.send(remote, heliaSetupOpt); err != nil {
 				errSend <- serrors.WrapStr("sending", err)
 				return
 			}
@@ -205,11 +206,11 @@ func (p *pinger) Ping(
 	return p.stats, nil
 }
 
-func (p *pinger) send(remote *snet.UDPAddr, targetAS addr.IA, backward bool) error {
+func (p *pinger) send(remote *snet.UDPAddr, heliaSetupOpt *slayers.HopByHopOption) error {
 	sequence := p.sentSequence + 1
 
 	binary.BigEndian.PutUint64(p.pld, uint64(time.Now().UnixNano()))
-	pkt, err := pack(p.local, remote, targetAS, backward, snet.SCMPEchoRequest{
+	pkt, err := pack(p.local, remote, heliaSetupOpt, snet.SCMPEchoRequest{
 		Identifier: uint16(p.id),
 		SeqNumber:  uint16(sequence),
 		Payload:    p.pld,
