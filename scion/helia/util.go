@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/scionproto/scion/pkg/addr"
+	libhelia "github.com/scionproto/scion/pkg/experimental/helia"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/snet"
@@ -94,15 +95,14 @@ func ChooseAS(path snet.Path, remote addr.IA) (addr.IA, error) {
 }
 
 func createSetupRequest(target addr.IA, isBackwardReq bool) *slayers.HopByHopOption {
-	counter := slayers.PktCounterFromCore(1, 1, 2)
 	auth := [16]byte{
-		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-		0xFF,
+		0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+		0xff,
 	}
 	reqParams := slayers.PacketReservReqParams{
 		TargetAS:  target,
 		Timestamp: uint64(time.Now().UnixMilli()),
-		Counter:   counter,
+		Counter:   libhelia.PktCounterFromCore(1, 2, 3),
 		Auth:      auth,
 	}
 	if !isBackwardReq {

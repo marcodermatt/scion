@@ -84,27 +84,9 @@ import (
 const PacketSetupReqDataLen = 34
 const PacketSetupResponseDataLen = 56
 
-// PacketCounter is used for duplicate suppression and consists of a Core id and a PerCoreCount
-type PacketCounter uint32
-
-// PktCounterFromCore creates a counter for the packet identifier
-// based on the client ID, core ID and the core counter.
-func PktCounterFromCore(clientID uint8, coreID uint8, coreCounter uint16) PacketCounter {
-	return PacketCounter(uint32(clientID)<<24 | uint32(coreID)<<16 | uint32(coreCounter))
-}
-
-// CoreFromPktCounter reads the client ID, core ID and the core counter
-// from a counter belonging to a packet identifier.
-func CoreFromPktCounter(counter PacketCounter) (uint8, uint8, uint16) {
-	clientID := uint8(counter >> 24)
-	coreID := uint8(counter >> 16)
-	coreCounter := uint16(counter)
-	return clientID, coreID, coreCounter
-}
-
 type PacketReservReqParams struct {
 	TargetAS  addr.IA
-	Counter   PacketCounter
+	Counter   uint32
 	Auth      [16]byte
 	Timestamp uint64
 }
@@ -278,12 +260,12 @@ func (o PacketReservReqBackwardOption) TargetAS() addr.IA {
 }
 
 // PacketCounter returns the packet counter value set in the option
-func (o PacketReservReqForwardOption) PacketCounter() PacketCounter {
-	return PacketCounter(binary.BigEndian.Uint32(o.OptData[8:12]))
+func (o PacketReservReqForwardOption) PacketCounter() uint32 {
+	return binary.BigEndian.Uint32(o.OptData[8:12])
 }
 
-func (o PacketReservReqBackwardOption) PacketCounter() PacketCounter {
-	return PacketCounter(binary.BigEndian.Uint32(o.OptData[8:12]))
+func (o PacketReservReqBackwardOption) PacketCounter() uint32 {
+	return binary.BigEndian.Uint32(o.OptData[8:12])
 }
 
 // Auth returns slice of the underlying auth buffer.

@@ -35,6 +35,7 @@ import (
 
 	"github.com/scionproto/scion/pkg/addr"
 	libepic "github.com/scionproto/scion/pkg/experimental/epic"
+	libhelia "github.com/scionproto/scion/pkg/experimental/helia"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/private/util"
@@ -632,7 +633,7 @@ func (p *scionPacketProcessor) processHeliaSetup() error {
 			target := setupReq.TargetAS()
 			if target == p.d.localIA {
 				clientID, coreID, coreCounter :=
-					slayers.CoreFromPktCounter(setupReq.PacketCounter())
+					libhelia.CoreFromPktCounter(setupReq.PacketCounter())
 				log.Debug(
 					"Helia forward reservation", "target-as", target,
 					"clientID", clientID, "coreID", coreID, "coreCounter", coreCounter, "timestamp",
