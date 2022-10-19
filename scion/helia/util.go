@@ -30,8 +30,10 @@ import (
 // Size computes the full SCION packet size for an address pair with a given
 // payload size.
 func Size(local, remote *snet.UDPAddr, pldSize int) (int, error) {
+	emptySetupOpt, _ := slayers.NewPacketReservReqForwardOption(slayers.PacketReservReqParams{})
 	pkt, err := pack(
-		local, remote, addr.IA(0), false, snet.SCMPEchoRequest{Payload: make([]byte, pldSize)},
+		local, remote, emptySetupOpt.HopByHopOption,
+		snet.SCMPEchoRequest{Payload: make([]byte, pldSize)},
 	)
 	if err != nil {
 		return 0, err

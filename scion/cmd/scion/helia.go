@@ -147,7 +147,11 @@ On other errors, helia will exit with code 2.
 				return err
 			}
 
-			reservReq := &libhelia.ReservationRequest{Backward: flags.backward}
+			reservReq := &libhelia.ReservationRequest{
+				Backward:  flags.backward,
+				Timestamp: uint64(time.Now().UnixMilli()),
+				Counter:   libhelia.PktCounterFromCore(1, 2, 3),
+			}
 			if len(flags.target) > 0 {
 				reservReq.Target, err = addr.ParseIA(flags.target)
 				if err != nil {

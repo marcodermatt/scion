@@ -15,16 +15,13 @@
 package helia
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/subtle"
 	"encoding/binary"
+	"hash"
 	"time"
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/slayers"
-	"github.com/scionproto/scion/pkg/slayers/path/epic"
 )
 
 const (
@@ -45,19 +42,27 @@ type ReservationRequest struct {
 	IngressIF uint16
 	EgressIF  uint16
 	Backward  bool
+	Timestamp uint64
+	Counter   uint32
 }
 
 var zeroInitVector [16]byte
 
-func CreateSetupRequest(reservReq *ReservationRequest) *slayers.HopByHopOption {
+func CreateSetupRequest(mac hash.Hash, reservReq *ReservationRequest) *slayers.HopByHopOption {
 	var auth [16]byte
 	reqParams := slayers.PacketReservReqParams{
 		TargetAS:  reservReq.Target,
-		Timestamp: uint64(time.Now().UnixMilli()),
-		Counter:   PktCounterFromCore(1, 2, 3),
+		Timestamp: reservReq.Timestamp,
+		Counter:   reservReq.Counter,
 		Auth:      auth,
 	}
-	CalcMac()
+	var optType slayers.OptionType
+	if !reservReq.Backward {
+		optType = slayers.OptTypeReservReqForward
+	} else {
+		optType = slayers.OptTypeReservReqBackward
+	}
+	CalcMac(mac, reqParams, reservReq.IngressIF, reservReq.EgressIF, uint8(optType))
 	if !reservReq.Backward {
 		optSetup, err := slayers.NewPacketReservReqForwardOption(reqParams)
 		if err != nil {
@@ -120,19 +125,19 @@ func VerifyTimestamp(timestamp time.Time, epicTS uint32, now time.Time) error {
 // If the same buffer is provided in subsequent calls to this function, the previously returned
 // EPIC MAC may get overwritten. Only the most recently returned EPIC MAC is guaranteed to be
 // valid.
-func CalcMac(counter uint32, ingressIF uint16, egressIF uint16, timestamp uint64, optType uint8,
-	buffer [16]byte) ([]byte, error) {
+func CalcMac(h hash.Hash,
+	reqParams slayers.PacketReservReqParams, ingressIF uint16, egressIF uint16, optType uint8,
+) ([]byte, error) {
 
-	// Initialize cryptographic MAC function
-	f, err := initEpicMac(auth)
-	if err != nil {
+	// Prepare the input for the MAC function
+	prepareMacInput(
+		reqParams.Counter, ingressIF, egressIF, reqParams.Timestamp, optType, reqParams.Auth,
+	)
+	if _, err := h.Write(reqParams.Auth[:]); err != nil {
 		return nil, err
 	}
-	// Prepare the input for the MAC function
-	prepareMacInput(counter, ingressIF, egressIF, timestamp, optType, buffer)
-	// Calculate Epic MAC = first 4 bytes of the last CBC block
-	f.CryptBlocks(buffer[:], buffer[:])
-	return buffer[:], nil
+	return h.Sum(reqParams.Auth[:0])[:16], nil
+
 }
 
 // VerifyHVF verifies the correctness of the HVF (PHVF or the LHVF) field in the EPIC packet by
@@ -140,24 +145,24 @@ func CalcMac(counter uint32, ingressIF uint16, egressIF uint16, timestamp uint64
 // bytes of the SCION path type MAC, has invalid length, or if the MAC calculation gives an error,
 // also VerifyHVF returns an error. The verification was successful if and only if VerifyHVF
 // returns nil.
-func VerifyHVF(auth []byte, pktID epic.PktID, s *slayers.SCION,
-	timestamp uint32, hvf []byte, buffer []byte) error {
-
-	if s == nil || len(auth) != AuthLen {
-		return serrors.New("invalid input")
-	}
-
-	mac, err := CalcMac(auth, pktID, s, timestamp, buffer)
-	if err != nil {
-		return err
-	}
-
-	if subtle.ConstantTimeCompare(hvf, mac) == 0 {
-		return serrors.New("epic hop validation field verification failed",
-			"hvf in packet", hvf, "calculated mac", mac, "auth", auth)
-	}
-	return nil
-}
+//func VerifyHVF(auth []byte, pktID epic.PktID, s *slayers.SCION,
+//	timestamp uint32, hvf []byte, buffer []byte) error {
+//
+//	if s == nil || len(auth) != AuthLen {
+//		return serrors.New("invalid input")
+//	}
+//
+//	mac, err := CalcMac(auth, pktID, s, timestamp, buffer)
+//	if err != nil {
+//		return err
+//	}
+//
+//	if subtle.ConstantTimeCompare(hvf, mac) == 0 {
+//		return serrors.New("epic hop validation field verification failed",
+//			"hvf in packet", hvf, "calculated mac", mac, "auth", auth)
+//	}
+//	return nil
+//}
 
 // PktCounterFromCore creates a counter for the packet identifier
 // based on the client ID, core ID and the core counter.
@@ -174,17 +179,6 @@ func CoreFromPktCounter(counter uint32) (uint8, uint8, uint16) {
 	return clientID, coreID, coreCounter
 }
 
-func initEpicMac(key []byte) (cipher.BlockMode, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, serrors.New("Unable to initialize AES cipher")
-	}
-
-	// CBC-MAC = CBC-Encryption with zero initialization vector
-	mode := cipher.NewCBCEncrypter(block, zeroInitVector[:])
-	return mode, nil
-}
-
 // prepareMacInput returns the MAC input data block with the following layout:
 //
 //	 0                   1                   2                   3
@@ -196,7 +190,7 @@ func initEpicMac(key []byte) (cipher.BlockMode, error) {
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //	|                         timestamp (6B)                        |
 //	+                               +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//	|                               | OptType (2B)  |       0       |
+//	|                               | OptType (1B)  |       0       |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 func prepareMacInput(counter uint32, ingressIF uint16, egressIF uint16, timestamp uint64,
 	optType uint8, inputBuffer [16]byte) {

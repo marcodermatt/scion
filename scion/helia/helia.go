@@ -18,6 +18,7 @@ package helia
 import (
 	"context"
 	"encoding/binary"
+	"hash"
 	"math/rand"
 	"net"
 	"time"
@@ -27,6 +28,7 @@ import (
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/serrors"
+	"github.com/scionproto/scion/pkg/scrypto"
 	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/snet"
 	"github.com/scionproto/scion/pkg/sock/reliable"
@@ -115,6 +117,8 @@ func Run(ctx context.Context, cfg Config) (Stats, error) {
 	if cfg.PayloadSize < 8 {
 		cfg.PayloadSize = 8
 	}
+	STATIC_KEY := []byte("f5fcc4ce2250db36")
+	mac, _ := scrypto.InitMac(STATIC_KEY)
 	p := pinger{
 		attempts:      cfg.Attempts,
 		interval:      cfg.Interval,
@@ -128,7 +132,7 @@ func Run(ctx context.Context, cfg Config) (Stats, error) {
 		errHandler:    cfg.ErrHandler,
 		updateHandler: cfg.UpdateHandler,
 	}
-	return p.Ping(ctx, cfg.Remote, cfg.ReservationRequest)
+	return p.Ping(mac, ctx, cfg.Remote, cfg.ReservationRequest)
 }
 
 type pinger struct {
@@ -154,7 +158,8 @@ type pinger struct {
 }
 
 func (p *pinger) Ping(
-	ctx context.Context, remote *snet.UDPAddr, reservReq *libhelia.ReservationRequest,
+	mac hash.Hash, ctx context.Context, remote *snet.UDPAddr,
+	reservReq *libhelia.ReservationRequest,
 ) (Stats, error) {
 	p.sentSequence, p.receivedSequence = -1, -1
 	send := time.NewTicker(p.interval)
@@ -173,7 +178,7 @@ func (p *pinger) Ping(
 	go func() {
 		defer log.HandlePanic()
 		for i := uint16(0); i < p.attempts; i++ {
-			heliaSetupOpt := libhelia.CreateSetupRequest(reservReq)
+			heliaSetupOpt := libhelia.CreateSetupRequest(mac, reservReq)
 			if err := p.send(remote, heliaSetupOpt); err != nil {
 				errSend <- serrors.WrapStr("sending", err)
 				return
