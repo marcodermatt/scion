@@ -259,6 +259,11 @@ func (o PacketReservReqBackwardOption) TargetAS() addr.IA {
 	return addr.IA(binary.BigEndian.Uint64(o.OptData[:8]))
 }
 
+// RawTargetAS returns the IA address value set in the option
+func RawHeliaTargetAS(option *HopByHopOption) addr.IA {
+	return addr.IA(binary.BigEndian.Uint64(option.OptData[:8]))
+}
+
 // PacketCounter returns the packet counter value set in the option
 func (o PacketReservReqForwardOption) PacketCounter() uint32 {
 	return binary.BigEndian.Uint32(o.OptData[8:12])

@@ -35,6 +35,10 @@ const (
 	TimestampResolution = 21 * time.Microsecond
 	// MACBufferSize denotes the buffer size of the CBC input and output.
 	MACBufferSize = 16
+	// HeliaReservationBandwidth is a fixed bandwidth, only during testing
+	HeliaReservationBandwidth = 1000
+	// HeliaReservationDuration is the fixed duration for reservations
+	HeliaReservationDuration = 10 * time.Second
 )
 
 type ReservationRequest struct {
@@ -76,6 +80,37 @@ func CreateSetupRequest(mac hash.Hash, reservReq *ReservationRequest) *slayers.H
 		}
 		return optSetup.HopByHopOption
 	}
+}
+
+func CreateSetupResponse(
+	mac hash.Hash, reservReq *slayers.HopByHopOption, ingressIF uint16, egressIF uint16,
+	tsExp uint64, localIA addr.IA,
+) (*slayers.HopByHopOption, error) {
+	// TODO: Verify reservation request
+
+	params := slayers.PacketReservResponseParams{
+		ReservAS:  localIA,
+		Bandwidth: HeliaReservationBandwidth,
+		TsExp:     tsExp,
+	}
+	if reservReq.OptType == slayers.OptTypeReservReqForward {
+		params.IngressIF = ingressIF
+		params.EgressIF = egressIF
+
+	} else if reservReq.OptType == slayers.OptTypeReservReqBackward {
+		params.IngressIF = egressIF
+		params.EgressIF = ingressIF
+
+	} else {
+		return nil, serrors.New(
+			"Invalid OptType for reservation request", "optType", reservReq.OptType,
+		)
+	}
+	setupResp, err := slayers.NewPacketReservResponseOption(params)
+	if err != nil {
+		return nil, err
+	}
+	return setupResp.HopByHopOption, nil
 }
 
 // CreateTimestamp returns the epic timestamp, which encodes the current time (now) relative to the
