@@ -18,6 +18,8 @@ package helia
 import (
 	"context"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"hash"
 	"math/rand"
 	"net"
@@ -172,7 +174,7 @@ func (p *pinger) Ping(
 
 	go func() {
 		defer log.HandlePanic()
-		p.drain(ctx)
+		//p.drain(ctx)
 	}()
 
 	go func() {
@@ -192,7 +194,15 @@ func (p *pinger) Ping(
 		time.AfterFunc(p.timeout, cancel)
 	}()
 
+	if err := p.handleResponse(ctx); err != nil {
+		fmt.Println("Error in handling response")
+		fmt.Println(err)
+	}
 	for i := uint16(0); i < p.attempts; i++ {
+		//if err := p.handleResponse(ctx); err !=nil{
+		//	fmt.Println("Error in handling response")
+		//	fmt.Println(err)
+		//}
 		select {
 		case <-ctx.Done():
 			return p.stats, nil
@@ -286,6 +296,37 @@ func (p *pinger) drain(ctx context.Context) {
 			}
 		}
 	}
+}
+
+func (p *pinger) handleResponse(ctx context.Context) error {
+	fmt.Println("Handling response")
+	p.conn.SetReadDeadline(time.Now().Add(p.timeout * 10))
+	var pkt snet.Packet
+	var ov net.UDPAddr
+	if err := readFrom(p.conn, &pkt, &ov); err != nil {
+		return serrors.WrapStr("reading packet", err)
+	}
+	response, err := slayers.ParsePacketReservResponseOption(pkt.HopByHopOption)
+	if err != nil {
+		return serrors.New("unexpected option type", "type", pkt.HopByHopOption.OptType)
+	}
+	log.Debug("Response received", "target", response.ReservAS(), "bandwidth", response.Bandwidth())
+
+	log.Info("Received response", "server", pkt.Source)
+	return nil
+}
+
+func readFrom(conn snet.PacketConn, pkt *snet.Packet, ov *net.UDPAddr) error {
+	err := conn.ReadFrom(pkt, ov)
+	// Attach more context to error
+	var opErr *snet.OpError
+	if !(errors.As(err, &opErr) && opErr.RevInfo() != nil) {
+		return err
+	}
+	return serrors.WithCtx(err,
+		"isd_as", opErr.RevInfo().IA(),
+		"interface", opErr.RevInfo().IfID,
+	)
 }
 
 type reply struct {

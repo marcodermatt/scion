@@ -1298,6 +1298,12 @@ func (p *scionPacketProcessor) process() (processResult, error) {
 		if err != nil {
 			return r, err
 		}
+		hbh_options := p.hbhLayer.Options
+		if len(hbh_options) > 0 {
+			dstAddr, _ := p.scionLayer.DstAddr()
+			p.scionLayer.DstAddr()
+			log.Debug("Packet incoming", "option", p.hbhLayer.Options[0].OptType, "dst", dstAddr, "outAddr", a)
+		}
 		return processResult{OutConn: p.d.internal, OutAddr: a, OutPkt: p.rawPkt}, nil
 	}
 
