@@ -72,6 +72,7 @@ type Topology struct {
 	BorderRouters       map[string]*BRInfo      `json:"border_routers,omitempty"`
 	ControlService      map[string]*ServerInfo  `json:"control_service,omitempty"`
 	DiscoveryService    map[string]*ServerInfo  `json:"discovery_service,omitempty"`
+	HeliaGateway        map[string]*ServerInfo  `json:"helia_gateway,omitempty"`
 	HiddenSegmentLookup map[string]*ServerInfo  `json:"hidden_segment_lookup_service,omitempty"`
 	HiddenSegmentReg    map[string]*ServerInfo  `json:"hidden_segment_registration_service,omitempty"`
 	SIG                 map[string]*GatewayInfo `json:"sigs,omitempty"`

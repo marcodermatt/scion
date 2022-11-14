@@ -69,6 +69,7 @@ type (
 
 		CS                        IDAddrMap
 		DS                        IDAddrMap
+		HELIAGATE                 IDAddrMap
 		HiddenSegmentLookup       IDAddrMap
 		HiddenSegmentRegistration IDAddrMap
 		SIG                       map[string]GatewayInfo
@@ -142,6 +143,7 @@ func NewRWTopology() *RWTopology {
 		BR:                        make(map[string]BRInfo),
 		CS:                        make(IDAddrMap),
 		DS:                        make(IDAddrMap),
+		HELIAGATE:                 make(IDAddrMap),
 		HiddenSegmentLookup:       make(IDAddrMap),
 		HiddenSegmentRegistration: make(IDAddrMap),
 		SIG:                       make(map[string]GatewayInfo),
@@ -300,6 +302,10 @@ func (t *RWTopology) populateServices(raw *jsontopo.Topology) error {
 	if err != nil {
 		return serrors.WrapStr("unable to extract DS address", err)
 	}
+	t.HELIAGATE, err = svcMapFromRaw(raw.HeliaGateway)
+	if err != nil {
+		return serrors.WrapStr("unable to extract HELIAGATE address", err)
+	}
 	t.HiddenSegmentLookup, err = svcMapFromRaw(raw.HiddenSegmentLookup)
 	if err != nil {
 		return serrors.WrapStr("unable to extract hidden segment lookup address", err)
@@ -352,6 +358,8 @@ func (t *RWTopology) getSvcInfo(svc ServiceType) (*svcInfo, error) {
 		return &svcInfo{idTopoAddrMap: t.DS}, nil
 	case Control:
 		return &svcInfo{idTopoAddrMap: t.CS}, nil
+	case HeliaGateway:
+		return &svcInfo{idTopoAddrMap: t.HELIAGATE}, nil
 	case HiddenSegmentLookup:
 		return &svcInfo{idTopoAddrMap: t.HiddenSegmentLookup}, nil
 	case HiddenSegmentRegistration:
@@ -384,6 +392,7 @@ func (t *RWTopology) Copy() *RWTopology {
 
 		CS:                        t.CS.copy(),
 		DS:                        t.DS.copy(),
+		HELIAGATE:                 t.HELIAGATE.copy(),
 		SIG:                       copySIGMap(t.SIG),
 		HiddenSegmentLookup:       t.HiddenSegmentLookup.copy(),
 		HiddenSegmentRegistration: t.HiddenSegmentRegistration.copy(),

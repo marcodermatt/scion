@@ -235,6 +235,8 @@ func (t *topologyS) topoAddress(svc addr.HostSVC, name string) *TopoAddr {
 		addresses = t.Topology.DS
 	case addr.SvcCS:
 		addresses = t.Topology.CS
+	case addr.SvcHeliaGate:
+		addresses = t.Topology.HELIAGATE
 	}
 	if addresses == nil {
 		return nil
@@ -294,7 +296,7 @@ func (t *topologyS) UnderlayAnycast(svc addr.HostSVC) (*net.UDPAddr, error) {
 
 func supportedSVC(svc addr.HostSVC) bool {
 	b := svc.Base()
-	return b == addr.SvcDS || b == addr.SvcCS
+	return b == addr.SvcDS || b == addr.SvcCS || b == addr.SvcHeliaGate
 }
 
 func (t *topologyS) UnderlayMulticast(svc addr.HostSVC) ([]*net.UDPAddr, error) {
@@ -351,6 +353,8 @@ func toServiceType(svc addr.HostSVC) (ServiceType, error) {
 		return Discovery, nil
 	case addr.SvcCS:
 		return Control, nil
+	case addr.SvcHeliaGate:
+		return HeliaGateway, nil
 	default:
 		return 0, serrors.WithCtx(addr.ErrUnsupportedSVCAddress, "svc", svc)
 	}
@@ -371,6 +375,8 @@ func (t *topologyS) SVCNames(svc addr.HostSVC) ServiceNames {
 		m = t.Topology.DS
 	case addr.SvcCS:
 		m = t.Topology.CS
+	case addr.SvcHeliaGate:
+		m = t.Topology.HELIAGATE
 	}
 
 	var names ServiceNames
