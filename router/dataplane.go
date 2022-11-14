@@ -32,9 +32,9 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/scionproto/scion/pkg/addr"
 	libepic "github.com/scionproto/scion/pkg/experimental/epic"
+	libhelia "github.com/scionproto/scion/pkg/experimental/helia"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/private/util"
@@ -87,7 +87,7 @@ type BatchConn interface {
 //
 // XXX(lukedirtwalker): this is still in development and not feature complete.
 // Currently, only the following features are supported:
-//  - initializing connections; MUST be done prior to calling Run
+//   - initializing connections; MUST be done prior to calling Run
 type DataPlane struct {
 	external          map[uint16]BatchConn
 	linkTypes         map[uint16]topology.LinkType
@@ -578,6 +578,7 @@ func (p *scionPacketProcessor) reset() error {
 	}
 	p.mac.Reset()
 	p.cachedMac = nil
+	p.hbhLayer.Options = nil
 	return nil
 }
 
@@ -619,6 +620,163 @@ func (p *scionPacketProcessor) processPkt(rawPkt []byte,
 	default:
 		return processResult{}, serrors.WithCtx(unsupportedPathType, "type", pathType)
 	}
+}
+
+func (p *scionPacketProcessor) getHeliaRequestOption(optionType slayers.OptionType) (*slayers.HopByHopOption, bool) {
+	for _, opt := range p.hbhLayer.Options {
+		if opt.OptType == optionType {
+			targetAS := slayers.RawHeliaTargetAS(opt)
+			if p.d.localIA.Equal(targetAS) {
+				return opt, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func (p *scionPacketProcessor) packHeliaResponse(requestOption *slayers.HopByHopOption) (processResult, error) {
+	// DEBUG
+	if requestOption.OptType == slayers.OptTypeReservReqForward {
+		setupReq, err := slayers.ParsePacketReservReqForwardOption(requestOption)
+		if err != nil {
+			return processResult{}, err
+		}
+		clientID, coreID, coreCounter :=
+			libhelia.CoreFromPktCounter(setupReq.PacketCounter())
+		log.Debug(
+			"Helia forward reservation",
+			"clientID", clientID, "coreID", coreID, "coreCounter", coreCounter, "timestamp",
+			time.UnixMilli(int64(setupReq.Timestamp())),
+		)
+
+	} else if requestOption.OptType == slayers.OptTypeReservReqBackward {
+		setupReq, err := slayers.ParsePacketReservReqBackwardOption(requestOption)
+		if err != nil {
+			return processResult{}, err
+		}
+		clientID, coreID, coreCounter :=
+			libhelia.CoreFromPktCounter(setupReq.PacketCounter())
+		log.Debug(
+			"Helia backward reservation",
+			"clientID", clientID, "coreID", coreID, "coreCounter", coreCounter, "timestamp",
+			time.UnixMilli(int64(setupReq.Timestamp())),
+		)
+	}
+	// DEBUG
+	tsExp := uint64(time.Now().Add(libhelia.HeliaReservationDuration).UnixMilli())
+	responseOption, err := libhelia.CreateSetupResponse(
+		p.mac, requestOption, p.ingressID, p.ingressID, tsExp, p.d.localIA,
+	)
+	// *copy* and reverse path -- the original path should not be modified as this writes directly
+	// back to rawPkt (quote).
+	var path *scion.Raw
+	pathType := p.scionLayer.Path.Type()
+	switch pathType {
+	case scion.PathType:
+		var ok bool
+		path, ok = p.scionLayer.Path.(*scion.Raw)
+		if !ok {
+			return processResult{}, serrors.WithCtx(cannotRoute, "details", "unsupported path type",
+				"path type", pathType)
+		}
+	default:
+		return processResult{}, serrors.WithCtx(cannotRoute, "details", "unsupported path type",
+			"path type", pathType)
+	}
+	decPath, err := path.ToDecoded()
+	if err != nil {
+		return processResult{}, serrors.Wrap(cannotRoute, err, "details", "decoding raw path")
+	}
+	revPathTmp, err := decPath.Reverse()
+	if err != nil {
+		return processResult{}, serrors.Wrap(cannotRoute, err, "details", "reversing path for SCMP")
+	}
+	revPath := revPathTmp.(*scion.Decoded)
+
+	// Revert potential path segment switches that were done during processing.
+	if revPath.IsXover() {
+		if err := revPath.IncPath(); err != nil {
+			return processResult{}, serrors.Wrap(
+				cannotRoute, err, "details", "reverting cross over for Helia",
+			)
+		}
+	}
+	// If the packet is sent to an external router, we need to increment the
+	// path to prepare it for the next hop.
+	_, external := p.d.external[p.ingressID]
+	if external {
+		infoField := &revPath.InfoFields[revPath.PathMeta.CurrINF]
+		if infoField.ConsDir {
+			hopField := revPath.HopFields[revPath.PathMeta.CurrHF]
+			infoField.UpdateSegID(hopField.Mac)
+		}
+		if err := revPath.IncPath(); err != nil {
+			return processResult{}, serrors.Wrap(
+				cannotRoute, err, "details", "incrementing path for Helia",
+			)
+		}
+	}
+
+	// create new SCION layer for reply.
+	var packetLayers []gopacket.SerializableLayer
+	var scionL slayers.SCION
+	scionL.FlowID = p.scionLayer.FlowID
+	scionL.TrafficClass = p.scionLayer.TrafficClass
+	scionL.PathType = revPath.Type()
+	scionL.Path = revPath
+	scionL.DstIA = p.scionLayer.SrcIA
+	scionL.SrcIA = p.d.localIA
+	srcA, err := p.scionLayer.SrcAddr()
+	if err != nil {
+		return processResult{}, serrors.Wrap(cannotRoute, err, "details", "extracting src addr")
+	}
+	if err := scionL.SetDstAddr(srcA); err != nil {
+		return processResult{}, serrors.Wrap(cannotRoute, err, "details", "setting dest addr")
+	}
+	if err := scionL.SetSrcAddr(&net.IPAddr{IP: p.d.internalIP}); err != nil {
+		return processResult{}, serrors.Wrap(cannotRoute, err, "details", "setting src addr")
+	}
+	scionL.NextHdr = slayers.HopByHopClass
+	packetLayers = append(packetLayers, &scionL)
+
+	// Add HopByHopExtension
+	hbh := &slayers.HopByHopExtn{}
+	hbh.NextHdr = slayers.L4UDP
+	hbh.Options = []*slayers.HopByHopOption{responseOption}
+	parsedOption, _ := slayers.ParsePacketReservResponseOption(responseOption)
+	log.Debug(
+		"Response Option sent", "dstAddr", srcA, "target", parsedOption.ReservAS(), "bandwidth",
+		parsedOption.Bandwidth(),
+	)
+
+	packetLayers = append(packetLayers, hbh)
+
+	// check invoking packet has a UDP layer
+	if p.lastLayer.NextLayerType() == slayers.LayerTypeSCIONUDP {
+
+		var udpL slayers.UDP
+		err := udpL.DecodeFromBytes(p.lastLayer.LayerPayload(), gopacket.NilDecodeFeedback)
+		if err != nil {
+			return processResult{}, serrors.WrapStr("decoding UDP layer:", err)
+		}
+		srcPort := udpL.SrcPort
+		udpL.SrcPort = udpL.DstPort
+		udpL.DstPort = srcPort
+		udpL.SetNetworkLayerForChecksum(&scionL)
+		packetLayers = append(packetLayers, &udpL)
+	}
+
+	sopts := gopacket.SerializeOptions{
+		ComputeChecksums: true,
+		FixLengths:       true,
+	}
+	err = gopacket.SerializeLayers(p.buffer, sopts, packetLayers...)
+	if err != nil {
+		return processResult{}, serrors.Wrap(
+			cannotRoute, err, "details", "serializing Helia message",
+		)
+	}
+	return processResult{OutPkt: p.buffer.Bytes()}, scmpError{}
 }
 
 func (p *scionPacketProcessor) processInterBFD(oh *onehop.Path, data []byte) error {
@@ -742,7 +900,7 @@ type scionPacketProcessor struct {
 
 	// scionLayer is the SCION gopacket layer.
 	scionLayer slayers.SCION
-	hbhLayer   slayers.HopByHopExtnSkipper
+	hbhLayer   slayers.HopByHopExtn
 	e2eLayer   slayers.EndToEndExtnSkipper
 	// last is the last parsed layer, i.e. either &scionLayer, &hbhLayer or &e2eLayer
 	lastLayer gopacket.DecodingLayer
@@ -1181,6 +1339,10 @@ func (p *scionPacketProcessor) process() (processResult, error) {
 
 	egressID := p.egressInterface()
 	if c, ok := p.d.external[egressID]; ok {
+		// Exit BR, check for Helia backward reservation requests
+		if opt, ok := p.getHeliaRequestOption(slayers.OptTypeReservReqBackward); ok {
+			return p.packHeliaResponse(opt)
+		}
 		if err := p.processEgress(); err != nil {
 			return processResult{}, err
 		}
