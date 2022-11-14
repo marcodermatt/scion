@@ -34,6 +34,9 @@ const (
 	OptTypePad1 OptionType = iota
 	OptTypePadN
 	OptTypeAuthenticator
+	OptTypeReservReqForward
+	OptTypeReservReqBackward
+	OptTypeReservResponse
 )
 
 type tlvOption struct {
