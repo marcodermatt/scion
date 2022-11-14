@@ -223,7 +223,7 @@ On other errors, helia will exit with code 2.
 			pldSize := int(flags.size)
 
 			if cmd.Flags().Changed("packet-size") {
-				overhead, err := helia.Size(local, remote, 0)
+				overhead, err := helia.Size(local, remote)
 				if err != nil {
 					return err
 				}
@@ -241,7 +241,7 @@ On other errors, helia will exit with code 2.
 					return err
 				}
 			}
-			pktSize, err := helia.Size(local, remote, pldSize)
+			pktSize, err := helia.Size(local, remote)
 			if err != nil {
 				return err
 			}

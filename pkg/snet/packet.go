@@ -346,7 +346,7 @@ type Packet struct {
 func (p *Packet) Decode() error {
 	var (
 		scionLayer slayers.SCION
-		hbhLayer   slayers.HopByHopExtnSkipper
+		hbhLayer   slayers.HopByHopExtn
 		e2eLayer   slayers.EndToEndExtnSkipper
 		udpLayer   slayers.UDP
 		scmpLayer  slayers.SCMP
@@ -395,6 +395,10 @@ func (p *Packet) Decode() error {
 		}
 	}
 	p.Path = rpath
+
+	if len(hbhLayer.Options) > 0 {
+		p.HopByHopOption = hbhLayer.Options[0]
+	}
 
 	switch l4 {
 	case slayers.LayerTypeSCIONUDP:

@@ -29,11 +29,10 @@ import (
 
 // Size computes the full SCION packet size for an address pair with a given
 // payload size.
-func Size(local, remote *snet.UDPAddr, pldSize int) (int, error) {
+func Size(local, remote *snet.UDPAddr) (int, error) {
 	emptySetupOpt, _ := slayers.NewPacketReservReqForwardOption(slayers.PacketReservReqParams{})
 	pkt, err := pack(
 		local, remote, emptySetupOpt.HopByHopOption,
-		snet.SCMPEchoRequest{Payload: make([]byte, pldSize)},
 	)
 	if err != nil {
 		return 0, err
@@ -45,7 +44,7 @@ func Size(local, remote *snet.UDPAddr, pldSize int) (int, error) {
 }
 
 func pack(
-	local, remote *snet.UDPAddr, heliaSetupOpt *slayers.HopByHopOption, req snet.SCMPEchoRequest,
+	local, remote *snet.UDPAddr, heliaSetupOpt *slayers.HopByHopOption,
 ) (*snet.Packet, error) {
 	_, isEmpty := remote.Path.(path.Empty)
 	if isEmpty && !local.IA.Equal(remote.IA) {
@@ -61,8 +60,11 @@ func pack(
 				IA:   local.IA,
 				Host: addr.HostFromIP(local.Host.IP),
 			},
-			Path:           remote.Path,
-			Payload:        req,
+			Path: remote.Path,
+			Payload: snet.UDPPayload{
+				SrcPort: uint16(local.Host.Port),
+				DstPort: uint16(remote.Host.Port),
+			},
 			HopByHopOption: heliaSetupOpt,
 		},
 	}

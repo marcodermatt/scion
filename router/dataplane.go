@@ -741,7 +741,7 @@ func (p *scionPacketProcessor) packHeliaResponse(requestOption *slayers.HopByHop
 
 	// Add HopByHopExtension
 	hbh := &slayers.HopByHopExtn{}
-	hbh.NextHdr = slayers.L4SCMP
+	hbh.NextHdr = slayers.L4UDP
 	hbh.Options = []*slayers.HopByHopOption{responseOption}
 	parsedOption, _ := slayers.ParsePacketReservResponseOption(responseOption)
 	log.Debug(
@@ -750,6 +750,21 @@ func (p *scionPacketProcessor) packHeliaResponse(requestOption *slayers.HopByHop
 	)
 
 	packetLayers = append(packetLayers, hbh)
+
+	// check invoking packet has a UDP layer
+	if p.lastLayer.NextLayerType() == slayers.LayerTypeSCIONUDP {
+
+		var udpL slayers.UDP
+		err := udpL.DecodeFromBytes(p.lastLayer.LayerPayload(), gopacket.NilDecodeFeedback)
+		if err != nil {
+			return processResult{}, serrors.WrapStr("decoding UDP layer:", err)
+		}
+		srcPort := udpL.SrcPort
+		udpL.SrcPort = udpL.DstPort
+		udpL.DstPort = srcPort
+		udpL.SetNetworkLayerForChecksum(&scionL)
+		packetLayers = append(packetLayers, &udpL)
+	}
 
 	sopts := gopacket.SerializeOptions{
 		ComputeChecksums: true,

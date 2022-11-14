@@ -194,15 +194,11 @@ func (p *pinger) Ping(
 		time.AfterFunc(p.timeout, cancel)
 	}()
 
-	if err := p.handleResponse(ctx); err != nil {
-		fmt.Println("Error in handling response")
-		fmt.Println(err)
-	}
 	for i := uint16(0); i < p.attempts; i++ {
-		//if err := p.handleResponse(ctx); err !=nil{
-		//	fmt.Println("Error in handling response")
-		//	fmt.Println(err)
-		//}
+		if err := p.handleResponse(ctx); err != nil {
+			fmt.Println("Error in handling response")
+			fmt.Println(err)
+		}
 		select {
 		case <-ctx.Done():
 			return p.stats, nil
@@ -225,11 +221,7 @@ func (p *pinger) send(remote *snet.UDPAddr, heliaSetupOpt *slayers.HopByHopOptio
 	sequence := p.sentSequence + 1
 
 	binary.BigEndian.PutUint64(p.pld, uint64(time.Now().UnixNano()))
-	pkt, err := pack(p.local, remote, heliaSetupOpt, snet.SCMPEchoRequest{
-		Identifier: uint16(p.id),
-		SeqNumber:  uint16(sequence),
-		Payload:    p.pld,
-	})
+	pkt, err := pack(p.local, remote, heliaSetupOpt)
 	if err != nil {
 		return err
 	}
@@ -300,7 +292,7 @@ func (p *pinger) drain(ctx context.Context) {
 
 func (p *pinger) handleResponse(ctx context.Context) error {
 	fmt.Println("Handling response")
-	p.conn.SetReadDeadline(time.Now().Add(p.timeout * 10))
+	p.conn.SetReadDeadline(time.Now().Add(p.timeout))
 	var pkt snet.Packet
 	var ov net.UDPAddr
 	if err := readFrom(p.conn, &pkt, &ov); err != nil {
