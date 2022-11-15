@@ -36,6 +36,7 @@ from topology.common import (
     SD_API_PORT,
     SD_CONFIG_NAME,
     CO_CONFIG_NAME,
+    HG_CONFIG_NAME,
 )
 
 from topology.net import socket_address_str, NetworkDescription, IPNetwork
@@ -256,6 +257,27 @@ class GoGenerator(object):
             'api': {
                 'addr': socket_address_str(ip, SD_API_PORT+700),
             }
+        }
+        return raw_entry
+
+    def generate_heliagate(self):
+        for topo_id, topo in self.args.topo_dicts.items():
+            base = topo_id.base_dir(self.args.output_dir)
+            heliagate_conf = self._build_heliagate_conf(topo_id, topo["isd_as"], base)
+            write_file(os.path.join(base, HG_CONFIG_NAME), toml.dumps(heliagate_conf))
+
+    def _build_heliagate_conf(self, topo_id, ia, base):
+        name = "hg%s" % topo_id.file_fmt()
+        config_dir = '/share/conf' if self.args.docker else base
+        raw_entry = {
+            'general': {
+                'id': name,
+                'config_dir': config_dir,
+                'reconnect_to_dispatcher': True,
+            },
+            'log': self._log_entry(name),
+            'tracing': self._tracing_entry(),
+            'features': translate_features(self.args.features),
         }
         return raw_entry
 

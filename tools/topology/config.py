@@ -129,6 +129,7 @@ class ConfigGenerator(object):
         go_gen = GoGenerator(args)
         go_gen.generate_br()
         go_gen.generate_sciond()
+        go_gen.generate_heliagate()
         go_gen.generate_control_service()
         go_gen.generate_co()
         go_gen.generate_disp()
