@@ -18,6 +18,7 @@ import (
 	"context"
 
 	"github.com/scionproto/scion/heliagate/config"
+	"github.com/scionproto/scion/heliagate/processing"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/private/app"
@@ -61,7 +62,10 @@ func realMain(ctx context.Context, cfg *config.Config) error {
 	var cleanup app.Cleanup
 	// TODO(marcoder) setup gateway
 	log.Info("HeliaGate service started")
-
+	err = processing.Init(ctx, cfg, &cleanup, g, topo)
+	if err != nil {
+		return err
+	}
 	// cleanup when exit
 	g.Go(
 		func() error {

@@ -15,5 +15,6 @@
 package config
 
 type Heliagate struct {
-	// TODO(marcoder) define what configuration a Helia gateway needs
+	NumWorkers            int `toml:"NumWorkers"`
+	MaxQueueSizePerWorker int `toml:"MaxQueueSizePerWorker"`
 }
