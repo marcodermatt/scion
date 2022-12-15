@@ -17,8 +17,8 @@ package main
 import (
 	"context"
 
-	"github.com/scionproto/scion/heliagate/config"
 	"github.com/scionproto/scion/heliagate/processing"
+	"github.com/scionproto/scion/pkg/experimental/heliagate/config"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/private/app"

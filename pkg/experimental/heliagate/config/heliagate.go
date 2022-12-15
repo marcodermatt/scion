@@ -15,6 +15,11 @@
 package config
 
 type Heliagate struct {
+	//we have 4 bytes = 32 bits available for GatewayId+WorkerId+PerWorkerCounter
+	NumBitsForGatewayId        int `toml:"NumBitsForGatewayId"`
+	NumBitsForWorkerId         int `toml:"NumBitsForWorkerId"`
+	NumBitsForPerWorkerCounter int `toml:"NumBitsForPerWorkerCounter"`
+
 	NumWorkers            int `toml:"NumWorkers"`
 	MaxQueueSizePerWorker int `toml:"MaxQueueSizePerWorker"`
 }

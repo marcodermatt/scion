@@ -17,25 +17,45 @@ package processing
 import (
 	"time"
 
-	"github.com/scionproto/scion/heliagate/config"
+	"github.com/google/gopacket"
 	"github.com/scionproto/scion/pkg/addr"
+	"github.com/scionproto/scion/pkg/experimental/heliagate/config"
+	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/slayers"
-	"golang.org/x/mod/sumdb/storage"
+	"github.com/scionproto/scion/pkg/slayers/path/scion"
 )
 
 type Worker struct {
 	CoreIdCounter  uint32
 	NumCounterBits int
 
-	Storage *storage.Storage
 	LocalAS addr.AS
 }
 
 type dataPacket struct {
 	pktArrivalTime time.Time
 	scionLayer     *slayers.SCION
-	//reservation
-	rawPacket []byte
+	scionPath      *scion.Raw
+	rawPacket      []byte
+}
+
+func Parse(rawPacket []byte) (*dataPacket, error) {
+	proc := dataPacket{
+		rawPacket:  make([]byte, len(rawPacket)),
+		scionLayer: &slayers.SCION{},
+	}
+	copy(proc.rawPacket, rawPacket)
+	if err := proc.scionLayer.DecodeFromBytes(
+		proc.rawPacket, gopacket.NilDecodeFeedback,
+	); err != nil {
+		return nil, err
+	}
+	var ok bool
+	proc.scionPath, ok = proc.scionLayer.Path.(*scion.Raw)
+	if !ok {
+		return nil, serrors.New("Getting scion path failed")
+	}
+	return &proc, nil
 }
 
 // NewWorker initializes the worker with its id, tokenbuckets and reservations
@@ -46,8 +66,6 @@ func NewWorker(
 		CoreIdCounter:  (gatewayId << (32 - config.NumBitsForGatewayId)) | (workerId << (32 - config.NumBitsForGatewayId - config.NumBitsForWorkerId)),
 		NumCounterBits: config.NumBitsForPerWorkerCounter,
 		LocalAS:        localAS,
-		Storage:        &storage.Storage{},
 	}
-	w.Storage.InitStorageWithData(nil)
 	return w
 }

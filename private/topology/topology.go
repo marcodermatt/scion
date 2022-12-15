@@ -69,7 +69,7 @@ type (
 
 		CS                        IDAddrMap
 		DS                        IDAddrMap
-		HELIAGATE                 IDAddrMap
+		HELIAGATE                 map[string]*net.UDPAddr
 		HiddenSegmentLookup       IDAddrMap
 		HiddenSegmentRegistration IDAddrMap
 		SIG                       map[string]GatewayInfo
@@ -143,7 +143,7 @@ func NewRWTopology() *RWTopology {
 		BR:                        make(map[string]BRInfo),
 		CS:                        make(IDAddrMap),
 		DS:                        make(IDAddrMap),
-		HELIAGATE:                 make(IDAddrMap),
+		HELIAGATE:                 make(map[string]*net.UDPAddr),
 		HiddenSegmentLookup:       make(IDAddrMap),
 		HiddenSegmentRegistration: make(IDAddrMap),
 		SIG:                       make(map[string]GatewayInfo),
@@ -264,12 +264,16 @@ func (t *RWTopology) populateBR(raw *jsontopo.Topology) error {
 				continue
 			}
 			if ifinfo.Local, err = rawBRIntfTopoBRAddr(rawIntf); err != nil {
-				return serrors.WrapStr("unable to extract "+
-					"underlay external data-plane local address", err)
+				return serrors.WrapStr(
+					"unable to extract "+
+						"underlay external data-plane local address", err,
+				)
 			}
 			if ifinfo.Remote, err = rawAddrToUDPAddr(rawIntf.Underlay.Remote); err != nil {
-				return serrors.WrapStr("unable to extract "+
-					"underlay external data-plane remote address", err)
+				return serrors.WrapStr(
+					"unable to extract "+
+						"underlay external data-plane remote address", err,
+				)
 			}
 			ifinfo.Underlay = underlay.UDPIPv6
 			if ifinfo.Local.IP.To4() != nil && ifinfo.Remote.IP.To4() != nil {
@@ -278,9 +282,11 @@ func (t *RWTopology) populateBR(raw *jsontopo.Topology) error {
 			brInfo.IFs[ifid] = &ifinfo
 			t.IFInfoMap[ifid] = ifinfo
 		}
-		sort.Slice(brInfo.IFIDs, func(i, j int) bool {
-			return brInfo.IFIDs[i] < brInfo.IFIDs[j]
-		})
+		sort.Slice(
+			brInfo.IFIDs, func(i, j int) bool {
+				return brInfo.IFIDs[i] < brInfo.IFIDs[j]
+			},
+		)
 		t.BR[name] = brInfo
 		t.BRNames = append(t.BRNames, name)
 	}
@@ -302,7 +308,7 @@ func (t *RWTopology) populateServices(raw *jsontopo.Topology) error {
 	if err != nil {
 		return serrors.WrapStr("unable to extract DS address", err)
 	}
-	t.HELIAGATE, err = svcMapFromRaw(raw.HeliaGateway)
+	t.HELIAGATE, err = heliagateMapFromRaw(raw.HeliaGateway)
 	if err != nil {
 		return serrors.WrapStr("unable to extract HELIAGATE address", err)
 	}
@@ -358,8 +364,6 @@ func (t *RWTopology) getSvcInfo(svc ServiceType) (*svcInfo, error) {
 		return &svcInfo{idTopoAddrMap: t.DS}, nil
 	case Control:
 		return &svcInfo{idTopoAddrMap: t.CS}, nil
-	case HeliaGateway:
-		return &svcInfo{idTopoAddrMap: t.HELIAGATE}, nil
 	case HiddenSegmentLookup:
 		return &svcInfo{idTopoAddrMap: t.HiddenSegmentLookup}, nil
 	case HiddenSegmentRegistration:
@@ -392,11 +396,22 @@ func (t *RWTopology) Copy() *RWTopology {
 
 		CS:                        t.CS.copy(),
 		DS:                        t.DS.copy(),
-		HELIAGATE:                 t.HELIAGATE.copy(),
+		HELIAGATE:                 copyHeliagateMap(t.HELIAGATE),
 		SIG:                       copySIGMap(t.SIG),
 		HiddenSegmentLookup:       t.HiddenSegmentLookup.copy(),
 		HiddenSegmentRegistration: t.HiddenSegmentRegistration.copy(),
 	}
+}
+
+func copyHeliagateMap(m map[string]*net.UDPAddr) map[string]*net.UDPAddr {
+	if m == nil {
+		return nil
+	}
+	ret := make(map[string]*net.UDPAddr)
+	for k, v := range m {
+		ret[k] = copyUDPAddr(v)
+	}
+	return ret
 }
 
 func copySIGMap(m map[string]GatewayInfo) map[string]GatewayInfo {
@@ -473,13 +488,30 @@ func (svc *svcInfo) getAllTopoAddrs() []TopoAddr {
 	return topoAddrs
 }
 
+func heliagateMapFromRaw(ras map[string]*jsontopo.ServerInfo) (map[string]*net.UDPAddr, error) {
+	heliagateMap := make(map[string]*net.UDPAddr)
+	for name, svc := range ras {
+		gatewayAddr, err := rawAddrToUDPAddr(svc.Addr)
+		if err != nil {
+			return nil, serrors.WrapStr(
+				"could not parse address", err,
+				"address", svc.Addr, "process_name", name,
+			)
+		}
+		heliagateMap[name] = gatewayAddr
+	}
+	return heliagateMap, nil
+}
+
 func svcMapFromRaw(ras map[string]*jsontopo.ServerInfo) (IDAddrMap, error) {
 	svcMap := make(IDAddrMap)
 	for name, svc := range ras {
 		svcTopoAddr, err := rawAddrToTopoAddr(svc.Addr)
 		if err != nil {
-			return nil, serrors.WrapStr("could not parse address", err,
-				"address", svc.Addr, "process_name", name)
+			return nil, serrors.WrapStr(
+				"could not parse address", err,
+				"address", svc.Addr, "process_name", name,
+			)
 		}
 		svcMap[name] = *svcTopoAddr
 	}
@@ -491,13 +523,17 @@ func gatewayMapFromRaw(ras map[string]*jsontopo.GatewayInfo) (map[string]Gateway
 	for name, svc := range ras {
 		c, err := rawAddrToTopoAddr(svc.CtrlAddr)
 		if err != nil {
-			return nil, serrors.WrapStr("could not parse control address", err,
-				"address", svc.CtrlAddr, "process_name", name)
+			return nil, serrors.WrapStr(
+				"could not parse control address", err,
+				"address", svc.CtrlAddr, "process_name", name,
+			)
 		}
 		d, err := rawAddrToUDPAddr(svc.DataAddr)
 		if err != nil {
-			return nil, serrors.WrapStr("could not parse data address", err,
-				"address", svc.DataAddr, "process_name", name)
+			return nil, serrors.WrapStr(
+				"could not parse data address", err,
+				"address", svc.DataAddr, "process_name", name,
+			)
 		}
 		// backward compatibility: if no probe address is specified just use the
 		// default (ctrl address & port 30856):
@@ -506,8 +542,10 @@ func gatewayMapFromRaw(ras map[string]*jsontopo.GatewayInfo) (map[string]Gateway
 		if svc.ProbeAddr != "" {
 			probeAddr, err = rawAddrToUDPAddr(svc.ProbeAddr)
 			if err != nil {
-				return nil, serrors.WrapStr("could not parse probe address", err,
-					"address", svc.ProbeAddr, "process_name", name)
+				return nil, serrors.WrapStr(
+					"could not parse probe address", err,
+					"address", svc.ProbeAddr, "process_name", name,
+				)
 			}
 		}
 
@@ -549,24 +587,30 @@ func (i IFInfo) CheckLinks(isCore bool, brName string) error {
 		switch i.LinkType {
 		case Core, Child:
 		default:
-			return serrors.New("Illegal link type for core AS",
-				"type", i.LinkType, "br", brName)
+			return serrors.New(
+				"Illegal link type for core AS",
+				"type", i.LinkType, "br", brName,
+			)
 		}
 	} else {
 		switch i.LinkType {
 		case Parent, Child, Peer:
 		default:
-			return serrors.New("Illegal link type for non-core AS",
-				"type", i.LinkType, "br", brName)
+			return serrors.New(
+				"Illegal link type for non-core AS",
+				"type", i.LinkType, "br", brName,
+			)
 		}
 	}
 	return nil
 }
 
 func (i IFInfo) String() string {
-	return fmt.Sprintf("IFinfo: Name[%s] IntAddr[%+v] Underlay:%s Local:%+v "+
-		"Remote:%+v IA:%s Type:%v MTU:%d", i.BRName, i.InternalAddr, i.Underlay,
-		i.Local, i.Remote, i.IA, i.LinkType, i.MTU)
+	return fmt.Sprintf(
+		"IFinfo: Name[%s] IntAddr[%+v] Underlay:%s Local:%+v "+
+			"Remote:%+v IA:%s Type:%v MTU:%d", i.BRName, i.InternalAddr, i.Underlay,
+		i.Local, i.Remote, i.IA, i.LinkType, i.MTU,
+	)
 }
 
 func (i *IFInfo) copy() *IFInfo {

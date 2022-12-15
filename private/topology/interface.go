@@ -73,6 +73,10 @@ type Topology interface {
 	//
 	// XXX(scrye): Return value is a shallow copy.
 	BR(name string) (BRInfo, bool)
+
+	HeliaGateway(name string) (*net.UDPAddr, error)
+	HeliaGateways() ([]*net.UDPAddr, error)
+
 	// IFInfoMap returns the mapping between interface IDs an internal addresses.
 	//
 	// FIXME(scrye): Simplify return type and make it topology format agnostic.
@@ -220,6 +224,25 @@ func (t *topologyS) BR(name string) (BRInfo, bool) {
 	return br, ok
 }
 
+func (t *topologyS) HeliaGateway(name string) (*net.UDPAddr, error) {
+	heliagateInfo, ok := t.Topology.HELIAGATE[name]
+	if !ok {
+		return heliagateInfo, serrors.New("Colibri Gateway not found", "name", name)
+	}
+	return heliagateInfo, nil
+}
+
+func (t *topologyS) HeliaGateways() ([]*net.UDPAddr, error) {
+	v := make([]*net.UDPAddr, 0, len(t.Topology.HELIAGATE))
+	if len(t.Topology.HELIAGATE) == 0 {
+		return v, serrors.New("No Helia Gateway found")
+	}
+	for _, addr := range t.Topology.HELIAGATE {
+		v = append(v, addr)
+	}
+	return v, nil
+}
+
 func (t *topologyS) PublicAddress(svc addr.HostSVC, name string) *net.UDPAddr {
 	topoAddr := t.topoAddress(svc, name)
 	if topoAddr == nil {
@@ -236,7 +259,8 @@ func (t *topologyS) topoAddress(svc addr.HostSVC, name string) *TopoAddr {
 	case addr.SvcCS:
 		addresses = t.Topology.CS
 	case addr.SvcHeliaGate:
-		addresses = t.Topology.HELIAGATE
+		a, _ := t.Topology.getSvcInfo(HeliaGateway)
+		addresses = a.idTopoAddrMap
 	}
 	if addresses == nil {
 		return nil
@@ -267,11 +291,13 @@ func (t *topologyS) Multicast(svc addr.HostSVC) ([]*net.UDPAddr, error) {
 		if err != nil {
 			return nil, serrors.Wrap(addr.ErrUnsupportedSVCAddress, err, "svc", svc)
 		}
-		addrs = append(addrs, &net.UDPAddr{
-			IP:   topoAddr.SCIONAddress.IP,
-			Port: topoAddr.SCIONAddress.Port,
-			Zone: topoAddr.SCIONAddress.Zone,
-		})
+		addrs = append(
+			addrs, &net.UDPAddr{
+				IP:   topoAddr.SCIONAddress.IP,
+				Port: topoAddr.SCIONAddress.Port,
+				Zone: topoAddr.SCIONAddress.Zone,
+			},
+		)
 	}
 	return addrs, nil
 }
@@ -287,8 +313,10 @@ func (t *topologyS) UnderlayAnycast(svc addr.HostSVC) (*net.UDPAddr, error) {
 	}
 	underlay, err := t.underlayByName(svc, name)
 	if err != nil {
-		return nil, serrors.WrapStr("BUG! Selected random service name, but service info not found",
-			err, "service_names", names, "selected_name", name)
+		return nil, serrors.WrapStr(
+			"BUG! Selected random service name, but service info not found",
+			err, "service_names", names, "selected_name", name,
+		)
 	}
 	// FIXME(scrye): This should return net.Addr
 	return underlay, nil
@@ -376,7 +404,8 @@ func (t *topologyS) SVCNames(svc addr.HostSVC) ServiceNames {
 	case addr.SvcCS:
 		m = t.Topology.CS
 	case addr.SvcHeliaGate:
-		m = t.Topology.HELIAGATE
+		a, _ := t.Topology.getSvcInfo(HeliaGateway)
+		m = a.idTopoAddrMap
 	}
 
 	var names ServiceNames

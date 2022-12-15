@@ -97,8 +97,10 @@ func (l *Loader) Run(ctx context.Context) error {
 		select {
 		case <-l.cfg.Reload:
 			if err := l.reload(); err != nil {
-				log.FromCtx(ctx).Error("Failed to reload topology file",
-					"file", l.cfg.File, "err", err)
+				log.FromCtx(ctx).Error(
+					"Failed to reload topology file",
+					"file", l.cfg.File, "err", err,
+				)
 			} else {
 				log.FromCtx(ctx).Info("Reloaded topology")
 			}
@@ -174,11 +176,11 @@ func (l *Loader) ControlServiceAddress(id string) *net.UDPAddr {
 	return l.topo.PublicAddress(addr.SvcCS, id)
 }
 
-func (l *Loader) HeliaGatewayAddress(id string) *net.UDPAddr {
+func (l *Loader) HeliaGatewayAddress(id string) (*net.UDPAddr, error) {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 
-	return l.topo.PublicAddress(addr.SvcHeliaGate, id)
+	return l.topo.HeliaGateway(id)
 }
 
 // TODO(lukedirtwalker): remove error and simplify struct in the return type.
