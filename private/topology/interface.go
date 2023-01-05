@@ -74,8 +74,8 @@ type Topology interface {
 	// XXX(scrye): Return value is a shallow copy.
 	BR(name string) (BRInfo, bool)
 
-	HeliaGateway(name string) (*net.UDPAddr, error)
-	HeliaGateways() ([]*net.UDPAddr, error)
+	HeliaGateway(name string) (HeliagateInfo, error)
+	HeliaGateways() ([]HeliagateInfo, error)
 
 	// IFInfoMap returns the mapping between interface IDs an internal addresses.
 	//
@@ -224,16 +224,16 @@ func (t *topologyS) BR(name string) (BRInfo, bool) {
 	return br, ok
 }
 
-func (t *topologyS) HeliaGateway(name string) (*net.UDPAddr, error) {
+func (t *topologyS) HeliaGateway(name string) (HeliagateInfo, error) {
 	heliagateInfo, ok := t.Topology.HELIAGATE[name]
 	if !ok {
-		return heliagateInfo, serrors.New("Colibri Gateway not found", "name", name)
+		return heliagateInfo, serrors.New("Helia Gateway not found", "name", name)
 	}
 	return heliagateInfo, nil
 }
 
-func (t *topologyS) HeliaGateways() ([]*net.UDPAddr, error) {
-	v := make([]*net.UDPAddr, 0, len(t.Topology.HELIAGATE))
+func (t *topologyS) HeliaGateways() ([]HeliagateInfo, error) {
+	v := make([]HeliagateInfo, 0, len(t.Topology.HELIAGATE))
 	if len(t.Topology.HELIAGATE) == 0 {
 		return v, serrors.New("No Helia Gateway found")
 	}

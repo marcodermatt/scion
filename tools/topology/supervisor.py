@@ -68,8 +68,8 @@ class SupervisorGenerator(object):
         entries = []
         entries.extend(self._br_entries(topo, "bin/router", base))
         entries.extend(self._control_service_entries(topo, base))
+        entries.extend(self._heliagate_entries(topo, base))
         entries.append(self._sciond_entry(topo_id, base))
-        entries.append(self._heliagate_entry(topo_id, base))
         return entries
 
     def _br_entries(self, topo, cmd, base):
@@ -99,13 +99,15 @@ class SupervisorGenerator(object):
         ]
         return (sd_name, self._common_entry(sd_name, cmd_args))
 
-    def _heliagate_entry(self, topo_id, conf_dir):
-        hg_name = "hg%s" % topo_id.file_fmt()
-        cmd_args = [
-            "bin/heliagate", "--config",
-            os.path.join(conf_dir, HG_CONFIG_NAME)
-        ]
-        return (hg_name, self._common_entry(hg_name, cmd_args))
+    def _heliagate_entries(self, topo, base):
+        entries = []
+        for k, v in topo.get("helia_gateway", {}).items():
+            # only a single heliagate instance per AS is currently supported
+            if k.endswith("-1"):
+                conf = os.path.join(base, "%s.toml" % k)
+                prog = self._common_entry(k, ["bin/heliagate", "--config", conf])
+                entries.append((k, prog))
+        return entries
 
     def _add_dispatcher(self, config):
         name, entry = self._dispatcher_entry()

@@ -32,6 +32,16 @@ const bufSize int = 9000
 // NumOfMessages is the maximum number of messages that are read as a batch from the socket.
 const numOfMessages int = 10
 
+func (c *Processor) shutdown() {
+	if c.exit {
+		return
+	}
+	c.exit = true
+	for i := 0; i < len(c.dataChannels); i++ {
+		c.dataChannels[i] <- nil
+	}
+}
+
 // Init initializes the helia gateway. Configures the channels, goroutines,
 // and the control plane and the data plane.
 func Init(
@@ -47,11 +57,14 @@ func Init(
 		log.Debug("Found Border Router", "ifid", ifid, "internal_addr", info.InternalAddr)
 	}
 
-	heliagateAddr, err := topo.HeliaGatewayAddress(cfg.General.ID)
-	log.Debug("Heliagate address resolved", "address", heliagateAddr)
+	heliagateInfo, err := topo.HeliaGateway(cfg.General.ID)
 	if err != nil {
-		return nil
+		return serrors.WrapStr("Heliagate not found in topology", err)
 	}
+	log.Debug(
+		"Heliagate address resolved", "address", heliagateInfo.Addr, "name", heliagateInfo.Name,
+		"egresses", heliagateInfo.Egresses,
+	)
 
 	localAS := topo.IA().AS()
 
@@ -65,7 +78,7 @@ func Init(
 
 	cleanup.Add(
 		func() error {
-			//p.shutdown()
+			p.shutdown()
 			return nil
 		},
 	)
@@ -103,7 +116,7 @@ func Init(
 			},
 		)
 	*/
-	if err := p.initDataPlane(config, heliagateAddr, g, cleanup); err != nil {
+	if err := p.initDataPlane(config, heliagateInfo.Addr, g, cleanup); err != nil {
 		return err
 	}
 
@@ -182,7 +195,8 @@ func (p *Processor) getBorderRouterConnection(proc *dataPacket) (*ipv4.PacketCon
 	if err != nil {
 		return nil, err
 	}
-	egressId := hop.ConsEgress
+	log.Debug("Getting BR interface", "currentHopField", hop)
+	egressId := hop.ConsIngress
 	conn, found := p.borderRouters[egressId]
 	if !found {
 		return nil, serrors.New("egress interface is invalid:", "egressId", egressId)

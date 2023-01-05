@@ -176,11 +176,18 @@ func (l *Loader) ControlServiceAddress(id string) *net.UDPAddr {
 	return l.topo.PublicAddress(addr.SvcCS, id)
 }
 
-func (l *Loader) HeliaGatewayAddress(id string) (*net.UDPAddr, error) {
+func (l *Loader) HeliaGateway(id string) (HeliagateInfo, error) {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 
 	return l.topo.HeliaGateway(id)
+}
+
+func (l *Loader) HeliaGateways() ([]HeliagateInfo, error) {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
+
+	return l.topo.HeliaGateways()
 }
 
 // TODO(lukedirtwalker): remove error and simplify struct in the return type.

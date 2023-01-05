@@ -262,12 +262,12 @@ class GoGenerator(object):
 
     def generate_heliagate(self):
         for topo_id, topo in self.args.topo_dicts.items():
-            base = topo_id.base_dir(self.args.output_dir)
-            heliagate_conf = self._build_heliagate_conf(topo_id, topo["isd_as"], base)
-            write_file(os.path.join(base, HG_CONFIG_NAME), toml.dumps(heliagate_conf))
+            for elem_id, elem in topo.get("helia_gateway", {}).items():
+                base = topo_id.base_dir(self.args.output_dir)
+                heliagate_conf = self._build_heliagate_conf(topo_id, topo["isd_as"], base, elem_id)
+                write_file(os.path.join(base, "%s.toml" % elem_id), toml.dumps(heliagate_conf))
 
-    def _build_heliagate_conf(self, topo_id, ia, base):
-        name = "hg%s" % topo_id.file_fmt()
+    def _build_heliagate_conf(self, topo_id, ia, base, name):
         config_dir = '/share/conf' if self.args.docker else base
         raw_entry = {
             'general': {
