@@ -23,6 +23,7 @@ import (
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/slayers/path/scion"
+	"github.com/scionproto/scion/pkg/snet"
 )
 
 type Worker struct {
@@ -36,6 +37,7 @@ type dataPacket struct {
 	pktArrivalTime time.Time
 	scionLayer     *slayers.SCION
 	scionPath      *scion.Raw
+	fingerprint    snet.PathFingerprint
 	rawPacket      []byte
 }
 

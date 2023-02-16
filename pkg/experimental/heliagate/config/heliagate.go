@@ -20,6 +20,7 @@ type Heliagate struct {
 	NumBitsForWorkerId         int `toml:"NumBitsForWorkerId"`
 	NumBitsForPerWorkerCounter int `toml:"NumBitsForPerWorkerCounter"`
 
-	NumWorkers            int `toml:"NumWorkers"`
-	MaxQueueSizePerWorker int `toml:"MaxQueueSizePerWorker"`
+	NumWorkers            int    `toml:"NumWorkers"`
+	MaxQueueSizePerWorker int    `toml:"MaxQueueSizePerWorker"`
+	Salt                  string `toml:"Salt"`
 }

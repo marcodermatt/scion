@@ -209,6 +209,7 @@ func confExternalInterfaces(dp Dataplane, cfg *Config) error {
 var svcTypes = []addr.HostSVC{
 	addr.SvcDS,
 	addr.SvcCS,
+	addr.SvcHeliaGate,
 }
 
 func confServices(dp Dataplane, cfg *Config) error {
@@ -223,9 +224,11 @@ func confServices(dp Dataplane, cfg *Config) error {
 			continue
 		}
 		// Sort to get deterministic unit test, shouldn't matter for SVC resolution
-		sort.Slice(addrs, func(i, j int) bool {
-			return addrs[i].IP.String() < addrs[j].IP.String()
-		})
+		sort.Slice(
+			addrs, func(i, j int) bool {
+				return addrs[i].IP.String() < addrs[j].IP.String()
+			},
+		)
 		for _, a := range addrs {
 			if err := dp.AddSvc(cfg.IA, svc, a.IP); err != nil {
 				return err

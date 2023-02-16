@@ -380,6 +380,13 @@ func (t *RWTopology) getSvcInfo(svc ServiceType) (*svcInfo, error) {
 			m[k] = *v.CtrlAddr
 		}
 		return &svcInfo{idTopoAddrMap: m}, nil
+	// TODO: Add control address to heliagate
+	//case HeliaGateway:
+	//	m := make(IDAddrMap)
+	//	for k, v := range t.HELIAGATE {
+	//		m[k] = *v.Addr
+	//	}
+	//	return &svcInfo{idTopoAddrMap: m}, nil
 	default:
 		return nil, serrors.New("unsupported service type", "type", svc)
 	}

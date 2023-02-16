@@ -49,6 +49,7 @@ type Topology interface {
 	InterfaceIDs() []uint16
 	UnderlayNextHop(uint16) *net.UDPAddr
 	ControlServiceAddresses() []*net.UDPAddr
+	HeliaGateways() ([]topology.HeliagateInfo, error)
 }
 
 // DaemonServer handles gRPC requests to the SCION daemon.
@@ -313,7 +314,18 @@ func (s *DaemonServer) services(ctx context.Context,
 		// TODO(lukedirtwalker): build actual URI after it's defined (anapapaya/scion#3587)
 		list.Services = append(list.Services, &sdpb.Service{Uri: h.String()})
 	}
+	heliaGateways, err := s.Topology.HeliaGateways()
+	log.Debug("Reading services", "heliaGateways", heliaGateways)
+	hgList := &sdpb.ListService{}
+	if err != nil {
+		return nil, serrors.WrapStr("loading helia services", err)
+	}
+	for _, h := range heliaGateways {
+		hgList.Services = append(hgList.Services, &sdpb.Service{Uri: h.Addr.String()})
+	}
+
 	reply.Services[topology.Control.String()] = list
+	reply.Services[topology.HeliaGateway.String()] = hgList
 	return reply, nil
 }
 

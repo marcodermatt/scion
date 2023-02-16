@@ -41,6 +41,12 @@ const (
 	HeliaReservationDuration = 10 * time.Second
 )
 
+type Hop struct {
+	IA      addr.IA
+	Ingress uint16
+	Egresss uint16
+}
+
 type ReservationRequest struct {
 	Target    addr.IA
 	IngressIF uint16
@@ -119,8 +125,10 @@ func CreateSetupResponse(
 // and 63 minutes after the input timestamp.
 func CreateTimestamp(input time.Time, now time.Time) (uint32, error) {
 	if input.After(now) {
-		return 0, serrors.New("provided input timestamp is in the future",
-			"input", input, "now", now)
+		return 0, serrors.New(
+			"provided input timestamp is in the future",
+			"input", input, "now", now,
+		)
 	}
 	epicTS := now.Sub(input)/TimestampResolution - 1
 	if epicTS < 0 {
@@ -143,13 +151,17 @@ func VerifyTimestamp(timestamp time.Time, epicTS uint32, now time.Time) error {
 
 	if tsSender.After(now.Add(MaxClockSkew)) {
 		delta := tsSender.Sub(now.Add(MaxClockSkew))
-		return serrors.New("epic timestamp is in the future",
-			"delta", delta)
+		return serrors.New(
+			"epic timestamp is in the future",
+			"delta", delta,
+		)
 	}
 	if now.After(tsSender.Add(MaxPacketLifetime).Add(MaxClockSkew)) {
 		delta := now.Sub(tsSender.Add(MaxPacketLifetime).Add(MaxClockSkew))
-		return serrors.New("epic timestamp expired",
-			"delta", delta)
+		return serrors.New(
+			"epic timestamp expired",
+			"delta", delta,
+		)
 	}
 	return nil
 }
@@ -160,7 +172,8 @@ func VerifyTimestamp(timestamp time.Time, epicTS uint32, now time.Time) error {
 // If the same buffer is provided in subsequent calls to this function, the previously returned
 // EPIC MAC may get overwritten. Only the most recently returned EPIC MAC is guaranteed to be
 // valid.
-func CalcMac(h hash.Hash,
+func CalcMac(
+	h hash.Hash,
 	reqParams slayers.PacketReservReqParams, ingressIF uint16, egressIF uint16, optType uint8,
 ) ([]byte, error) {
 
@@ -227,8 +240,10 @@ func CoreFromPktCounter(counter uint32) (uint8, uint8, uint16) {
 //	+                               +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //	|                               | OptType (1B)  |       0       |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-func prepareMacInput(counter uint32, ingressIF uint16, egressIF uint16, timestamp uint64,
-	optType uint8, inputBuffer [16]byte) {
+func prepareMacInput(
+	counter uint32, ingressIF uint16, egressIF uint16, timestamp uint64,
+	optType uint8, inputBuffer [16]byte,
+) {
 
 	// Fill input
 	offset := 0

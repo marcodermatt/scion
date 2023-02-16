@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/scionproto/scion/pkg/addr"
 	"github.com/spf13/cobra"
 
 	"github.com/scionproto/scion/pkg/daemon"
@@ -57,6 +58,7 @@ func newPing(pather CommandPather) *cobra.Command {
 		timeout     time.Duration
 		tracer      string
 		epic        bool
+		helia       bool
 	}
 
 	var cmd = &cobra.Command{
@@ -124,6 +126,26 @@ On other errors, ping will exit with code 2.
 			}
 			span.SetTag("src.isd_as", info.IA)
 
+			// If the helia flag is set, point NextHop to the Helia gateway
+			var hgAddr *net.UDPAddr
+			if flags.helia {
+				// Requesting heliagate address from SD
+				svcEntries, err := sd.SVCInfo(ctx, []addr.HostSVC{})
+				if err != nil {
+					return serrors.WrapStr("resolving SVC address", err)
+				}
+				log.Debug("Requesting Services", "svcEntries", svcEntries)
+				hgUri, ok := svcEntries[addr.SvcHeliaGate]
+				if !ok {
+					return serrors.New("No heliagate address found")
+				}
+				hgAddr, err = net.ResolveUDPAddr("udp", hgUri[0])
+				if err != nil {
+					return serrors.WrapStr("parsing heliagate address", err)
+				}
+				log.Debug("Using Helia", "heliagate", hgAddr)
+			}
+
 			opts := []path.Option{
 				path.WithInteractive(flags.interactive),
 				path.WithRefresh(flags.refresh),
@@ -160,7 +182,15 @@ On other errors, ping will exit with code 2.
 			} else {
 				remote.Path = path.Dataplane()
 			}
-			remote.NextHop = path.UnderlayNextHop()
+
+			// If the helia flag is set, point NextHop to the Helia gateway
+			if flags.helia {
+				oldHop := path.UnderlayNextHop()
+				remote.NextHop = hgAddr
+				fmt.Printf("Replacing next hop: %s -> %s\n", oldHop, hgAddr)
+			} else {
+				remote.NextHop = path.UnderlayNextHop()
+			}
 
 			// Resolve local IP based on underlay next hop
 			if localIP == nil {
@@ -266,7 +296,7 @@ the SCION path.`,
 	)
 	cmd.Flags().UintVar(&flags.pktSize, "packet-size", 0,
 		`number of bytes to be sent including the SCION Header and SCMP echo header,
-the desired size must provide enough space for the required headers. This flag 
+the desired size must provide enough space for the required headers. This flag
 overrides the 'payload_size' flag.`,
 	)
 	cmd.Flags().BoolVar(&flags.maxMTU, "max-mtu", false,
@@ -276,6 +306,7 @@ SCMP echo header and payload are equal to the MTU of the path. This flag overrid
 	cmd.Flags().StringVar(&flags.logLevel, "log.level", "", app.LogLevelUsage)
 	cmd.Flags().StringVar(&flags.tracer, "tracing.agent", "", "Tracing agent address")
 	cmd.Flags().BoolVar(&flags.epic, "epic", false, "Enable EPIC for path probing.")
+	cmd.Flags().BoolVar(&flags.helia, "helia", false, "Enable Helia reservation traffic.")
 	return cmd
 }
 
