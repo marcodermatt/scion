@@ -104,6 +104,7 @@ func Run(ctx context.Context, cfg Config) (Stats, error) {
 
 	local := cfg.Local.Copy()
 	local.Host.Port = int(port)
+	log.Debug("Ping client registered", "port", port)
 
 	// we need to have at least 8 bytes to store the request time in the
 	// payload.
@@ -202,11 +203,13 @@ func (p *pinger) send(remote *snet.UDPAddr) error {
 	sequence := p.sentSequence + 1
 
 	binary.BigEndian.PutUint64(p.pld, uint64(time.Now().UnixNano()))
-	pkt, err := pack(p.local, remote, snet.SCMPEchoRequest{
-		Identifier: uint16(p.id),
-		SeqNumber:  uint16(sequence),
-		Payload:    p.pld,
-	})
+	pkt, err := pack(
+		p.local, remote, snet.SCMPEchoRequest{
+			Identifier: uint16(p.id),
+			SeqNumber:  uint16(sequence),
+			Payload:    p.pld,
+		},
+	)
 	if err != nil {
 		return err
 	}
@@ -245,13 +248,15 @@ func (p *pinger) receive(reply reply) {
 	}
 	p.stats.Received++
 	if p.updateHandler != nil {
-		p.updateHandler(Update{
-			RTT:      rtt,
-			Sequence: int(reply.Reply.SeqNumber),
-			Size:     reply.Size,
-			Source:   reply.Source,
-			State:    state,
-		})
+		p.updateHandler(
+			Update{
+				RTT:      rtt,
+				Sequence: int(reply.Reply.SeqNumber),
+				Size:     reply.Size,
+				Source:   reply.Source,
+				State:    state,
+			},
+		)
 	}
 }
 
@@ -307,20 +312,27 @@ func (h scmpHandler) handle(pkt *snet.Packet) (snet.SCMPEchoReply, error) {
 	switch s := pkt.Payload.(type) {
 	case snet.SCMPEchoReply:
 	case snet.SCMPExternalInterfaceDown:
-		return snet.SCMPEchoReply{}, serrors.New("external interface is down",
-			"isd_as", s.IA, "interface", s.Interface)
+		return snet.SCMPEchoReply{}, serrors.New(
+			"external interface is down",
+			"isd_as", s.IA, "interface", s.Interface,
+		)
 	case snet.SCMPInternalConnectivityDown:
-		return snet.SCMPEchoReply{}, serrors.New("internal connectivity is down",
-			"isd_as", s.IA, "ingress", s.Ingress, "egress", s.Egress)
+		return snet.SCMPEchoReply{}, serrors.New(
+			"internal connectivity is down",
+			"isd_as", s.IA, "ingress", s.Ingress, "egress", s.Egress,
+		)
 	default:
-		return snet.SCMPEchoReply{}, serrors.New("not SCMPEchoReply",
+		return snet.SCMPEchoReply{}, serrors.New(
+			"not SCMPEchoReply",
 			"type", common.TypeOf(pkt.Payload),
 		)
 	}
 	r := pkt.Payload.(snet.SCMPEchoReply)
 	if r.Identifier != h.id {
-		return snet.SCMPEchoReply{}, serrors.New("wrong SCMP ID",
-			"expected", h.id, "actual", r.Identifier)
+		return snet.SCMPEchoReply{}, serrors.New(
+			"wrong SCMP ID",
+			"expected", h.id, "actual", r.Identifier,
+		)
 	}
 	return r, nil
 }

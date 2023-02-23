@@ -20,6 +20,7 @@ import (
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/scrypto"
 	"github.com/scionproto/scion/pkg/snet"
+	"github.com/scionproto/scion/pkg/sock/reliable"
 	"github.com/scionproto/scion/private/app"
 	"github.com/scionproto/scion/private/app/path"
 	"github.com/scionproto/scion/private/topology"
@@ -37,6 +38,7 @@ type Processor struct {
 	exit          bool
 	numWorkers    int
 	gatewayAddr   snet.UDPAddr
+	ctrlPort      int
 	mac           hash.Hash
 	ctx           context.Context
 }
@@ -172,6 +174,20 @@ func (p *Processor) initDataPlane(
 ) error {
 
 	log.Info("Init data plane")
+	svc := snet.DefaultPacketDispatcherService{
+		Dispatcher: reliable.NewDispatcher(""),
+	}
+	local := p.gatewayAddr.Copy()
+	local.Host.Port = 0
+	ctrlConn, port, err := svc.Register(p.ctx, p.gatewayAddr.IA, local.Host, addr.SvcNone)
+	if err != nil {
+		return err
+	}
+	defer ctrlConn.Close()
+
+	p.ctrlPort = int(port)
+
+	log.Debug("Helia gateway registered", "port", port)
 	udpConn, err := net.ListenUDP("udp", gatewayAddr)
 	if err != nil {
 		return err
@@ -219,7 +235,12 @@ func (p *Processor) initDataPlane(
 						continue // Packet dropped
 					}
 				}
-
+				var pkt snet.Packet
+				var ov net.UDPAddr
+				if err := ctrlConn.ReadFrom(&pkt, &ov); err != nil {
+					return serrors.WrapStr("reading control packet", err)
+				}
+				log.Debug("Received ctrl packet", "hbh option", pkt.HopByHopOption)
 			}
 			return nil
 		},
@@ -418,11 +439,11 @@ func (p *Processor) sendRequest(
 			},
 			Source: snet.SCIONAddress{
 				IA:   p.gatewayAddr.IA,
-				Host: addr.SvcHeliaGate, // Gateway address
+				Host: addr.HostFromIP(p.gatewayAddr.Host.IP), // Gateway address
 			},
 			Path: path.Dataplane(),
 			Payload: snet.UDPPayload{
-				SrcPort: uint16(p.gatewayAddr.Host.Port), // gateway port
+				SrcPort: uint16(p.ctrlPort), // gateway port
 				DstPort: 0,
 			},
 			HopByHopOption: setupOpt,
