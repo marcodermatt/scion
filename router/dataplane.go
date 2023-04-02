@@ -632,12 +632,22 @@ func (p *scionPacketProcessor) processPkt(
 	}
 }
 
-func (p *scionPacketProcessor) getHeliaRequestOption(optionType slayers.OptionType) (*slayers.HopByHopOption, bool) {
+func (p *scionPacketProcessor) getHeliaHBHOption(optionType slayers.OptionType) (*slayers.HopByHopOption, bool) {
 	for _, opt := range p.hbhLayer.Options {
 		if opt.OptType == optionType {
-			targetAS := slayers.RawHeliaTargetAS(opt)
-			if p.d.localIA.Equal(targetAS) {
-				return opt, true
+			switch optionType {
+			case slayers.OptTypeReservReqBackward:
+				fallthrough
+			case slayers.OptTypeReservReqForward:
+				targetAS := slayers.RawHeliaTargetAS(opt)
+				if p.d.localIA.Equal(targetAS) {
+					return opt, true
+				}
+			case slayers.OptTypeReservTraffic:
+				targetASHash := slayers.RawHeliaRFHash(opt)
+				if byte(p.d.localIA) == targetASHash {
+					return opt, true
+				}
 			}
 		}
 	}
@@ -675,7 +685,7 @@ func (p *scionPacketProcessor) packHeliaResponse(requestOption *slayers.HopByHop
 	// DEBUG
 	tsExp := uint64(time.Now().Add(libhelia.HeliaReservationDuration).UnixMilli())
 	responseOption, err := libhelia.CreateSetupResponse(
-		p.mac, requestOption, p.ingressID, p.ingressID, tsExp, p.d.localIA,
+		p.mac, requestOption, p.ingressID, p.egressInterface(), tsExp, p.d.localIA,
 	)
 	// *copy* and reverse path -- the original path should not be modified as this writes directly
 	// back to rawPkt (quote).
@@ -777,7 +787,8 @@ func (p *scionPacketProcessor) packHeliaResponse(requestOption *slayers.HopByHop
 		log.Debug(
 			"Response Option sent", "dstAddr", srcA.String()+":"+strconv.Itoa(int(srcPort)),
 			"target", parsedOption.ReservAS(), "bandwidth",
-			parsedOption.Bandwidth(),
+			parsedOption.Bandwidth(), "ingressIF", parsedOption.IngressIF(), "egressIF",
+			parsedOption.EgressIF(),
 		)
 	}
 
@@ -1340,6 +1351,20 @@ func (p *scionPacketProcessor) validatePktLen() (processResult, error) {
 
 func (p *scionPacketProcessor) process() (processResult, error) {
 
+	if opt, ok := p.getHeliaHBHOption(slayers.OptTypeReservTraffic); ok {
+		trafficOpt, err := slayers.ParsePacketReservTrafficOption(opt)
+		if err != nil {
+			log.Debug("Can't parse Helia traffic option", "option", trafficOpt)
+		}
+		log.Debug(
+			"Helia traffic packet",
+			"direction", trafficOpt.Direction(), "currRF", trafficOpt.CurrRF(), "backwardsLen",
+			trafficOpt.MaxBackwardLen(), "timestamp", time.UnixMilli(int64(trafficOpt.TsPkt())),
+		)
+		offset := p.scionLayer.HdrLen*4 + 5
+		p.rawPkt[offset] = trafficOpt.CurrRF() + 1
+	}
+
 	if r, err := p.parsePath(); err != nil {
 		return r, err
 	}
@@ -1355,15 +1380,13 @@ func (p *scionPacketProcessor) process() (processResult, error) {
 	if r, err := p.handleIngressRouterAlert(); err != nil {
 		return r, err
 	}
-	if p.ingressID != 0 {
-		// Ingress BR, check for Helia forward reservation requests
-		if opt, ok := p.getHeliaRequestOption(slayers.OptTypeReservReqForward); ok {
-			return p.packHeliaResponse(opt)
-		}
-	}
 
 	// Inbound: pkts destined to the local IA.
 	if p.scionLayer.DstIA.Equal(p.d.localIA) && int(p.path.PathMeta.CurrHF)+1 == p.path.NumHops {
+		// Helia forward reservations also possible for inbound packets
+		if opt, ok := p.getHeliaHBHOption(slayers.OptTypeReservReqForward); ok {
+			return p.packHeliaResponse(opt)
+		}
 		a, r, err := p.resolveInbound()
 		if err != nil {
 			return r, err
@@ -1392,10 +1415,14 @@ func (p *scionPacketProcessor) process() (processResult, error) {
 		return r, err
 	}
 
+	// after egressIF is validated, check for Helia forward reservation requests
+	if opt, ok := p.getHeliaHBHOption(slayers.OptTypeReservReqForward); ok {
+		return p.packHeliaResponse(opt)
+	}
 	egressID := p.egressInterface()
 	if c, ok := p.d.external[egressID]; ok {
 		// Exit BR, check for Helia backward reservation requests
-		if opt, ok := p.getHeliaRequestOption(slayers.OptTypeReservReqBackward); ok {
+		if opt, ok := p.getHeliaHBHOption(slayers.OptTypeReservReqBackward); ok {
 			return p.packHeliaResponse(opt)
 		}
 		if err := p.processEgress(); err != nil {

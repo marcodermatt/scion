@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/gopacket"
 	"github.com/scionproto/scion/heliagate/storage"
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/daemon"
@@ -19,6 +20,7 @@ import (
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/scrypto"
+	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/snet"
 	"github.com/scionproto/scion/pkg/sock/reliable"
 	"github.com/scionproto/scion/private/app"
@@ -31,6 +33,7 @@ import (
 type Processor struct {
 	dataChannels  []chan *dataPacket
 	reservChannel chan *dataPacket
+	responseChan  chan *snet.Packet
 	storage       *storage.Storage
 	//cleanupChannel  chan *storage.UpdateTask
 	borderRouters map[uint16]*ipv4.PacketConn
@@ -137,6 +140,7 @@ func Init(
 
 	// Create a reservation worker and corresponding channel
 	p.reservChannel = make(chan *dataPacket, config.MaxQueueSizePerWorker)
+	p.responseChan = make(chan *snet.Packet, 10)
 	g.Go(
 		func() error {
 			defer log.HandlePanic()
@@ -167,6 +171,12 @@ func Init(
 	return nil
 }
 
+type ignoreSCMP struct{}
+
+func (ignoreSCMP) Handle(pkt *snet.Packet) error {
+	return nil
+}
+
 // The function to initialize the data plane of the colibri gateway.
 func (p *Processor) initDataPlane(
 	config *config2.Heliagate, gatewayAddr *net.UDPAddr,
@@ -175,7 +185,8 @@ func (p *Processor) initDataPlane(
 
 	log.Info("Init data plane")
 	svc := snet.DefaultPacketDispatcherService{
-		Dispatcher: reliable.NewDispatcher(""),
+		Dispatcher:  reliable.NewDispatcher(""),
+		SCMPHandler: ignoreSCMP{},
 	}
 	local := p.gatewayAddr.Copy()
 	local.Host.Port = 0
@@ -183,7 +194,7 @@ func (p *Processor) initDataPlane(
 	if err != nil {
 		return err
 	}
-	defer ctrlConn.Close()
+	cleanup.Add(func() error { ctrlConn.Close(); return nil })
 
 	p.ctrlPort = int(port)
 
@@ -200,6 +211,7 @@ func (p *Processor) initDataPlane(
 
 	var ipv4Conn *ipv4.PacketConn = ipv4.NewPacketConn(udpConn)
 
+	// Handle data packets
 	g.Go(
 		func() error {
 			defer log.HandlePanic()
@@ -235,12 +247,30 @@ func (p *Processor) initDataPlane(
 						continue // Packet dropped
 					}
 				}
+			}
+			return nil
+		},
+	)
+
+	// Handle control packets
+	g.Go(
+		func() error {
+			defer log.HandlePanic()
+
+			for !p.exit {
 				var pkt snet.Packet
 				var ov net.UDPAddr
 				if err := ctrlConn.ReadFrom(&pkt, &ov); err != nil {
 					return serrors.WrapStr("reading control packet", err)
 				}
 				log.Debug("Received ctrl packet", "hbh option", pkt.HopByHopOption)
+				select {
+				case p.responseChan <- &pkt:
+				default:
+					log.Debug("Ctrl packet dropped")
+					continue // Packet dropped
+				}
+
 			}
 			return nil
 		},
@@ -301,9 +331,55 @@ func (p *Processor) workerReceiveEntry(
 
 			// if fingerprint not in map, call reservation routine to parse path and request reservations
 			// otherwise, lookup available authenticator for triplets
-			_, found := p.storage.Paths[d.fingerprint]
+			path, found := p.storage.Paths[d.fingerprint]
 			if !found {
 				p.reservChannel <- d
+			} else {
+				optParams := slayers.PacketReservTrafficParams{}
+				for _, hop := range path.Hops {
+					reservation := p.storage.Reservations[hop]
+					if reservation.Status == storage.Available {
+						rf := slayers.ReservationHopField{
+							ASHash: byte(hop.IA),
+						}
+						copy(rf.RVF[:], reservation.Authenticator)
+						optParams.ReservHopFields = append(optParams.ReservHopFields, rf)
+					}
+				}
+				if len(optParams.ReservHopFields) > 0 {
+					optParams.Direction = 0
+					optParams.CurrRF = 0
+					optParams.MaxBackwardLen = 1000
+					optParams.TsPkt = uint64(time.Now().UnixNano())
+					trafficOpt, _ := slayers.NewPacketReservTrafficOption(optParams)
+					hbh := &slayers.HopByHopExtn{}
+					hbh.NextHdr = d.scionLayer.NextHdr
+					hbh.Options = []*slayers.HopByHopOption{trafficOpt.HopByHopOption}
+					buffer := gopacket.NewSerializeBuffer()
+					options := gopacket.SerializeOptions{
+						ComputeChecksums: false,
+						FixLengths:       true,
+					}
+					if err := hbh.SerializeTo(buffer, options); err != nil {
+						return err
+					}
+					offset := d.scionLayer.HdrLen * 4
+					extLen := uint8(len(buffer.Bytes()))
+					pktLen := d.scionLayer.PayloadLen
+					d.rawPacket[4] = uint8(slayers.HopByHopClass)
+					binary.BigEndian.PutUint16(d.rawPacket[6:8], pktLen+uint16(extLen))
+					log.Debug(
+						"Sending traffic packet", "offset", offset, "extLen", extLen, "payloadLen",
+						pktLen, "newPayloadLen", binary.BigEndian.Uint16(d.rawPacket[6:8]),
+						"buffer_cap", cap(d.rawPacket),
+					)
+					d.rawPacket = append(d.rawPacket, buffer.Bytes()...)
+					d.rawPacket = append(
+						d.rawPacket[:offset+extLen], d.rawPacket[offset:uint16(offset)+pktLen]...,
+					)
+					copy(d.rawPacket[offset:offset+extLen], buffer.Bytes())
+				}
+
 			}
 
 			// 1. Packet
@@ -393,7 +469,7 @@ func (p *Processor) workerCreateReservation() error {
 
 			p.storage.StorePath(path)
 			for hop := range hops {
-				p.storage.CreateReservation(&hops[hop])
+				p.storage.CreateReservation(&hops[hop], false)
 				err := p.sendRequest(paketPath, hops[hop], borderRouterConn, false)
 				if err != nil {
 					return err
@@ -403,6 +479,7 @@ func (p *Processor) workerCreateReservation() error {
 				if err != nil {
 					return err
 				}
+				p.storage.CreateReservation(&hops[hop], true)
 			}
 
 			// request reservations for triplets if necessary
@@ -414,6 +491,35 @@ func (p *Processor) workerCreateReservation() error {
 			////workerPacketInInvalidPromCounter.Add(1)
 			//continue
 			//}
+		case pkt := <-p.responseChan:
+			resp, err := slayers.ParsePacketReservResponseOption(pkt.HopByHopOption)
+			if err != nil {
+				return err
+			}
+			log.Debug(
+				"Reservation worker processing response",
+				"targetAS", resp.ReservAS(),
+				"ingressIF", resp.IngressIF(),
+				"egressIF", resp.EgressIF(),
+				"bandwidth", resp.Bandwidth(),
+				"tsExp", resp.TsExp(),
+				"authenticator", resp.AuthEnc(),
+			)
+			hop := helia.Hop{
+				IA:      resp.ReservAS(),
+				Ingress: resp.IngressIF(),
+				Egress:  resp.EgressIF(),
+			}
+			reservation, ok := p.storage.Reservations[hop]
+			if !ok {
+				log.Debug(
+					"Failed to find reservation:", "hop", hop,
+				)
+			}
+
+			reservation.Status = storage.Available
+			reservation.Timestamp = resp.TsExp()
+			reservation.Authenticator = resp.AuthEnc()
 		}
 	}
 	return nil
@@ -425,7 +531,7 @@ func (p *Processor) sendRequest(
 	req := &helia.ReservationRequest{
 		Target:    hop.IA,
 		IngressIF: hop.Ingress,
-		EgressIF:  hop.Egresss,
+		EgressIF:  hop.Egress,
 		Backward:  backward,
 		Timestamp: 0,
 		Counter:   0,
@@ -515,15 +621,23 @@ func (p *Processor) getHopsFromPacket(
 	hops := make([]addr.IA, n)
 	heliaHops := make([]helia.Hop, n)
 	ifs := path.Metadata().Interfaces
-	for i := 0; i < n-1; i++ {
-		hops[i] = ifs[i*2].IA
+	heliaHops[0] = helia.Hop{
+		IA:      ifs[0].IA,
+		Ingress: 0,
+		Egress:  uint16(ifs[0].ID),
+	}
+	for i := 1; i < n-1; i++ {
 		heliaHops[i] = helia.Hop{
-			IA:      hops[i],
-			Ingress: 0,
-			Egresss: 0,
+			IA:      ifs[i*2-1].IA,
+			Ingress: uint16(ifs[i*2-1].ID),
+			Egress:  uint16(ifs[i*2].ID),
 		}
 	}
-	hops[n-1] = ifs[(n-1)*2-1].IA
+	heliaHops[n-1] = helia.Hop{
+		IA:      ifs[(n-1)*2-1].IA,
+		Ingress: uint16(ifs[(n-1)*2-1].ID),
+		Egress:  0,
+	}
 	log.Debug("ASes", "hops", hops)
 	return path, heliaHops, nil
 }

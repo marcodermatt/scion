@@ -44,7 +44,7 @@ const (
 type Hop struct {
 	IA      addr.IA
 	Ingress uint16
-	Egresss uint16
+	Egress  uint16
 }
 
 type ReservationRequest struct {

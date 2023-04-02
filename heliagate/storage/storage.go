@@ -16,6 +16,7 @@ package storage
 
 import (
 	"github.com/scionproto/scion/pkg/experimental/helia"
+	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/snet"
 )
 
@@ -42,8 +43,8 @@ type Reservation struct {
 	Hop    helia.Hop
 	Status ReservationStatus
 	//Token (only extended AES key, does not change during renewal)
-	//Timestamp
-
+	Authenticator []byte
+	Timestamp     uint64
 }
 
 // InitStorage initializes the reservation storage
@@ -56,9 +57,19 @@ func (store *Storage) StorePath(path *Path) {
 	store.Paths[path.Fingerprint] = path
 }
 
-func (store *Storage) CreateReservation(hop *helia.Hop) {
-	store.Reservations[*hop] = &Reservation{
-		Hop:    *hop,
-		Status: Initialized,
+func (store *Storage) CreateReservation(hop *helia.Hop, backward bool) {
+	if backward {
+		hop = &helia.Hop{
+			IA:      hop.IA,
+			Ingress: hop.Egress,
+			Egress:  hop.Ingress,
+		}
 	}
+	store.Reservations[*hop] = &Reservation{
+		Hop:           *hop,
+		Status:        Initialized,
+		Authenticator: nil,
+		Timestamp:     0,
+	}
+	log.Debug("Created reservation", "storage", store.Reservations[*hop])
 }

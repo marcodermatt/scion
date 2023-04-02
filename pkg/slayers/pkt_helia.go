@@ -83,6 +83,7 @@ import (
 // PacketSetupReqDataLen is the fixed size of the Helia request OptData.
 const PacketSetupReqDataLen = 34
 const PacketSetupResponseDataLen = 56
+const MinTrafficPacketDataLen = 12
 
 type PacketReservReqParams struct {
 	TargetAS  addr.IA
@@ -101,6 +102,19 @@ type PacketReservResponseParams struct {
 	Tag       [16]byte
 }
 
+type PacketReservTrafficParams struct {
+	TsPkt           uint64
+	Direction       uint8
+	CurrRF          uint8
+	MaxBackwardLen  uint16
+	ReservHopFields []ReservationHopField
+}
+
+type ReservationHopField struct {
+	ASHash uint8
+	RVF    [3]byte
+}
+
 // PacketReservReqOptions and PacketReservRespOption wrap a HopByHopOption.
 // This can be used to serialize and parse the internal structure of the reservation option.
 type PacketReservReqForwardOption struct {
@@ -112,6 +126,10 @@ type PacketReservReqBackwardOption struct {
 }
 
 type PacketReservResponseOption struct {
+	*HopByHopOption
+}
+
+type PacketReservTrafficOption struct {
 	*HopByHopOption
 }
 
@@ -144,6 +162,15 @@ func NewPacketReservResponseOption(
 	return o, err
 }
 
+func NewPacketReservTrafficOption(
+	p PacketReservTrafficParams,
+) (PacketReservTrafficOption, error) {
+
+	o := PacketReservTrafficOption{HopByHopOption: new(HopByHopOption)}
+	err := o.Reset(p)
+	return o, err
+}
+
 // ParsePacketReservOption parses o as the specified option.
 func ParsePacketReservReqForwardOption(o *HopByHopOption) (PacketReservReqForwardOption, error) {
 	if o.OptType != OptTypeReservReqForward {
@@ -171,6 +198,14 @@ func ParsePacketReservResponseOption(o *HopByHopOption) (PacketReservResponseOpt
 			serrors.New("wrong option type", "expected", OptTypeReservResponse, "actual", o.OptType)
 	}
 	return PacketReservResponseOption{o}, nil
+}
+
+func ParsePacketReservTrafficOption(o *HopByHopOption) (PacketReservTrafficOption, error) {
+	if o.OptType != OptTypeReservTraffic {
+		return PacketReservTrafficOption{},
+			serrors.New("wrong option type", "expected", OptTypeReservTraffic, "actual", o.OptType)
+	}
+	return PacketReservTrafficOption{o}, nil
 }
 
 // Reset reinitializes the underlying HopByHopOption with the give PacketParams.
@@ -242,6 +277,35 @@ func (o PacketReservResponseOption) Reset(
 	copy(o.OptData[40:56], p.Tag[:])
 
 	o.OptAlign = [2]uint8{4, 2}
+	// reset unused/implicit fields
+	o.OptDataLen = 0
+	o.ActualLength = 0
+	return nil
+}
+
+func (o PacketReservTrafficOption) Reset(
+	p PacketReservTrafficParams,
+) error {
+
+	o.OptType = OptTypeReservTraffic
+
+	n := MinTrafficPacketDataLen + 4*len(p.ReservHopFields)
+	if n <= cap(o.OptData) {
+		o.OptData = o.OptData[:n]
+	} else {
+		o.OptData = make([]byte, n)
+	}
+	o.OptData[0] = byte(p.Direction)
+	o.OptData[1] = byte(p.CurrRF)
+	binary.BigEndian.PutUint16(o.OptData[2:4], p.MaxBackwardLen)
+	binary.BigEndian.PutUint64(o.OptData[4:12], p.TsPkt)
+
+	for i, reservHop := range p.ReservHopFields {
+		offset := 12 + 4*i
+		o.OptData[offset] = byte(reservHop.ASHash)
+		copy(o.OptData[offset+1:offset+4], reservHop.RVF[:])
+	}
+
 	// reset unused/implicit fields
 	o.OptDataLen = 0
 	o.ActualLength = 0
@@ -330,4 +394,48 @@ func (o PacketReservResponseOption) EgressIF() uint16 {
 // Tag returns the AEAD tag set in the option
 func (o PacketReservResponseOption) Tag() []byte {
 	return o.OptData[40:56]
+}
+
+// TrafficOption field accessors
+
+// Direction returns the direction flag set in the option
+func (o PacketReservTrafficOption) Direction() uint8 {
+	return uint8(o.OptData[0])
+}
+
+// CurrRF returns the current reservation field pointer in the option
+func (o PacketReservTrafficOption) CurrRF() uint8 {
+	return uint8(o.OptData[1])
+}
+
+// MaxBackwardLen returns the backwards length in the option
+func (o PacketReservTrafficOption) MaxBackwardLen() uint16 {
+	return binary.BigEndian.Uint16(o.OptData[2:4])
+}
+
+// TsPkt returns the packet timestamp in the option
+func (o PacketReservTrafficOption) TsPkt() uint16 {
+	return binary.BigEndian.Uint16(o.OptData[2:4])
+}
+
+// NumRF returns the number of reservation fields in the option
+func (o PacketReservTrafficOption) NumRF() uint8 {
+	return uint8((len(o.OptData) - 12) / 4)
+}
+
+// GetRF returns the reservation field at index i in the option
+func (o PacketReservTrafficOption) GetRF(i uint8) (ReservationHopField, error) {
+	if i >= o.NumRF() {
+		return ReservationHopField{}, serrors.New("Index out of range", "actual length", o.NumRF())
+	}
+	offset := 12 + 4*i
+	rf := ReservationHopField{ASHash: o.OptData[offset]}
+	copy(rf.RVF[:], o.OptData[offset+1:offset+4])
+	return rf, nil
+}
+
+// RawHeliaRFHash returns the AS hash of the current RF set in the unparsed option
+func RawHeliaRFHash(option *HopByHopOption) uint8 {
+	offset := 12 + 4*option.OptData[1]
+	return option.OptData[offset]
 }

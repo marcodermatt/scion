@@ -37,6 +37,7 @@ const (
 	OptTypeReservReqForward
 	OptTypeReservReqBackward
 	OptTypeReservResponse
+	OptTypeReservTraffic
 )
 
 type tlvOption struct {
@@ -165,8 +166,10 @@ type extnBase struct {
 	ActualLen int
 }
 
-func (e *extnBase) serializeToWithTLVOptions(b gopacket.SerializeBuffer,
-	opts gopacket.SerializeOptions, tlvOptions []*tlvOption) error {
+func (e *extnBase) serializeToWithTLVOptions(
+	b gopacket.SerializeBuffer,
+	opts gopacket.SerializeOptions, tlvOptions []*tlvOption,
+) error {
 
 	l := serializeTLVOptions(nil, tlvOptions, opts.FixLengths)
 	bytes, err := b.PrependBytes(l)
@@ -195,15 +198,23 @@ func decodeExtnBase(data []byte, df gopacket.DecodeFeedback) (extnBase, error) {
 	e := extnBase{}
 	if len(data) < 2 {
 		df.SetTruncated()
-		return e, serrors.New(fmt.Sprintf("invalid extension header. Length %d less than 2",
-			len(data)))
+		return e, serrors.New(
+			fmt.Sprintf(
+				"invalid extension header. Length %d less than 2",
+				len(data),
+			),
+		)
 	}
 	e.NextHdr = L4ProtocolType(data[0])
 	e.ExtLen = data[1]
 	e.ActualLen = (int(e.ExtLen) + 1) * LineLen
 	if len(data) < e.ActualLen {
-		return extnBase{}, serrors.New(fmt.Sprintf("invalid extension header. "+
-			"Length %d less than specified length %d", len(data), e.ActualLen))
+		return extnBase{}, serrors.New(
+			fmt.Sprintf(
+				"invalid extension header. "+
+					"Length %d less than specified length %d", len(data), e.ActualLen,
+			),
+		)
 	}
 	e.Contents = data[:e.ActualLen]
 	e.Payload = data[e.ActualLen:]
@@ -236,8 +247,10 @@ func (h *HopByHopExtn) LayerPayload() []byte {
 }
 
 // SerializeTo implementation according to gopacket.SerializableLayer.
-func (h *HopByHopExtn) SerializeTo(b gopacket.SerializeBuffer,
-	opts gopacket.SerializeOptions) error {
+func (h *HopByHopExtn) SerializeTo(
+	b gopacket.SerializeBuffer,
+	opts gopacket.SerializeOptions,
+) error {
 
 	if err := checkHopByHopExtnNextHdr(h.NextHdr); err != nil {
 		return err
@@ -357,8 +370,10 @@ func checkEndToEndExtnNextHdr(t L4ProtocolType) error {
 }
 
 // SerializeTo implementation according to gopacket.SerializableLayer
-func (e *EndToEndExtn) SerializeTo(b gopacket.SerializeBuffer,
-	opts gopacket.SerializeOptions) error {
+func (e *EndToEndExtn) SerializeTo(
+	b gopacket.SerializeBuffer,
+	opts gopacket.SerializeOptions,
+) error {
 
 	if err := checkEndToEndExtnNextHdr(e.NextHdr); err != nil {
 		return err
