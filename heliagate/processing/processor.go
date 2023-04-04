@@ -552,7 +552,7 @@ func (p *Processor) sendRequest(
 	pkt := &snet.Packet{
 		PacketInfo: snet.PacketInfo{
 			Destination: snet.SCIONAddress{
-				IA:   hop.IA,
+				IA:   path.Destination(),
 				Host: addr.HostIPv4(net.ParseIP("0.0.0.0").To4()), //ADd emtpy host IP (0.0.0.0)
 			},
 			Source: snet.SCIONAddress{

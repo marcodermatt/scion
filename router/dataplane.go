@@ -269,8 +269,10 @@ func (d *DataPlane) AddLinkType(ifID uint16, linkTo topology.LinkType) error {
 }
 
 // AddExternalInterfaceBFD adds the inter AS connection BFD session.
-func (d *DataPlane) AddExternalInterfaceBFD(ifID uint16, conn BatchConn,
-	src, dst control.LinkEnd, cfg control.BFD) error {
+func (d *DataPlane) AddExternalInterfaceBFD(
+	ifID uint16, conn BatchConn,
+	src, dst control.LinkEnd, cfg control.BFD,
+) error {
 
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
@@ -309,8 +311,10 @@ func (d *DataPlane) getInterfaceState(interfaceID uint16) control.InterfaceState
 	return control.InterfaceUp
 }
 
-func (d *DataPlane) addBFDController(ifID uint16, s *bfdSend, cfg control.BFD,
-	metrics bfd.Metrics) error {
+func (d *DataPlane) addBFDController(
+	ifID uint16, s *bfdSend, cfg control.BFD,
+	metrics bfd.Metrics,
+) error {
 
 	if cfg.Disable {
 		return errBFDDisabled
@@ -402,8 +406,10 @@ func (d *DataPlane) AddNextHop(ifID uint16, a *net.UDPAddr) error {
 // AddNextHopBFD adds the BFD session for the next hop address.
 // If the remote ifID belongs to an existing address, the existing
 // BFD session will be re-used.
-func (d *DataPlane) AddNextHopBFD(ifID uint16, src, dst *net.UDPAddr, cfg control.BFD,
-	sibling string) error {
+func (d *DataPlane) AddNextHopBFD(
+	ifID uint16, src, dst *net.UDPAddr, cfg control.BFD,
+	sibling string,
+) error {
 
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
@@ -609,8 +615,10 @@ func (p *scionPacketProcessor) reset() error {
 	return nil
 }
 
-func (p *scionPacketProcessor) processPkt(rawPkt []byte,
-	srcAddr *net.UDPAddr) (processResult, error) {
+func (p *scionPacketProcessor) processPkt(
+	rawPkt []byte,
+	srcAddr *net.UDPAddr,
+) (processResult, error) {
 
 	if err := p.reset(); err != nil {
 		return processResult{}, err
@@ -632,8 +640,10 @@ func (p *scionPacketProcessor) processPkt(rawPkt []byte,
 		if p.lastLayer.NextLayerType() == layers.LayerTypeBFD {
 			return processResult{}, p.processIntraBFD(pld)
 		}
-		return processResult{}, serrors.WithCtx(unsupportedPathTypeNextHeader,
-			"type", pathType, "header", nextHdr(p.lastLayer))
+		return processResult{}, serrors.WithCtx(
+			unsupportedPathTypeNextHeader,
+			"type", pathType, "header", nextHdr(p.lastLayer),
+		)
 	case onehop.PathType:
 		if p.lastLayer.NextLayerType() == layers.LayerTypeBFD {
 			ohp, ok := p.scionLayer.Path.(*onehop.Path)
@@ -709,17 +719,9 @@ func (p *scionPacketProcessor) packHeliaResponse(requestOption *slayers.HopByHop
 		)
 	}
 	// DEBUG
-	ingressID := p.ingressID
-	if ingressID == 0 && p.path.PathMeta.CurrHF != 0 {
-		if p.infoField.ConsDir {
-			ingressID = p.hopField.ConsIngress
-		} else {
-			ingressID = p.hopField.ConsEgress
-		}
-	}
 	tsExp := uint64(time.Now().Add(libhelia.HeliaReservationDuration).UnixMilli())
 	responseOption, err := libhelia.CreateSetupResponse(
-		p.mac, requestOption, ingressID, p.egressInterface(), tsExp, p.d.localIA,
+		p.mac, requestOption, p.ingressInterface(), p.egressInterface(), tsExp, p.d.localIA,
 	)
 	// *copy* and reverse path -- the original path should not be modified as this writes directly
 	// back to rawPkt (quote).
@@ -931,8 +933,10 @@ func (p *scionPacketProcessor) processEPIC() (processResult, error) {
 		if isLast {
 			HVF = epicPath.LHVF
 		}
-		err = libepic.VerifyHVF(p.cachedMac, epicPath.PktID,
-			&p.scionLayer, firstInfo.Timestamp, HVF, p.macBuffers.epicInput)
+		err = libepic.VerifyHVF(
+			p.cachedMac, epicPath.PktID,
+			&p.scionLayer, firstInfo.Timestamp, HVF, p.macBuffers.epicInput,
+		)
 		if err != nil {
 			// TODO(mawyss): Send back SCMP packet
 			return processResult{}, err
@@ -1050,8 +1054,10 @@ func (p *scionPacketProcessor) validateHopExpiry() (processResult, error) {
 		slayers.SCMPTypeParameterProblem,
 		slayers.SCMPCodePathExpired,
 		&slayers.SCMPParameterProblem{Pointer: p.currentHopPointer()},
-		serrors.New("expired hop", "cons_dir", p.infoField.ConsDir, "if_id", p.ingressID,
-			"curr_inf", p.path.PathMeta.CurrINF, "curr_hf", p.path.PathMeta.CurrHF),
+		serrors.New(
+			"expired hop", "cons_dir", p.infoField.ConsDir, "if_id", p.ingressID,
+			"curr_inf", p.path.PathMeta.CurrINF, "curr_hf", p.path.PathMeta.CurrHF,
+		),
 	)
 }
 
@@ -1067,8 +1073,10 @@ func (p *scionPacketProcessor) validateIngressID() (processResult, error) {
 			slayers.SCMPTypeParameterProblem,
 			errCode,
 			&slayers.SCMPParameterProblem{Pointer: p.currentHopPointer()},
-			serrors.New("ingress interface invalid",
-				"pkt_ingress", pktIngressID, "router_ingress", p.ingressID),
+			serrors.New(
+				"ingress interface invalid",
+				"pkt_ingress", pktIngressID, "router_ingress", p.ingressID,
+			),
 		)
 	}
 	return processResult{}, nil
@@ -1174,8 +1182,11 @@ func (p *scionPacketProcessor) validateEgressID() (processResult, error) {
 				slayers.SCMPTypeParameterProblem,
 				slayers.SCMPCodeInvalidPath, // XXX(matzf) new code InvalidHop?
 				&slayers.SCMPParameterProblem{Pointer: p.currentHopPointer()},
-				serrors.WithCtx(cannotRoute, "ingress_id", p.ingressID, "ingress_type", ingress,
-					"egress_id", pktEgressID, "egress_type", egress))
+				serrors.WithCtx(
+					cannotRoute, "ingress_id", p.ingressID, "ingress_type", ingress,
+					"egress_id", pktEgressID, "egress_type", egress,
+				),
+			)
 		}
 	}
 	// Check that the interface pair is valid on a segment switch.
@@ -1192,8 +1203,11 @@ func (p *scionPacketProcessor) validateEgressID() (processResult, error) {
 			slayers.SCMPTypeParameterProblem,
 			slayers.SCMPCodeInvalidSegmentChange,
 			&slayers.SCMPParameterProblem{Pointer: p.currentInfoPointer()},
-			serrors.WithCtx(cannotRoute, "ingress_id", p.ingressID, "ingress_type", ingress,
-				"egress_id", pktEgressID, "egress_type", egress))
+			serrors.WithCtx(
+				cannotRoute, "ingress_id", p.ingressID, "ingress_type", ingress,
+				"egress_id", pktEgressID, "egress_type", egress,
+			),
+		)
 	}
 }
 
@@ -1212,13 +1226,17 @@ func (p *scionPacketProcessor) updateNonConsDirIngressSegID() error {
 }
 
 func (p *scionPacketProcessor) currentInfoPointer() uint16 {
-	return uint16(slayers.CmnHdrLen + p.scionLayer.AddrHdrLen() +
-		scion.MetaLen + path.InfoLen*int(p.path.PathMeta.CurrINF))
+	return uint16(
+		slayers.CmnHdrLen + p.scionLayer.AddrHdrLen() +
+			scion.MetaLen + path.InfoLen*int(p.path.PathMeta.CurrINF),
+	)
 }
 
 func (p *scionPacketProcessor) currentHopPointer() uint16 {
-	return uint16(slayers.CmnHdrLen + p.scionLayer.AddrHdrLen() +
-		scion.MetaLen + path.InfoLen*p.path.NumINF + path.HopLen*int(p.path.PathMeta.CurrHF))
+	return uint16(
+		slayers.CmnHdrLen + p.scionLayer.AddrHdrLen() +
+			scion.MetaLen + path.InfoLen*p.path.NumINF + path.HopLen*int(p.path.PathMeta.CurrHF),
+	)
 }
 
 func (p *scionPacketProcessor) verifyCurrentMAC() (processResult, error) {
@@ -1228,12 +1246,15 @@ func (p *scionPacketProcessor) verifyCurrentMAC() (processResult, error) {
 			slayers.SCMPTypeParameterProblem,
 			slayers.SCMPCodeInvalidHopFieldMAC,
 			&slayers.SCMPParameterProblem{Pointer: p.currentHopPointer()},
-			serrors.New("MAC verification failed", "expected", fmt.Sprintf(
-				"%x", fullMac[:path.MacLen]),
+			serrors.New(
+				"MAC verification failed", "expected", fmt.Sprintf(
+					"%x", fullMac[:path.MacLen],
+				),
 				"actual", fmt.Sprintf("%x", p.hopField.Mac[:path.MacLen]),
 				"cons_dir", p.infoField.ConsDir,
 				"if_id", p.ingressID, "curr_inf", p.path.PathMeta.CurrINF,
-				"curr_hf", p.path.PathMeta.CurrHF, "seg_id", p.infoField.SegID),
+				"curr_hf", p.path.PathMeta.CurrHF, "seg_id", p.infoField.SegID,
+			),
 		)
 	}
 	// Add the full MAC to the SCION packet processor,
@@ -1250,7 +1271,8 @@ func (p *scionPacketProcessor) resolveInbound() (*net.UDPAddr, processResult, er
 		r, err := p.packSCMP(
 			slayers.SCMPTypeDestinationUnreachable,
 			slayers.SCMPCodeNoRoute,
-			&slayers.SCMPDestinationUnreachable{}, err)
+			&slayers.SCMPDestinationUnreachable{}, err,
+		)
 		return nil, r, err
 	default:
 		return a, processResult{}, nil
@@ -1388,7 +1410,8 @@ func (p *scionPacketProcessor) egressRouterAlertFlag() *bool {
 }
 
 func (p *scionPacketProcessor) handleSCMPTraceRouteRequest(
-	interfaceID uint16) (processResult, error) {
+	interfaceID uint16,
+) (processResult, error) {
 
 	if p.lastLayer.NextLayerType() != slayers.LayerTypeSCMP {
 		log.Debug("Packet with router alert, but not SCMP")
@@ -1401,8 +1424,10 @@ func (p *scionPacketProcessor) handleSCMPTraceRouteRequest(
 		return processResult{}, nil
 	}
 	if scmpH.TypeCode != slayers.CreateSCMPTypeCode(slayers.SCMPTypeTracerouteRequest, 0) {
-		log.Debug("Packet with router alert, but not traceroute request",
-			"type_code", scmpH.TypeCode)
+		log.Debug(
+			"Packet with router alert, but not traceroute request",
+			"type_code", scmpH.TypeCode,
+		)
 		return processResult{}, nil
 	}
 	var scmpP slayers.SCMPTraceroute
@@ -1427,8 +1452,10 @@ func (p *scionPacketProcessor) validatePktLen() (processResult, error) {
 		slayers.SCMPTypeParameterProblem,
 		slayers.SCMPCodeInvalidPacketSize,
 		&slayers.SCMPParameterProblem{Pointer: 0},
-		serrors.New("bad packet size",
-			"header", p.scionLayer.PayloadLen, "actual", len(p.scionLayer.Payload)),
+		serrors.New(
+			"bad packet size",
+			"header", p.scionLayer.PayloadLen, "actual", len(p.scionLayer.Payload),
+		),
 	)
 }
 
@@ -1563,33 +1590,42 @@ func (p *scionPacketProcessor) processOHP() (processResult, error) {
 		// TODO parameter problem -> invalid path
 		return processResult{}, serrors.WrapStr(
 			"OneHop path in reverse construction direction is not allowed",
-			malformedPath, "srcIA", s.SrcIA, "dstIA", s.DstIA)
+			malformedPath, "srcIA", s.SrcIA, "dstIA", s.DstIA,
+		)
 	}
 
 	// OHP leaving our IA
 	if p.ingressID == 0 {
 		if !p.d.localIA.Equal(s.SrcIA) {
 			// TODO parameter problem -> invalid path
-			return processResult{}, serrors.WrapStr("bad source IA", cannotRoute,
+			return processResult{}, serrors.WrapStr(
+				"bad source IA", cannotRoute,
 				"type", "ohp", "egress", ohp.FirstHop.ConsEgress,
-				"localIA", p.d.localIA, "srcIA", s.SrcIA)
+				"localIA", p.d.localIA, "srcIA", s.SrcIA,
+			)
 		}
 		neighborIA, ok := p.d.neighborIAs[ohp.FirstHop.ConsEgress]
 		if !ok {
 			// TODO parameter problem invalid interface
-			return processResult{}, serrors.WithCtx(cannotRoute,
-				"type", "ohp", "egress", ohp.FirstHop.ConsEgress)
+			return processResult{}, serrors.WithCtx(
+				cannotRoute,
+				"type", "ohp", "egress", ohp.FirstHop.ConsEgress,
+			)
 		}
 		if !neighborIA.Equal(s.DstIA) {
-			return processResult{}, serrors.WrapStr("bad destination IA", cannotRoute,
+			return processResult{}, serrors.WrapStr(
+				"bad destination IA", cannotRoute,
 				"type", "ohp", "egress", ohp.FirstHop.ConsEgress,
-				"neighborIA", neighborIA, "dstIA", s.DstIA)
+				"neighborIA", neighborIA, "dstIA", s.DstIA,
+			)
 		}
 		mac := path.MAC(p.mac, ohp.Info, ohp.FirstHop, p.macBuffers.scionInput)
 		if subtle.ConstantTimeCompare(ohp.FirstHop.Mac[:], mac[:]) == 0 {
 			// TODO parameter problem -> invalid MAC
-			return processResult{}, serrors.New("MAC", "expected", fmt.Sprintf("%x", mac),
-				"actual", fmt.Sprintf("%x", ohp.FirstHop.Mac), "type", "ohp")
+			return processResult{}, serrors.New(
+				"MAC", "expected", fmt.Sprintf("%x", mac),
+				"actual", fmt.Sprintf("%x", ohp.FirstHop.Mac), "type", "ohp",
+			)
 		}
 		ohp.Info.UpdateSegID(ohp.FirstHop.Mac)
 
@@ -1603,21 +1639,27 @@ func (p *scionPacketProcessor) processOHP() (processResult, error) {
 				nil
 		}
 		// TODO parameter problem invalid interface
-		return processResult{}, serrors.WithCtx(cannotRoute, "type", "ohp",
-			"egress", ohp.FirstHop.ConsEgress, "consDir", ohp.Info.ConsDir)
+		return processResult{}, serrors.WithCtx(
+			cannotRoute, "type", "ohp",
+			"egress", ohp.FirstHop.ConsEgress, "consDir", ohp.Info.ConsDir,
+		)
 	}
 
 	// OHP entering our IA
 	if !p.d.localIA.Equal(s.DstIA) {
-		return processResult{}, serrors.WrapStr("bad destination IA", cannotRoute,
+		return processResult{}, serrors.WrapStr(
+			"bad destination IA", cannotRoute,
 			"type", "ohp", "ingress", p.ingressID,
-			"localIA", p.d.localIA, "dstIA", s.DstIA)
+			"localIA", p.d.localIA, "dstIA", s.DstIA,
+		)
 	}
 	neighborIA := p.d.neighborIAs[p.ingressID]
 	if !neighborIA.Equal(s.SrcIA) {
-		return processResult{}, serrors.WrapStr("bad source IA", cannotRoute,
+		return processResult{}, serrors.WrapStr(
+			"bad source IA", cannotRoute,
 			"type", "ohp", "ingress", p.ingressID,
-			"neighborIA", neighborIA, "srcIA", s.SrcIA)
+			"neighborIA", neighborIA, "srcIA", s.SrcIA,
+		)
 	}
 
 	ohp.SecondHop = path.HopField{
@@ -1694,8 +1736,10 @@ type bfdSend struct {
 }
 
 // newBFDSend creates and initializes a BFD Sender
-func newBFDSend(conn BatchConn, srcIA, dstIA addr.IA, srcAddr, dstAddr *net.UDPAddr,
-	ifID uint16, mac hash.Hash) *bfdSend {
+func newBFDSend(
+	conn BatchConn, srcIA, dstIA addr.IA, srcAddr, dstAddr *net.UDPAddr,
+	ifID uint16, mac hash.Hash,
+) *bfdSend {
 
 	scn := &slayers.SCION{
 		Version:      0,
@@ -1759,8 +1803,10 @@ func (b *bfdSend) Send(bfd *layers.BFD) error {
 		ohp.FirstHop.Mac = path.MAC(b.mac, ohp.Info, ohp.FirstHop, b.macBuffer)
 	}
 
-	err := gopacket.SerializeLayers(b.buffer, gopacket.SerializeOptions{FixLengths: true},
-		b.scn, bfd)
+	err := gopacket.SerializeLayers(
+		b.buffer, gopacket.SerializeOptions{FixLengths: true},
+		b.scn, bfd,
+	)
 	if err != nil {
 		return err
 	}
@@ -1784,19 +1830,25 @@ func (p *scionPacketProcessor) prepareSCMP(
 		var ok bool
 		path, ok = p.scionLayer.Path.(*scion.Raw)
 		if !ok {
-			return nil, serrors.WithCtx(cannotRoute, "details", "unsupported path type",
-				"path type", pathType)
+			return nil, serrors.WithCtx(
+				cannotRoute, "details", "unsupported path type",
+				"path type", pathType,
+			)
 		}
 	case epic.PathType:
 		epicPath, ok := p.scionLayer.Path.(*epic.Path)
 		if !ok {
-			return nil, serrors.WithCtx(cannotRoute, "details", "unsupported path type",
-				"path type", pathType)
+			return nil, serrors.WithCtx(
+				cannotRoute, "details", "unsupported path type",
+				"path type", pathType,
+			)
 		}
 		path = epicPath.ScionPath
 	default:
-		return nil, serrors.WithCtx(cannotRoute, "details", "unsupported path type",
-			"path type", pathType)
+		return nil, serrors.WithCtx(
+			cannotRoute, "details", "unsupported path type",
+			"path type", pathType,
+		)
 	}
 	decPath, err := path.ToDecoded()
 	if err != nil {
@@ -1968,13 +2020,15 @@ func (p *scionPacketProcessor) resetSPAOMetadata(now time.Time) error {
 	// XXX(JordiSubira): Assume that send rate is low so that combination
 	// with timestamp is always unique
 	sn := uint32(0)
-	return p.optAuth.Reset(slayers.PacketAuthOptionParams{
-		SPI:            spi,
-		Algorithm:      slayers.PacketAuthCMAC,
-		Timestamp:      timestamp,
-		SequenceNumber: sn,
-		Auth:           zeroBuffer,
-	})
+	return p.optAuth.Reset(
+		slayers.PacketAuthOptionParams{
+			SPI:            spi,
+			Algorithm:      slayers.PacketAuthCMAC,
+			Timestamp:      timestamp,
+			SequenceNumber: sn,
+			Auth:           zeroBuffer,
+		},
+	)
 }
 
 func (p *scionPacketProcessor) hasValidAuth() bool {
@@ -2038,8 +2092,10 @@ func (p *scionPacketProcessor) hasValidAuth() bool {
 // gopacket.DecodingLayerParser, but customized to our use case with a "base"
 // layer and additional, optional layers in the given order.
 // Returns the last decoded layer.
-func decodeLayers(data []byte, base gopacket.DecodingLayer,
-	opts ...gopacket.DecodingLayer) (gopacket.DecodingLayer, error) {
+func decodeLayers(
+	data []byte, base gopacket.DecodingLayer,
+	opts ...gopacket.DecodingLayer,
+) (gopacket.DecodingLayer, error) {
 
 	if err := base.DecodeFromBytes(data, gopacket.NilDecodeFeedback); err != nil {
 		return nil, err
@@ -2096,8 +2152,10 @@ func initForwardingMetrics(metrics *Metrics, labels prometheus.Labels) forwardin
 	return c
 }
 
-func interfaceToMetricLabels(id uint16, localIA addr.IA,
-	neighbors map[uint16]addr.IA) prometheus.Labels {
+func interfaceToMetricLabels(
+	id uint16, localIA addr.IA,
+	neighbors map[uint16]addr.IA,
+) prometheus.Labels {
 
 	if id == 0 {
 		return prometheus.Labels{
