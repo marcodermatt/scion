@@ -76,7 +76,7 @@ type Topology struct {
 	IA             string `json:"isd_as"`
 	MTU            int    `json:"mtu"`
 	// Attributes specify whether this is a core AS or not.
-	Attributes          Attributes               `json:"attributes"`
+	Attributes          Attributes                `json:"attributes"`
 	BorderRouters       map[string]*BRInfo        `json:"border_routers,omitempty"`
 	ControlService      map[string]*ServerInfo    `json:"control_service,omitempty"`
 	DiscoveryService    map[string]*ServerInfo    `json:"discovery_service,omitempty"`

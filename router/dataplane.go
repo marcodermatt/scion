@@ -662,7 +662,9 @@ func (p *scionPacketProcessor) processPkt(
 	}
 }
 
-func (p *scionPacketProcessor) getHeliaHBHOption(optionType slayers.OptionType) (*slayers.HopByHopOption, bool) {
+func (p *scionPacketProcessor) getHeliaHBHOption(
+	optionType slayers.OptionType,
+) (*slayers.HopByHopOption, bool) {
 	for _, opt := range p.hbhLayer.Options {
 		if opt.OptType == optionType {
 			switch optionType {
@@ -675,7 +677,10 @@ func (p *scionPacketProcessor) getHeliaHBHOption(optionType slayers.OptionType) 
 				}
 			case slayers.OptTypeReservTraffic:
 				h := sha256.New()
-				binary.Write(h, binary.BigEndian, p.d.localIA)
+				err := binary.Write(h, binary.BigEndian, p.d.localIA)
+				if err != nil {
+					return nil, false
+				}
 				targetASHash := slayers.RawHeliaRFHash(opt)
 				if h.Sum(nil)[0] == targetASHash {
 					return opt, true
@@ -686,7 +691,9 @@ func (p *scionPacketProcessor) getHeliaHBHOption(optionType slayers.OptionType) 
 	return nil, false
 }
 
-func (p *scionPacketProcessor) packHeliaResponse(requestOption *slayers.HopByHopOption) (processResult, error) {
+func (p *scionPacketProcessor) packHeliaResponse(
+	requestOption *slayers.HopByHopOption,
+) (processResult, error) {
 	// DEBUG
 	log.Debug(
 		"Packing helia response", "type", requestOption.OptType, "ingressIF", p.ingressID,
@@ -723,6 +730,9 @@ func (p *scionPacketProcessor) packHeliaResponse(requestOption *slayers.HopByHop
 	responseOption, err := libhelia.CreateSetupResponse(
 		p.mac, requestOption, p.ingressInterface(), p.egressInterface(), tsExp, p.d.localIA,
 	)
+	if err != nil {
+		return processResult{}, nil
+	}
 	// *copy* and reverse path -- the original path should not be modified as this writes directly
 	// back to rawPkt (quote).
 	var path *scion.Raw

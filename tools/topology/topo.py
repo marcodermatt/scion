@@ -316,7 +316,8 @@ class TopoGenerator(object):
                 for (linkto, remote, attrs, l_br, r_br, l_ifid, r_ifid) in self.links[topo_id]:
                     egresses.append(l_ifid)
             self.topo_dicts[topo_id]["helia_gateway"][elem_id] = {
-                'addr': join_host_port(self._reg_addr(topo_id, elem_id+"_gateway", addr_type).ip, helia_gateway_port),
+                'addr': join_host_port(self._reg_addr(topo_id, elem_id+"_gateway", addr_type).ip,
+                                       helia_gateway_port),
                 'egresses': egresses,
             }
 

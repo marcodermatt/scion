@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/google/gopacket"
+
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/experimental/helia"
 	"github.com/scionproto/scion/pkg/experimental/heliagate/config"
@@ -66,7 +67,8 @@ func NewWorker(
 	config *config.Heliagate, workerId uint32, gatewayId uint32, localAS addr.AS,
 ) *Worker {
 	w := &Worker{
-		CoreIdCounter:  (gatewayId << (32 - config.NumBitsForGatewayId)) | (workerId << (32 - config.NumBitsForGatewayId - config.NumBitsForWorkerId)),
+		CoreIdCounter: (gatewayId << (32 - config.NumBitsForGatewayId)) |
+			(workerId << (32 - config.NumBitsForGatewayId - config.NumBitsForWorkerId)),
 		NumCounterBits: config.NumBitsForPerWorkerCounter,
 		LocalAS:        localAS,
 	}

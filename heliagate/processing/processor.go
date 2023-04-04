@@ -1,3 +1,17 @@
+// Copyright 2023 ETH Zurich
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package processing
 
 import (
@@ -12,6 +26,9 @@ import (
 	"time"
 
 	"github.com/google/gopacket"
+	"golang.org/x/net/ipv4"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/scionproto/scion/heliagate/storage"
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/daemon"
@@ -27,8 +44,6 @@ import (
 	"github.com/scionproto/scion/private/app"
 	"github.com/scionproto/scion/private/app/path"
 	"github.com/scionproto/scion/private/topology"
-	"golang.org/x/net/ipv4"
-	"golang.org/x/sync/errgroup"
 )
 
 type Processor struct {
@@ -321,120 +336,124 @@ func (p *Processor) workerReceiveEntry(
 	//chres := p.controlChannels[workerId]
 
 	for !p.exit {
-		select {
-		case d := <-ch: // Data plane packet received
-			if d == nil { //If d is nil it is meant to be a exit sequence
-				return nil
-			}
-			log.Debug("Worker received data packet", "workerId", workerId)
-			borderRouterConn, err := p.getBorderRouterConnection(d)
-			if err != nil {
-				log.Debug("Error getting border router connection", "err", err)
-				//workerPacketInInvalidPromCounter.Add(1)
-				continue
-			}
+		d := <-ch     // Data plane packet received
+		if d == nil { //If d is nil it is meant to be a exit sequence
+			return nil
+		}
+		log.Debug("Worker received data packet", "workerId", workerId)
+		borderRouterConn, err := p.getBorderRouterConnection(d)
+		if err != nil {
+			log.Debug("Error getting border router connection", "err", err)
+			//workerPacketInInvalidPromCounter.Add(1)
+			continue
+		}
 
-			// if fingerprint not in map, call reservation routine to parse path and request reservations
-			// otherwise, lookup available authenticator for triplets
-			path, found := p.storage.GetPath(d.fingerprint)
-			if !found {
-				log.Debug("No path found")
-				p.reservChannel <- d
-			} else {
-				optParams := slayers.PacketReservTrafficParams{}
-				for _, hop := range path.Hops {
-					reservation, found := p.storage.GetReservation(hop)
-					if !found {
-						log.Debug("Missing reservation", "hop", hop)
-						continue
-					}
-					if reservation.Status == storage.Available {
-						h := sha256.New()
-						binary.Write(h, binary.BigEndian, hop.IA)
-						rf := slayers.ReservationHopField{
-							ASHash: h.Sum(nil)[0],
-						}
-						copy(rf.RVF[:], reservation.Authenticator)
-						optParams.ReservHopFields = append(optParams.ReservHopFields, rf)
-					}
+		// if fingerprint not in map, call reservation routine to parse path and request
+		// reservations. Otherwise, lookup available authenticator for triplets
+		path, found := p.storage.GetPath(d.fingerprint)
+		if !found {
+			log.Debug("No path found")
+			p.reservChannel <- d
+		} else {
+			optParams := slayers.PacketReservTrafficParams{}
+			for _, hop := range path.Hops {
+				reservation, found := p.storage.GetReservation(hop)
+				if !found {
+					log.Debug("Missing reservation", "hop", hop)
+					continue
 				}
-				if len(optParams.ReservHopFields) > 0 {
-					optParams.Direction = 0
-					optParams.CurrRF = 0
-					optParams.MaxBackwardLen = 1000
-					optParams.TsPkt = uint64(time.Now().UnixNano())
-					trafficOpt, _ := slayers.NewPacketReservTrafficOption(optParams)
-					hbh := &slayers.HopByHopExtn{}
-					hbh.NextHdr = d.scionLayer.NextHdr
-					hbh.Options = []*slayers.HopByHopOption{trafficOpt.HopByHopOption}
-					buffer := gopacket.NewSerializeBuffer()
-					options := gopacket.SerializeOptions{
-						ComputeChecksums: false,
-						FixLengths:       true,
-					}
-					if err := hbh.SerializeTo(buffer, options); err != nil {
+				if reservation.Status == storage.Available {
+					h := sha256.New()
+					err := binary.Write(h, binary.BigEndian, hop.IA)
+					if err != nil {
 						return err
 					}
-					offset := d.scionLayer.HdrLen * 4
-					extLen := uint8(len(buffer.Bytes()))
-					pktLen := d.scionLayer.PayloadLen
-					d.rawPacket[4] = uint8(slayers.HopByHopClass)
-					binary.BigEndian.PutUint16(d.rawPacket[6:8], pktLen+uint16(extLen))
-					log.Debug(
-						"Sending traffic packet", "offset", offset, "extLen", extLen, "payloadLen",
-						pktLen, "newPayloadLen", binary.BigEndian.Uint16(d.rawPacket[6:8]),
-						"buffer_cap", cap(d.rawPacket), "hops", optParams.ReservHopFields,
-					)
-					d.rawPacket = append(d.rawPacket, buffer.Bytes()...)
-					d.rawPacket = append(
-						d.rawPacket[:offset+extLen], d.rawPacket[offset:uint16(offset)+pktLen]...,
-					)
-					copy(d.rawPacket[offset:offset+extLen], buffer.Bytes())
+					rf := slayers.ReservationHopField{
+						ASHash: h.Sum(nil)[0],
+					}
+					copy(rf.RVF[:], reservation.Authenticator)
+					optParams.ReservHopFields = append(optParams.ReservHopFields, rf)
 				}
-
+			}
+			if len(optParams.ReservHopFields) > 0 {
+				optParams.Direction = 0
+				optParams.CurrRF = 0
+				optParams.MaxBackwardLen = 1000
+				optParams.TsPkt = uint64(time.Now().UnixNano())
+				trafficOpt, _ := slayers.NewPacketReservTrafficOption(optParams)
+				hbh := &slayers.HopByHopExtn{}
+				hbh.NextHdr = d.scionLayer.NextHdr
+				hbh.Options = []*slayers.HopByHopOption{trafficOpt.HopByHopOption}
+				buffer := gopacket.NewSerializeBuffer()
+				options := gopacket.SerializeOptions{
+					ComputeChecksums: false,
+					FixLengths:       true,
+				}
+				if err := hbh.SerializeTo(buffer, options); err != nil {
+					return err
+				}
+				offset := d.scionLayer.HdrLen * 4
+				extLen := uint8(len(buffer.Bytes()))
+				pktLen := d.scionLayer.PayloadLen
+				d.rawPacket[4] = uint8(slayers.HopByHopClass)
+				binary.BigEndian.PutUint16(d.rawPacket[6:8], pktLen+uint16(extLen))
+				log.Debug(
+					"Sending traffic packet", "offset", offset, "extLen", extLen, "payloadLen",
+					pktLen, "newPayloadLen", binary.BigEndian.Uint16(d.rawPacket[6:8]),
+					"buffer_cap", cap(d.rawPacket), "hops", optParams.ReservHopFields,
+				)
+				d.rawPacket = append(d.rawPacket, buffer.Bytes()...)
+				d.rawPacket = append(
+					d.rawPacket[:offset+extLen], d.rawPacket[offset:uint16(offset)+pktLen]...,
+				)
+				copy(d.rawPacket[offset:offset+extLen], buffer.Bytes())
 			}
 
-			// 1. Packet
-			// Parse ASes
-			// Lookup existing reservations
-			// Request missing reservation (with timeout and re-request)
-
-			// 2. Packet
-			// Return  already present reservations
-			// getReservation(path.fingerprint) -> [Token, Token, Token, Token, _]
-
-			// map[fingerprint] path (list of triplets(AS, Ingress, Egress)
-			// map[reservTriplet] authenticators and timestamp
-
-			// Direct forwarding: small latency
-
-			// Parse ASes (SD call): medium/high latency
-			// Request missing reservations: high latency
-
-			// reservation routine: atomic write to datastructure
-
-			// worker routines: reads without lock
-
-			//if err = worker.process(d); err != nil {
-			//log.Debug("Worker received error while processing.", "workerId", workerId,
-			//"error", err.Error())
-			//workerPacketInInvalidPromCounter.Add(1)
-			//continue
-			//}
-
-			writeMsgs[0].Buffers[0] = d.rawPacket
-
-			borderRouterConn.WriteBatch(writeMsgs, syscall.MSG_DONTWAIT)
-			//workerPacketOutTotalPromCounter.Add(1)
-			log.Debug("Worker forwarded packet", "workerId", workerId)
-			//case task := <-chres: // Reservation update received
-			//if task == nil {
-			//return nil
-			//}
-			//log.Debug("Worker received reservation update", "workerId", workerId)
-			//workerReservationUpdateTotalPromCounter.Add(1)
-			//task.Execute(worker.Storage)
 		}
+
+		// 1. Packet
+		// Parse ASes
+		// Lookup existing reservations
+		// Request missing reservation (with timeout and re-request)
+
+		// 2. Packet
+		// Return  already present reservations
+		// getReservation(path.fingerprint) -> [Token, Token, Token, Token, _]
+
+		// map[fingerprint] path (list of triplets(AS, Ingress, Egress)
+		// map[reservTriplet] authenticators and timestamp
+
+		// Direct forwarding: small latency
+
+		// Parse ASes (SD call): medium/high latency
+		// Request missing reservations: high latency
+
+		// reservation routine: atomic write to datastructure
+
+		// worker routines: reads without lock
+
+		//if err = worker.process(d); err != nil {
+		//log.Debug("Worker received error while processing.", "workerId", workerId,
+		//"error", err.Error())
+		//workerPacketInInvalidPromCounter.Add(1)
+		//continue
+		//}
+
+		writeMsgs[0].Buffers[0] = d.rawPacket
+
+		_, err = borderRouterConn.WriteBatch(writeMsgs, syscall.MSG_DONTWAIT)
+		if err != nil {
+			return err
+		}
+		//workerPacketOutTotalPromCounter.Add(1)
+		log.Debug("Worker forwarded packet", "workerId", workerId)
+		//case task := <-chres: // Reservation update received
+		//if task == nil {
+		//return nil
+		//}
+		//log.Debug("Worker received reservation update", "workerId", workerId)
+		//workerReservationUpdateTotalPromCounter.Add(1)
+		//task.Execute(worker.Storage)
 
 	}
 	return nil
@@ -553,7 +572,7 @@ func (p *Processor) sendRequest(
 		PacketInfo: snet.PacketInfo{
 			Destination: snet.SCIONAddress{
 				IA:   path.Destination(),
-				Host: addr.HostIPv4(net.ParseIP("0.0.0.0").To4()), //ADd emtpy host IP (0.0.0.0)
+				Host: addr.HostIPv4(net.ParseIP("0.0.0.0").To4()), //Add empty host IP (0.0.0.0)
 			},
 			Source: snet.SCIONAddress{
 				IA:   p.gatewayAddr.IA,
@@ -576,7 +595,10 @@ func (p *Processor) sendRequest(
 	}
 	writeMsgs[0].Buffers[0] = pkt.Bytes
 
-	conn.WriteBatch(writeMsgs, syscall.MSG_DONTWAIT)
+	_, err = conn.WriteBatch(writeMsgs, syscall.MSG_DONTWAIT)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -17,6 +17,8 @@ package main
 import (
 	"context"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/scionproto/scion/heliagate/processing"
 	"github.com/scionproto/scion/pkg/experimental/heliagate/config"
 	"github.com/scionproto/scion/pkg/log"
@@ -24,7 +26,6 @@ import (
 	"github.com/scionproto/scion/private/app"
 	"github.com/scionproto/scion/private/app/launcher"
 	"github.com/scionproto/scion/private/topology"
-	"golang.org/x/sync/errgroup"
 )
 
 func main() {

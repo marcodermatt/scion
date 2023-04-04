@@ -1,4 +1,4 @@
-// Copyright 2020 ETH Zurich
+// Copyright 2023 ETH Zurich
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -64,13 +64,17 @@ func RawFingerprint(path *scion.Raw) RawPathFingerprint {
 	h := sha256.New()
 	for idx := 0; idx < path.NumHops; idx++ {
 		hf, _ := path.GetHopField(idx)
-		binary.Write(h, binary.BigEndian, hf.ConsIngress)
-		binary.Write(h, binary.BigEndian, hf.ConsEgress)
+		err := binary.Write(h, binary.BigEndian, hf.ConsIngress)
+		if err != nil {
+			panic(err)
+		}
+		err = binary.Write(h, binary.BigEndian, hf.ConsEgress)
+		if err != nil {
+			panic(err)
+		}
 	}
 	return RawPathFingerprint(h.Sum(nil))
 }
-
-var zeroInitVector [16]byte
 
 func CreateSetupRequest(mac hash.Hash, reservReq *ReservationRequest) *slayers.HopByHopOption {
 	var auth [16]byte
@@ -86,7 +90,10 @@ func CreateSetupRequest(mac hash.Hash, reservReq *ReservationRequest) *slayers.H
 	} else {
 		optType = slayers.OptTypeReservReqBackward
 	}
-	CalcMac(mac, reqParams, reservReq.IngressIF, reservReq.EgressIF, uint8(optType))
+	_, err := CalcMac(mac, reqParams, reservReq.IngressIF, reservReq.EgressIF, uint8(optType))
+	if err != nil {
+		return nil
+	}
 	if !reservReq.Backward {
 		optSetup, err := slayers.NewPacketReservReqForwardOption(reqParams)
 		if err != nil {

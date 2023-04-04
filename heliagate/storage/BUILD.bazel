@@ -8,6 +8,5 @@ go_library(
     deps = [
         "//pkg/experimental/helia:go_default_library",
         "//pkg/log:go_default_library",
-        "//pkg/snet:go_default_library",
     ],
 )

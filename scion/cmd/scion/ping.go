@@ -24,10 +24,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/scionproto/scion/pkg/addr"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
 
+	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/daemon"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
@@ -94,9 +94,12 @@ func newPing(pather CommandPather) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "ping [flags] <remote>",
 		Short: "Test connectivity to a remote SCION host using SCMP echo packets",
-		Example: fmt.Sprintf(`  %[1]s ping 1-ff00:0:110,10.0.0.1
-  %[1]s ping 1-ff00:0:110,10.0.0.1 -c 5`, pather.CommandPath()),
-		Long: fmt.Sprintf(`'ping' test connectivity to a remote SCION host using SCMP echo packets.
+		Example: fmt.Sprintf(
+			`  %[1]s ping 1-ff00:0:110,10.0.0.1
+  %[1]s ping 1-ff00:0:110,10.0.0.1 -c 5`, pather.CommandPath(),
+		),
+		Long: fmt.Sprintf(
+			`'ping' test connectivity to a remote SCION host using SCMP echo packets.
 
 When the \--count option is set, ping sends the specified number of SCMP echo packets
 and reports back the statistics.
@@ -107,7 +110,8 @@ chooses amongst them.
 If no reply packet is received at all, ping will exit with code 1.
 On other errors, ping will exit with code 2.
 
-%s`, app.SequenceHelp),
+%s`, app.SequenceHelp,
+		),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			remote, err := snet.ParseUDPAddr(args[0])
@@ -135,7 +139,8 @@ On other errors, ping will exit with code 2.
 			daemonAddr := envFlags.Daemon()
 			dispatcher := envFlags.Dispatcher()
 			localIP := envFlags.Local().IPAddr().IP
-			log.Debug("Resolved SCION environment flags",
+			log.Debug(
+				"Resolved SCION environment flags",
 				"daemon", daemonAddr,
 				"dispatcher", dispatcher,
 				"local", localIP,
@@ -188,11 +193,15 @@ On other errors, ping will exit with code 2.
 				path.WithEPIC(flags.epic),
 			}
 			if flags.healthyOnly {
-				opts = append(opts, path.WithProbing(&path.ProbeConfig{
-					LocalIA:    info.IA,
-					LocalIP:    localIP,
-					Dispatcher: dispatcher,
-				}))
+				opts = append(
+					opts, path.WithProbing(
+						&path.ProbeConfig{
+							LocalIA:    info.IA,
+							LocalIP:    localIP,
+							Dispatcher: dispatcher,
+						},
+					),
+				)
 			}
 			path, err := path.Choose(traceCtx, sd, remote.IA, opts...)
 			if err != nil {
@@ -254,7 +263,8 @@ On other errors, ping will exit with code 2.
 				if overhead > int(flags.pktSize) {
 					return serrors.New(
 						"desired packet size smaller than header overhead",
-						"minimum_packet_size", overhead)
+						"minimum_packet_size", overhead,
+					)
 				}
 				pldSize = int(flags.pktSize - uint(overhead))
 			}
@@ -294,39 +304,45 @@ On other errors, ping will exit with code 2.
 				PayloadSize: pldSize,
 			}
 
-			stats, err := ping.Run(ctx, ping.Config{
-				Dispatcher:  reliable.NewDispatcher(dispatcher),
-				Attempts:    count,
-				Interval:    flags.interval,
-				Timeout:     flags.timeout,
-				Local:       local,
-				Remote:      remote,
-				PayloadSize: pldSize,
-				ErrHandler: func(err error) {
-					fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
+			stats, err := ping.Run(
+				ctx, ping.Config{
+					Dispatcher:  reliable.NewDispatcher(dispatcher),
+					Attempts:    count,
+					Interval:    flags.interval,
+					Timeout:     flags.timeout,
+					Local:       local,
+					Remote:      remote,
+					PayloadSize: pldSize,
+					ErrHandler: func(err error) {
+						fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
+					},
+					UpdateHandler: func(update ping.Update) {
+						var additional string
+						switch update.State {
+						case ping.AfterTimeout:
+							additional = " state=After timeout"
+						case ping.OutOfOrder:
+							additional = " state=Out of Order"
+						case ping.Duplicate:
+							additional = " state=Duplicate"
+						}
+						res.Replies = append(
+							res.Replies, PingUpdate{
+								Size:     update.Size,
+								Source:   update.Source.String(),
+								Sequence: update.Sequence,
+								RTT:      durationMillis(update.RTT),
+								State:    update.State.String(),
+							},
+						)
+						printf(
+							"%d bytes from %s,%s: scmp_seq=%d time=%s%s\n",
+							update.Size, update.Source.IA, update.Source.Host, update.Sequence,
+							durationMillis(update.RTT), additional,
+						)
+					},
 				},
-				UpdateHandler: func(update ping.Update) {
-					var additional string
-					switch update.State {
-					case ping.AfterTimeout:
-						additional = " state=After timeout"
-					case ping.OutOfOrder:
-						additional = " state=Out of Order"
-					case ping.Duplicate:
-						additional = " state=Duplicate"
-					}
-					res.Replies = append(res.Replies, PingUpdate{
-						Size:     update.Size,
-						Source:   update.Source.String(),
-						Sequence: update.Sequence,
-						RTT:      durationMillis(update.RTT),
-						State:    update.State.String(),
-					})
-					printf("%d bytes from %s,%s: scmp_seq=%d time=%s%s\n",
-						update.Size, update.Source.IA, update.Source.Host, update.Sequence,
-						durationMillis(update.RTT), additional)
-				},
-			})
+			)
 			if err != nil {
 				return err
 			}
@@ -336,12 +352,14 @@ On other errors, ping will exit with code 2.
 			case "human":
 				s := res.Statistics.Stats
 				printf("\n--- %s,%s statistics ---\n", remote.IA, remote.Host.IP)
-				printf("%d packets transmitted, %d received, %d%% packet loss, time %v\n",
+				printf(
+					"%d packets transmitted, %d received, %d%% packet loss, time %v\n",
 					s.Sent, s.Received, res.Statistics.Loss,
 					res.Statistics.Time,
 				)
 				if s.Received != 0 {
-					printf("rtt min/avg/max/mdev = %.3f/%.3f/%.3f/%.3f ms\n",
+					printf(
+						"rtt min/avg/max/mdev = %.3f/%.3f/%.3f/%.3f ms\n",
 						res.Statistics.MinRTT.Millis(),
 						res.Statistics.AvgRTT.Millis(),
 						res.Statistics.MaxRTT.Millis(),
@@ -374,25 +392,31 @@ On other errors, ping will exit with code 2.
 	cmd.Flags().BoolVar(&flags.refresh, "refresh", false, "set refresh flag for path request")
 	cmd.Flags().DurationVar(&flags.interval, "interval", time.Second, "time between packets")
 	cmd.Flags().Uint16VarP(&flags.count, "count", "c", 0, "total number of packets to send")
-	cmd.Flags().UintVarP(&flags.size, "payload-size", "s", 0,
+	cmd.Flags().UintVarP(
+		&flags.size, "payload-size", "s", 0,
 		`number of bytes to be sent in addition to the SCION Header and SCMP echo header;
 the total size of the packet is still variable size due to the variable size of
 the SCION path.`,
 	)
-	cmd.Flags().UintVar(&flags.pktSize, "packet-size", 0,
+	cmd.Flags().UintVar(
+		&flags.pktSize, "packet-size", 0,
 		`number of bytes to be sent including the SCION Header and SCMP echo header,
 the desired size must provide enough space for the required headers. This flag
 overrides the 'payload_size' flag.`,
 	)
-	cmd.Flags().BoolVar(&flags.maxMTU, "max-mtu", false,
+	cmd.Flags().BoolVar(
+		&flags.maxMTU, "max-mtu", false,
 		`choose the payload size such that the sent SCION packet including the SCION Header,
 SCMP echo header and payload are equal to the MTU of the path. This flag overrides the
-'payload_size' and 'packet_size' flags.`)
+'payload_size' and 'packet_size' flags.`,
+	)
 	cmd.Flags().StringVar(&flags.logLevel, "log.level", "", app.LogLevelUsage)
 	cmd.Flags().StringVar(&flags.tracer, "tracing.agent", "", "Tracing agent address")
 	cmd.Flags().BoolVar(&flags.epic, "epic", false, "Enable EPIC for path probing.")
-	cmd.Flags().StringVar(&flags.format, "format", "human",
-		"Specify the output format (human|json|yaml)")
+	cmd.Flags().StringVar(
+		&flags.format, "format", "human",
+		"Specify the output format (human|json|yaml)",
+	)
 	cmd.Flags().BoolVar(&flags.helia, "helia", false, "Enable Helia reservation traffic.")
 	return cmd
 }

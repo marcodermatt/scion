@@ -28,7 +28,6 @@ from topology.common import (
     ArgsTopoDicts,
     DISP_CONFIG_NAME,
     SD_CONFIG_NAME,
-    HG_CONFIG_NAME,
 )
 
 SUPERVISOR_CONF = 'supervisord.conf'

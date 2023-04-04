@@ -221,7 +221,7 @@ func (o PacketReservReqForwardOption) Reset(
 		o.OptData = make([]byte, PacketSetupReqDataLen)
 	}
 	binary.BigEndian.PutUint64(o.OptData[:8], uint64(p.TargetAS))
-	binary.BigEndian.PutUint32(o.OptData[8:12], uint32(p.Counter))
+	binary.BigEndian.PutUint32(o.OptData[8:12], p.Counter)
 	copy(o.OptData[12:28], p.Auth[:])
 	binary.BigEndian.PutUint16(o.OptData[28:30], uint16(p.Timestamp>>32))
 	binary.BigEndian.PutUint32(o.OptData[30:34], uint32(p.Timestamp))
@@ -245,7 +245,7 @@ func (o PacketReservReqBackwardOption) Reset(
 		o.OptData = make([]byte, PacketSetupReqDataLen)
 	}
 	binary.BigEndian.PutUint64(o.OptData[:8], uint64(p.TargetAS))
-	binary.BigEndian.PutUint32(o.OptData[8:12], uint32(p.Counter))
+	binary.BigEndian.PutUint32(o.OptData[8:12], p.Counter)
 	copy(o.OptData[12:28], p.Auth[:])
 	binary.BigEndian.PutUint16(o.OptData[28:30], uint16(p.Timestamp>>32))
 	binary.BigEndian.PutUint32(o.OptData[30:34], uint32(p.Timestamp))
@@ -295,14 +295,14 @@ func (o PacketReservTrafficOption) Reset(
 	} else {
 		o.OptData = make([]byte, n)
 	}
-	o.OptData[0] = byte(p.Direction)
-	o.OptData[1] = byte(p.CurrRF)
+	o.OptData[0] = p.Direction
+	o.OptData[1] = p.CurrRF
 	binary.BigEndian.PutUint16(o.OptData[2:4], p.MaxBackwardLen)
 	binary.BigEndian.PutUint64(o.OptData[4:12], p.TsPkt)
 
 	for i, reservHop := range p.ReservHopFields {
 		offset := 12 + 4*i
-		o.OptData[offset] = byte(reservHop.ASHash)
+		o.OptData[offset] = reservHop.ASHash
 		copy(o.OptData[offset+1:offset+4], reservHop.RVF[:])
 	}
 
@@ -400,12 +400,12 @@ func (o PacketReservResponseOption) Tag() []byte {
 
 // Direction returns the direction flag set in the option
 func (o PacketReservTrafficOption) Direction() uint8 {
-	return uint8(o.OptData[0])
+	return o.OptData[0]
 }
 
 // CurrRF returns the current reservation field pointer in the option
 func (o PacketReservTrafficOption) CurrRF() uint8 {
-	return uint8(o.OptData[1])
+	return o.OptData[1]
 }
 
 // MaxBackwardLen returns the backwards length in the option

@@ -36,7 +36,6 @@ from topology.common import (
     SD_API_PORT,
     SD_CONFIG_NAME,
     CO_CONFIG_NAME,
-    HG_CONFIG_NAME,
 )
 
 from topology.net import socket_address_str, NetworkDescription, IPNetwork

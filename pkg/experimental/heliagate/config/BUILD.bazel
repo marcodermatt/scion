@@ -3,8 +3,8 @@ load("//tools/lint:go.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = [
-        "heliagate.go",
         "config.go",
+        "heliagate.go",
     ],
     importpath = "github.com/scionproto/scion/pkg/experimental/heliagate/config",
     visibility = ["//visibility:public"],
