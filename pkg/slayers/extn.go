@@ -34,6 +34,10 @@ const (
 	OptTypePad1 OptionType = iota
 	OptTypePadN
 	OptTypeAuthenticator
+	OptTypeReservReqForward
+	OptTypeReservReqBackward
+	OptTypeReservResponse
+	OptTypeReservTraffic
 )
 
 type tlvOption struct {
@@ -269,6 +273,17 @@ func (h *HopByHopExtn) DecodeFromBytes(data []byte, df gopacket.DecodeFeedback) 
 		offset += opt.ActualLength
 	}
 	return nil
+}
+
+// FindOption returns the first option entry of the given type if any exists,
+// or ErrOptionNotFound otherwise.
+func (e *HopByHopExtn) FindOption(typ OptionType) (*HopByHopOption, error) {
+	for _, o := range e.Options {
+		if o.OptType == typ {
+			return o, nil
+		}
+	}
+	return nil, ErrOptionNotFound
 }
 
 func decodeHopByHopExtn(data []byte, p gopacket.PacketBuilder) error {
