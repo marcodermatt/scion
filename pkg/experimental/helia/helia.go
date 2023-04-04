@@ -15,6 +15,7 @@
 package helia
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
 	"hash"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/slayers"
+	"github.com/scionproto/scion/pkg/slayers/path/scion"
 )
 
 const (
@@ -54,6 +56,18 @@ type ReservationRequest struct {
 	Backward  bool
 	Timestamp uint64
 	Counter   uint32
+}
+
+type RawPathFingerprint string
+
+func RawFingerprint(path *scion.Raw) RawPathFingerprint {
+	h := sha256.New()
+	for idx := 0; idx < path.NumHops; idx++ {
+		hf, _ := path.GetHopField(idx)
+		binary.Write(h, binary.BigEndian, hf.ConsIngress)
+		binary.Write(h, binary.BigEndian, hf.ConsEgress)
+	}
+	return RawPathFingerprint(h.Sum(nil))
 }
 
 var zeroInitVector [16]byte

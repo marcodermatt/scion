@@ -15,18 +15,21 @@
 package storage
 
 import (
+	"sync"
+
 	"github.com/scionproto/scion/pkg/experimental/helia"
 	"github.com/scionproto/scion/pkg/log"
-	"github.com/scionproto/scion/pkg/snet"
 )
 
 type Storage struct {
-	Paths        map[snet.PathFingerprint]*Path
+	pathsMu      sync.RWMutex
+	Paths        map[helia.RawPathFingerprint]*Path
+	reservMu     sync.RWMutex
 	Reservations map[helia.Hop]*Reservation
 }
 
 type Path struct {
-	Fingerprint snet.PathFingerprint
+	Fingerprint helia.RawPathFingerprint
 	Hops        []helia.Hop
 }
 
@@ -49,7 +52,7 @@ type Reservation struct {
 
 // InitStorage initializes the reservation storage
 func (store *Storage) InitStorage() {
-	store.Paths = make(map[snet.PathFingerprint]*Path)
+	store.Paths = make(map[helia.RawPathFingerprint]*Path)
 	store.Reservations = make(map[helia.Hop]*Reservation)
 }
 

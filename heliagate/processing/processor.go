@@ -333,6 +333,7 @@ func (p *Processor) workerReceiveEntry(
 			// otherwise, lookup available authenticator for triplets
 			path, found := p.storage.Paths[d.fingerprint]
 			if !found {
+				log.Debug("No path found")
 				p.reservChannel <- d
 			} else {
 				optParams := slayers.PacketReservTrafficParams{}

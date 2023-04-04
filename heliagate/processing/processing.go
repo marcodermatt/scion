@@ -19,11 +19,11 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/scionproto/scion/pkg/addr"
+	"github.com/scionproto/scion/pkg/experimental/helia"
 	"github.com/scionproto/scion/pkg/experimental/heliagate/config"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/slayers/path/scion"
-	"github.com/scionproto/scion/pkg/snet"
 )
 
 type Worker struct {
@@ -37,7 +37,7 @@ type dataPacket struct {
 	pktArrivalTime time.Time
 	scionLayer     *slayers.SCION
 	scionPath      *scion.Raw
-	fingerprint    snet.PathFingerprint
+	fingerprint    helia.RawPathFingerprint
 	rawPacket      []byte
 }
 
@@ -57,6 +57,7 @@ func Parse(rawPacket []byte) (*dataPacket, error) {
 	if !ok {
 		return nil, serrors.New("Getting scion path failed")
 	}
+	proc.fingerprint = helia.RawFingerprint(proc.scionPath)
 	return &proc, nil
 }
 
