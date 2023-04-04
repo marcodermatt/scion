@@ -18,7 +18,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"hash"
@@ -644,8 +646,10 @@ func (p *scionPacketProcessor) getHeliaHBHOption(optionType slayers.OptionType) 
 					return opt, true
 				}
 			case slayers.OptTypeReservTraffic:
+				h := sha256.New()
+				binary.Write(h, binary.BigEndian, p.d.localIA)
 				targetASHash := slayers.RawHeliaRFHash(opt)
-				if byte(p.d.localIA) == targetASHash {
+				if h.Sum(nil)[0] == targetASHash {
 					return opt, true
 				}
 			}

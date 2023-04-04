@@ -2,6 +2,7 @@ package processing
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
 	"hash"
@@ -52,6 +53,8 @@ const bufSize int = 9000
 // NumOfMessages is the maximum number of messages that are read as a batch from the socket.
 const numOfMessages int = 10
 
+const numWorkers int = 2
+
 func (c *Processor) shutdown() {
 	if c.exit {
 		return
@@ -98,10 +101,10 @@ func Init(
 	STATIC_KEY := []byte("f5fcc4ce2250db36")
 	mac, _ := scrypto.InitMac(STATIC_KEY)
 	p := Processor{
-		dataChannels:  make([]chan *dataPacket, 1),
+		dataChannels:  make([]chan *dataPacket, numWorkers),
 		borderRouters: borderRouters,
 		saltHasher:    common.NewFnv1aHasher(salt),
-		numWorkers:    1,
+		numWorkers:    numWorkers,
 		gatewayAddr: snet.UDPAddr{
 			IA:      topo.IA(),
 			Path:    nil,
@@ -242,7 +245,7 @@ func (p *Processor) initDataPlane(
 
 					// assign to worker by scionlayer.flowid
 					select {
-					case p.dataChannels[p.getWorkerForFlowId(d.scionLayer.FlowID)] <- d:
+					case p.dataChannels[p.getWorkerForMessage(d.scionLayer.FlowID, pkt.Addr)] <- d:
 					default:
 						continue // Packet dropped
 					}
@@ -278,9 +281,11 @@ func (p *Processor) initDataPlane(
 	return nil
 }
 
-func (p *Processor) getWorkerForFlowId(flowId uint32) uint32 {
-	buf := make([]byte, 4)
-	binary.BigEndian.PutUint32(buf, flowId)
+func (p *Processor) getWorkerForMessage(flowID uint32, source net.Addr) uint32 {
+	srcBytes := []byte(source.String())
+	buf := make([]byte, 4+len(srcBytes))
+	binary.BigEndian.PutUint32(buf, flowID)
+	buf = append(buf, srcBytes...)
 	return p.saltHasher.Hash(buf) % uint32(p.numWorkers)
 }
 
@@ -331,17 +336,23 @@ func (p *Processor) workerReceiveEntry(
 
 			// if fingerprint not in map, call reservation routine to parse path and request reservations
 			// otherwise, lookup available authenticator for triplets
-			path, found := p.storage.Paths[d.fingerprint]
+			path, found := p.storage.GetPath(d.fingerprint)
 			if !found {
 				log.Debug("No path found")
 				p.reservChannel <- d
 			} else {
 				optParams := slayers.PacketReservTrafficParams{}
 				for _, hop := range path.Hops {
-					reservation := p.storage.Reservations[hop]
+					reservation, found := p.storage.GetReservation(hop)
+					if !found {
+						log.Debug("Missing reservation", "hop", hop)
+						continue
+					}
 					if reservation.Status == storage.Available {
+						h := sha256.New()
+						binary.Write(h, binary.BigEndian, hop.IA)
 						rf := slayers.ReservationHopField{
-							ASHash: byte(hop.IA),
+							ASHash: h.Sum(nil)[0],
 						}
 						copy(rf.RVF[:], reservation.Authenticator)
 						optParams.ReservHopFields = append(optParams.ReservHopFields, rf)
@@ -372,7 +383,7 @@ func (p *Processor) workerReceiveEntry(
 					log.Debug(
 						"Sending traffic packet", "offset", offset, "extLen", extLen, "payloadLen",
 						pktLen, "newPayloadLen", binary.BigEndian.Uint16(d.rawPacket[6:8]),
-						"buffer_cap", cap(d.rawPacket),
+						"buffer_cap", cap(d.rawPacket), "hops", optParams.ReservHopFields,
 					)
 					d.rawPacket = append(d.rawPacket, buffer.Bytes()...)
 					d.rawPacket = append(
@@ -442,7 +453,7 @@ func (p *Processor) workerCreateReservation() error {
 	for !p.exit {
 		select {
 		case d := <-p.reservChannel:
-			_, found := p.storage.Paths[d.fingerprint]
+			_, found := p.storage.GetPath(d.fingerprint)
 			if found {
 				continue
 			}
@@ -511,8 +522,8 @@ func (p *Processor) workerCreateReservation() error {
 				Ingress: resp.IngressIF(),
 				Egress:  resp.EgressIF(),
 			}
-			reservation, ok := p.storage.Reservations[hop]
-			if !ok {
+			reservation, found := p.storage.GetReservation(hop)
+			if !found {
 				log.Debug(
 					"Failed to find reservation:", "hop", hop,
 				)

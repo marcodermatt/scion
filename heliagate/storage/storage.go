@@ -23,9 +23,9 @@ import (
 
 type Storage struct {
 	pathsMu      sync.RWMutex
-	Paths        map[helia.RawPathFingerprint]*Path
+	paths        map[helia.RawPathFingerprint]*Path
 	reservMu     sync.RWMutex
-	Reservations map[helia.Hop]*Reservation
+	reservations map[helia.Hop]*Reservation
 }
 
 type Path struct {
@@ -52,14 +52,35 @@ type Reservation struct {
 
 // InitStorage initializes the reservation storage
 func (store *Storage) InitStorage() {
-	store.Paths = make(map[helia.RawPathFingerprint]*Path)
-	store.Reservations = make(map[helia.Hop]*Reservation)
+	store.paths = make(map[helia.RawPathFingerprint]*Path)
+	store.reservations = make(map[helia.Hop]*Reservation)
 }
 
 func (store *Storage) StorePath(path *Path) {
-	store.Paths[path.Fingerprint] = path
+	store.pathsMu.Lock()
+	defer store.pathsMu.Unlock()
+	store.paths[path.Fingerprint] = path
 }
 
+func (store *Storage) GetPath(fingerprint helia.RawPathFingerprint) (*Path, bool) {
+	store.pathsMu.RLock()
+	defer store.pathsMu.RUnlock()
+	path, found := store.paths[fingerprint]
+	return path, found
+}
+
+func (store *Storage) StoreReservation(reservation *Reservation) {
+	store.reservMu.Lock()
+	defer store.reservMu.Unlock()
+	store.reservations[reservation.Hop] = reservation
+}
+
+func (store *Storage) GetReservation(hop helia.Hop) (*Reservation, bool) {
+	store.reservMu.RLock()
+	defer store.reservMu.RUnlock()
+	reservation, found := store.reservations[hop]
+	return reservation, found
+}
 func (store *Storage) CreateReservation(hop *helia.Hop, backward bool) {
 	if backward {
 		hop = &helia.Hop{
@@ -68,11 +89,13 @@ func (store *Storage) CreateReservation(hop *helia.Hop, backward bool) {
 			Egress:  hop.Ingress,
 		}
 	}
-	store.Reservations[*hop] = &Reservation{
-		Hop:           *hop,
-		Status:        Initialized,
-		Authenticator: nil,
-		Timestamp:     0,
-	}
-	log.Debug("Created reservation", "storage", store.Reservations[*hop])
+	store.StoreReservation(
+		&Reservation{
+			Hop:           *hop,
+			Status:        Initialized,
+			Authenticator: nil,
+			Timestamp:     0,
+		},
+	)
+	log.Debug("Created reservation", "storage", hop)
 }
