@@ -2,7 +2,6 @@ env:
   GOPROXY: "http://localhost:3200|https://proxy.golang.org|direct"
 steps:
   - label: "Build :bazel:"
-    if: build.message !~ /\[doc\]/
     command:
       - bazel build --verbose_failures --announce_rc //:all
       - bazel run --verbose_failures //docker:prod //docker:test
@@ -14,7 +13,6 @@ steps:
     timeout_in_minutes: 10
   - wait
   - label: "Unit Tests :bazel:"
-    if: build.message !~ /\[doc\]/
     command:
       - bazel test --config=race --config=unit_all
     key: unit_tests
@@ -25,18 +23,16 @@ steps:
   - label: "Lint :bash:"
     command:
       - make lint
-      - make golangci-lint
     key: lint
     retry: *automatic-retry
     timeout_in_minutes: 20
   - label: "Check Generated :bash:"
-    if: build.message !~ /\[doc\]/
     command:
       - echo "--- go_deps.bzl"
       - mkdir -p /tmp/test-artifacts
       - cp go.mod go.sum go_deps.bzl /tmp/test-artifacts/
       - make go_deps.bzl -B
-      - $(bazel info output_base 2>/dev/null)/external/go_sdk/bin/go mod tidy
+      - make go-mod-tidy
       - diff -u /tmp/test-artifacts/go.mod go.mod
       - diff -u /tmp/test-artifacts/go.sum go.sum
       - diff -u /tmp/test-artifacts/go_deps.bzl go_deps.bzl
@@ -62,7 +58,6 @@ steps:
     retry: *automatic-retry
   - group: "End to End"
     key: e2e
-    if: build.message !~ /\[doc\]/
     steps:
     - label: "E2E: default :man_in_business_suit_levitating: (scion, ping)"
       command:

@@ -98,8 +98,8 @@ func TestWithCtx(t *testing.T) {
 	t.Run("Is", func(t *testing.T) {
 		err := serrors.New("simple err")
 		errWithCtx := serrors.WithCtx(err, "someCtx", "someValue")
-		xtest.AssertErrorsIs(t, errWithCtx, err)
-		xtest.AssertErrorsIs(t, errWithCtx, errWithCtx)
+		assert.ErrorIs(t, errWithCtx, err)
+		assert.ErrorIs(t, errWithCtx, errWithCtx)
 	})
 	t.Run("As", func(t *testing.T) {
 		err := &testErrType{msg: "test err"}
@@ -115,9 +115,9 @@ func TestWrap(t *testing.T) {
 		err := serrors.New("simple err")
 		msg := serrors.New("msg err")
 		wrappedErr := serrors.Wrap(msg, err, "someCtx", "someValue")
-		xtest.AssertErrorsIs(t, wrappedErr, err)
-		xtest.AssertErrorsIs(t, wrappedErr, msg)
-		xtest.AssertErrorsIs(t, wrappedErr, wrappedErr)
+		assert.ErrorIs(t, wrappedErr, err)
+		assert.ErrorIs(t, wrappedErr, msg)
+		assert.ErrorIs(t, wrappedErr, wrappedErr)
 	})
 	t.Run("As", func(t *testing.T) {
 		err := &testErrType{msg: "test err"}
@@ -135,8 +135,8 @@ func TestWrapStr(t *testing.T) {
 		err := serrors.New("simple err")
 		msg := "msg"
 		wrappedErr := serrors.WrapStr(msg, err, "someCtx", "someValue")
-		xtest.AssertErrorsIs(t, wrappedErr, err)
-		xtest.AssertErrorsIs(t, wrappedErr, wrappedErr)
+		assert.ErrorIs(t, wrappedErr, err)
+		assert.ErrorIs(t, wrappedErr, wrappedErr)
 	})
 	t.Run("As", func(t *testing.T) {
 		err := &testErrType{msg: "test err"}
@@ -153,14 +153,14 @@ func TestNew(t *testing.T) {
 	t.Run("Is", func(t *testing.T) {
 		err1 := serrors.New("err msg")
 		err2 := serrors.New("err msg")
-		xtest.AssertErrorsIs(t, err1, err1)
-		xtest.AssertErrorsIs(t, err2, err2)
+		assert.ErrorIs(t, err1, err1)
+		assert.ErrorIs(t, err2, err2)
 		assert.False(t, errors.Is(err1, err2))
 		assert.False(t, errors.Is(err2, err1))
 		err1 = serrors.New("err msg", "someCtx", "value")
 		err2 = serrors.New("err msg", "someCtx", "value")
-		xtest.AssertErrorsIs(t, err1, err1)
-		xtest.AssertErrorsIs(t, err2, err2)
+		assert.ErrorIs(t, err1, err1)
+		assert.ErrorIs(t, err2, err2)
 		assert.False(t, errors.Is(err1, err2))
 		assert.False(t, errors.Is(err2, err1))
 	})
@@ -268,6 +268,36 @@ func TestList(t *testing.T) {
 	errors = serrors.List{serrors.New("err1"), serrors.New("err2")}
 	combinedErr := errors.ToError()
 	assert.NotNil(t, combinedErr)
+}
+
+func TestJoinNil(t *testing.T) {
+	assert.Nil(t, serrors.Join())
+	assert.Nil(t, serrors.Join(nil))
+	assert.Nil(t, serrors.Join(nil, nil))
+}
+
+func TestJoin(t *testing.T) {
+	err1 := serrors.New("err1")
+	err2 := serrors.New("err2")
+	for _, test := range []struct {
+		errs []error
+		want serrors.List
+	}{{
+		errs: []error{err1},
+		want: serrors.List{err1},
+	}, {
+		errs: []error{err1},
+		want: serrors.List{err1},
+	}, {
+		errs: []error{err1, err2},
+		want: serrors.List{err1, err2},
+	}, {
+		errs: []error{err1, nil, err2},
+		want: serrors.List{err1, err2},
+	}} {
+		got := serrors.Join(test.errs...)
+		assert.Equal(t, got, test.want)
+	}
 }
 
 func TestAtMostOneStacktrace(t *testing.T) {

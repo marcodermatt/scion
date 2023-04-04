@@ -22,7 +22,7 @@ Workflow to modify dependencies
 To add/remove or update dependencies:
 
 1. Modify ``go.mod``, manually or using e.g. ``go get``.
-2. ``go mod tidy``
+2. ``make go-mod-tidy``
 3. ``make go_deps.bzl``
 4. ``make licenses``, to update the licenses with the new dependency
 5. ``make gazelle``, to update the build files that depend on the newly added dependency
@@ -41,9 +41,14 @@ To add/remove or update dependencies:
 Python
 ^^^^^^
 
-The python dependencies are listed in a ``requirements.txt`` file.
-This file is generated from the adjoining ``requirements.in`` by  `pip-compile
-<https://pypi.org/project/pip-tools/>`_. Only direct dependencies have to be
-listed, the transitive dependencies are inferred by ``pip-compile``.
+The python dependencies are listed in ``requirements.txt`` files. They are generated with bazel from the
+adjoining ``requirements.in`` files.
+
+The python dependencies are listed in `tools/env/pip3/requirements.txt
+<https://github.com/scionproto/scion/blob/master/tools/env/pip3/requirements.txt>`__
+and `tools/lint/python/requirements.txt
+<https://github.com/scionproto/scion/blob/master/tools/lint/python/requirements.txt>`__.
+These files is generated from the adjoining ``requirements.in`` by bazel. Only
+direct dependencies have to be listed, the transitive dependencies are inferred.
 The exact command to update ``requirements.txt`` is described in a comment in
 the header of the file.

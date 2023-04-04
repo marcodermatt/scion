@@ -44,41 +44,41 @@ var optY = slayers.TLVOption{
 // A Hop-by-Hop or EndToEnd Options header containing both options X and Y would have one of the two
 // following formats, depending on which option appeared first:
 //
-//   Option X | Option Y
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   |  Next Header  | Hdr Ext Len=6 | Option Type=X |Opt Data Len=12|
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   |                         4-octet field                         |
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   |                                                               |
-//   +                         8-octet field                         +
-//   |                                                               |
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   | PadN Option=1 |Opt Data Len=1 |       0       | Option Type=Y |
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   |Opt Data Len=7 | 1-octet field |         2-octet field         |
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   |                         4-octet field                         |
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	Option X | Option Y
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	|  Next Header  | Hdr Ext Len=6 | Option Type=X |Opt Data Len=12|
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	|                         4-octet field                         |
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	|                                                               |
+//	+                         8-octet field                         +
+//	|                                                               |
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	| PadN Option=1 |Opt Data Len=1 |       0       | Option Type=Y |
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	|Opt Data Len=7 | 1-octet field |         2-octet field         |
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	|                         4-octet field                         |
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //
-//   Option Y | Option X
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   |  Next Header  | Hdr Ext Len=7 | Pad1 Option=0 | Option Type=Y |
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   |Opt Data Len=7 | 1-octet field |         2-octet field         |
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   |                         4-octet field                         |
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   | PadN Option=1 |Opt Data Len=4 |       0       |       0       |
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   |       0       |       0       | Option Type=X |Opt Data Len=12|
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   |                         4-octet field                         |
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//   |                                                               |
-//   +                         8-octet field                         +
-//   |                                                               |
-//   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	Option Y | Option X
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	|  Next Header  | Hdr Ext Len=7 | Pad1 Option=0 | Option Type=Y |
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	|Opt Data Len=7 | 1-octet field |         2-octet field         |
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	|                         4-octet field                         |
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	| PadN Option=1 |Opt Data Len=4 |       0       |       0       |
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	|       0       |       0       | Option Type=X |Opt Data Len=12|
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	|                         4-octet field                         |
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	|                                                               |
+//	+                         8-octet field                         +
+//	|                                                               |
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 var rawTLVOptionsXY = []byte{0x1e, 0x0c, 0xaa, 0xaa, 0xaa, 0xaa, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb, 0xbb,
 	0xbb, 0xbb, 0x01, 0x01, 0x00, 0x3e, 0x07, 0x11, 0x22, 0x22, 0x44, 0x44, 0x44, 0x44}
 var rawTLVOptionsYX = []byte{0x00, 0x3e, 0x07, 0x11, 0x22, 0x22, 0x44, 0x44, 0x44, 0x44, 0x01, 0x04,
@@ -221,6 +221,18 @@ func TestHopByHopExtnDecode(t *testing.T) {
 	assert.Equal(t, optY.OptData, opt.OptData, "OptData")
 }
 
+func TestHopByHopExtnDecodeReuse(t *testing.T) {
+	raw := append([]byte{0x11, 0x06}, rawTLVOptionsXY...)
+	hbh := slayers.HopByHopExtn{}
+	// First call to DecodeFromBytes
+	assert.NoError(t, hbh.DecodeFromBytes(raw, gopacket.NilDecodeFeedback), "DecodeFromBytes")
+	assert.Equal(t, len(hbh.Options), 3, "len(hbh.Options)")
+	// Second call to decode from bytes; should not preserve the parsed Options
+	// from the first call.
+	assert.NoError(t, hbh.DecodeFromBytes(raw, gopacket.NilDecodeFeedback), "DecodeFromBytes")
+	assert.Equal(t, len(hbh.Options), 3, "len(hbh.Options)")
+}
+
 func TestHopByHopExtnSerializeDecode(t *testing.T) {
 	hbh := slayers.HopByHopExtn{}
 	hbh.NextHdr = slayers.L4UDP
@@ -273,19 +285,19 @@ func TestEndToEndExtnDecode(t *testing.T) {
 	assert.Equal(t, uint8(0), opt.OptDataLen, "OptLen")
 	assert.Equal(t, 1, opt.ActualLength, "ActualLen")
 	assert.Equal(t, []byte(nil), opt.OptData, "OptData")
-	// First option: Option Y
+	// Second option: Option Y
 	opt = e2e.Options[1]
 	assert.Equal(t, slayers.OptionType(0x3e), opt.OptType, "OptType")
 	assert.Equal(t, uint8(7), opt.OptDataLen, "OptLen")
 	assert.Equal(t, 9, opt.ActualLength, "ActualLen")
 	assert.Equal(t, optY.OptData, opt.OptData, "OptData")
-	// Second option: Pad4
+	// Third option: Pad4
 	opt = e2e.Options[2]
 	assert.Equal(t, slayers.OptTypePadN, opt.OptType, "OptType")
 	assert.Equal(t, uint8(4), opt.OptDataLen, "OptLen")
 	assert.Equal(t, 6, opt.ActualLength, "ActualLen")
 	assert.Equal(t, []byte{0x00, 0x00, 0x00, 0x00}, opt.OptData, "OptData")
-	// Third option: Option X
+	// Fourth option: Option X
 	opt = e2e.Options[3]
 	assert.Equal(t, slayers.OptionType(0x1e), opt.OptType, "OptType")
 	assert.Equal(t, uint8(12), opt.OptDataLen, "OptLen")
@@ -296,6 +308,18 @@ func TestEndToEndExtnDecode(t *testing.T) {
 	opts := gopacket.SerializeOptions{FixLengths: false}
 	assert.NoError(t, e2e.SerializeTo(b, opts), "SerializeTo")
 	assert.Equal(t, raw, b.Bytes(), "Raw Buffer")
+}
+
+func TestEndToEndExtnDecodeReuse(t *testing.T) {
+	raw := append([]byte{0x11, 0x07}, rawTLVOptionsYX...)
+	e2e := slayers.EndToEndExtn{}
+	// First call to DecodeFromBytes
+	assert.NoError(t, e2e.DecodeFromBytes(raw, gopacket.NilDecodeFeedback), "DecodeFromBytes")
+	assert.Equal(t, len(e2e.Options), 4, "len(e2e.Options)")
+	// Second call to decode from bytes; should not preserve the parsed Options
+	// from the first call.
+	assert.NoError(t, e2e.DecodeFromBytes(raw, gopacket.NilDecodeFeedback), "DecodeFromBytes")
+	assert.Equal(t, len(e2e.Options), 4, "len(e2e.Options)")
 }
 
 func TestEndToEndExtnSerializeDecode(t *testing.T) {
@@ -537,7 +561,8 @@ func prepRawPacketWithExtn(t *testing.T, extns ...slayers.L4ProtocolType) []byte
 		b[1] = 6 // ExtLen, see rawTLVOptionsXY
 		copy(b[2:], rawTLVOptionsXY)
 	}
-	buf.AppendBytes(9) // dummy UDP with 1 byte payload
+	_, err := buf.AppendBytes(9) // dummy UDP with 1 byte payload
+	require.NoError(t, err)
 
 	return buf.Bytes()
 }

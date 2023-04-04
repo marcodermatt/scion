@@ -94,7 +94,8 @@ type Application struct {
 // function (if one exists).
 //
 // Run uses the following globals:
-//   os.Args
+//
+//	os.Args
 //
 // Run will exit the application if it encounters a fatal error.
 func (a *Application) Run() {
@@ -120,7 +121,9 @@ func (a *Application) run() error {
 	// The configuration file location is specified through command-line flags.
 	// Once the comand-line flags are parsed, we register the location of the
 	// config file with the viper config.
-	a.config.BindPFlag(cfgConfigFile, cmd.Flags().Lookup(cfgConfigFile))
+	if err := a.config.BindPFlag(cfgConfigFile, cmd.Flags().Lookup(cfgConfigFile)); err != nil {
+		return err
+	}
 
 	// All servers accept SIGTERM to perform clean shutdown (for example, this
 	// is used behind the scenes by docker stop to cleanly shut down a container).

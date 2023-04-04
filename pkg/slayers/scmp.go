@@ -26,34 +26,33 @@ import (
 // MaxSCMPPacketLen the maximum length a SCION packet including SCMP quote can
 // have. This length includes the SCION, and SCMP header of the packet.
 //
-//  +-------------------------+
-//  |        Underlay         |
-//  +-------------------------+
-//  |          SCION          |  \
-//  |          SCMP           |   \
-//  +-------------------------+    \_ MaxSCMPPacketLen
-//  |          Quote:         |    /
-//  |        SCION Orig       |   /
-//  |         L4 Orig         |  /
-//  +-------------------------+
+//	+-------------------------+
+//	|        Underlay         |
+//	+-------------------------+
+//	|          SCION          |  \
+//	|          SCMP           |   \
+//	+-------------------------+    \_ MaxSCMPPacketLen
+//	|          Quote:         |    /
+//	|        SCION Orig       |   /
+//	|         L4 Orig         |  /
+//	+-------------------------+
 const MaxSCMPPacketLen = 1232
 
 // SCMP is the SCMP header on top of SCION header.
 //
-//   0                   1                   2                   3
-//   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |     Type      |     Code      |           Checksum            |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |                            InfoBlock                          |
-//  +                                                               +
-//  |                         (variable length)                     |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |                            DataBlock                          |
-//  +                                                               +
-//  |                         (variable length)                     |
-//  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//
+//	 0                   1                   2                   3
+//	 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	|     Type      |     Code      |           Checksum            |
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	|                            InfoBlock                          |
+//	+                                                               +
+//	|                         (variable length)                     |
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//	|                            DataBlock                          |
+//	+                                                               +
+//	|                         (variable length)                     |
+//	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 type SCMP struct {
 	BaseLayer
 	TypeCode SCMPTypeCode
@@ -138,16 +137,8 @@ func (s *SCMP) String() string {
 
 // SetNetworkLayerForChecksum tells this layer which network layer is wrapping it.
 // This is needed for computing the checksum when serializing,
-func (s *SCMP) SetNetworkLayerForChecksum(l gopacket.NetworkLayer) error {
-	if l == nil {
-		return serrors.New("cannot use nil layer type for scmp checksum network layer")
-	}
-	if l.LayerType() != LayerTypeSCION {
-		return serrors.New("cannot use layer type for scmp checksum network layer",
-			"type", l.LayerType())
-	}
-	s.scn = l.(*SCION)
-	return nil
+func (s *SCMP) SetNetworkLayerForChecksum(scn *SCION) {
+	s.scn = scn
 }
 
 func decodeSCMP(data []byte, pb gopacket.PacketBuilder) error {

@@ -1,3 +1,5 @@
+:orphan:
+
 .. _scion-pki_certificate_fingerprint:
 
 scion-pki certificate fingerprint
@@ -37,11 +39,11 @@ Options
 
 ::
 
-      --format string   Specify the format of the fingerprint to an string of hex or emoji characters (default "hex")
+      --format string   The format of the fingerprint (hex|base64|base64-url|base64-raw|base64-url-raw|emoji). (default "hex")
   -h, --help            help for fingerprint
 
 SEE ALSO
 ~~~~~~~~
 
-* `scion-pki certificate <scion-pki_certificate.html>`_ 	 - Manage certificates for the SCION control plane PKI.
+* :ref:`scion-pki certificate <scion-pki_certificate>` 	 - Manage certificates for the SCION control plane PKI.
 

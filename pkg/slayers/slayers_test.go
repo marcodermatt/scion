@@ -24,7 +24,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/scionproto/scion/pkg/private/util"
 	"github.com/scionproto/scion/pkg/private/xtest"
 	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/slayers/path/empty"
@@ -195,9 +194,7 @@ func TestPaths(t *testing.T) {
 					NextHdr:      slayers.L4UDP,
 					PathType:     empty.PathType,
 					DstAddrType:  slayers.T16Ip,
-					DstAddrLen:   slayers.AddrLen16,
 					SrcAddrType:  slayers.T4Ip,
-					SrcAddrLen:   slayers.AddrLen4,
 					DstIA:        xtest.MustParseIA("1-ff00:0:111"),
 					SrcIA:        xtest.MustParseIA("1-ff00:0:111"),
 					Path:         empty.Path{},
@@ -210,7 +207,7 @@ func TestPaths(t *testing.T) {
 					Length:   1032,
 					Checksum: 0xb8e4,
 				}
-				require.NoError(t, u.SetNetworkLayerForChecksum(s))
+				u.SetNetworkLayerForChecksum(s)
 				return []gopacket.SerializableLayer{s, u, gopacket.Payload(mkPayload(1024))}
 			},
 		},
@@ -226,9 +223,7 @@ func TestPaths(t *testing.T) {
 					NextHdr:      slayers.L4UDP,
 					PathType:     scion.PathType,
 					DstAddrType:  slayers.T16Ip,
-					DstAddrLen:   slayers.AddrLen16,
 					SrcAddrType:  slayers.T4Ip,
-					SrcAddrLen:   slayers.AddrLen4,
 					DstIA:        xtest.MustParseIA("1-ff00:0:111"),
 					SrcIA:        xtest.MustParseIA("2-ff00:0:222"),
 					Path:         &scion.Raw{},
@@ -242,7 +237,7 @@ func TestPaths(t *testing.T) {
 					Length:   1032,
 					Checksum: 0xb7d2,
 				}
-				require.NoError(t, u.SetNetworkLayerForChecksum(s))
+				u.SetNetworkLayerForChecksum(s)
 				return []gopacket.SerializableLayer{s, u, gopacket.Payload(mkPayload(1024))}
 			},
 		},
@@ -345,7 +340,7 @@ func TestSerializeSCIONUPDExtn(t *testing.T) {
 	u := &slayers.UDP{}
 	u.SrcPort = 1280
 	u.DstPort = 80
-	require.NoError(t, u.SetNetworkLayerForChecksum(s))
+	u.SetNetworkLayerForChecksum(s)
 	hbh := &slayers.HopByHopExtn{}
 	hbh.NextHdr = slayers.End2EndClass
 	hbh.Options = []*slayers.HopByHopOption{
@@ -375,7 +370,10 @@ func TestSerializeSCIONUPDExtn(t *testing.T) {
 	// checksum is set should result in 0.
 	udpBuf := gopacket.NewSerializeBuffer()
 	assert.NoError(t, gopacket.SerializeLayers(udpBuf, opts, u, pld))
-	csum := util.Checksum(pseudoHeader(t, s, len(udpBuf.Bytes()), 17), udpBuf.Bytes())
+	csum := referenceChecksum(append(
+		pseudoHeader(t, s, len(udpBuf.Bytes()), 17),
+		udpBuf.Bytes()...,
+	))
 	assert.Zero(t, csum)
 }
 

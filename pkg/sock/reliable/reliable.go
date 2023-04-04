@@ -18,31 +18,34 @@
 // Accept on the received Listener.
 //
 // Clients should either call:
-//   Dial, if they do not want to register a receiving address with the remote end
-//     (e.g., when connecting to SCIOND);
-//   Register, to register the address argument with the remote end
-//     (e.g., when connecting to a dispatcher).
+//
+//	Dial, if they do not want to register a receiving address with the remote end
+//	  (e.g., when connecting to SCIOND);
+//	Register, to register the address argument with the remote end
+//	  (e.g., when connecting to a dispatcher).
 //
 // ReliableSocket common header message format:
-//   8-bytes: COOKIE (0xde00ad01be02ef03)
-//   1-byte: ADDR TYPE (NONE=0, IPv4=1, IPv6=2, SVC=3)
-//   4-byte: data length
-//   var-byte: Destination address (0 bytes for SCIOND API)
-//     +2-byte: If destination address not NONE, destination port
-//   var-byte: Payload
+//
+//	8-bytes: COOKIE (0xde00ad01be02ef03)
+//	1-byte: ADDR TYPE (NONE=0, IPv4=1, IPv6=2, SVC=3)
+//	4-byte: data length
+//	var-byte: Destination address (0 bytes for SCIOND API)
+//	  +2-byte: If destination address not NONE, destination port
+//	var-byte: Payload
 //
 // ReliableSocket registration message format:
-//  13-bytes: [Common header with address type NONE]
-//   1-byte: Command (bit mask with 0x04=Bind address, 0x02=SCMP enable, 0x01 always set)
-//   1-byte: L4 Proto (IANA number)
-//   8-bytes: ISD-AS
-//   2-bytes: L4 port
-//   1-byte: Address type
-//   var-byte: Address
-//  +2-bytes: L4 bind port  \
-//  +1-byte: Address type    ) (optional bind address)
-//  +var-byte: Bind Address /
-//  +2-bytes: SVC (optional SVC type)
+//
+//	13-bytes: [Common header with address type NONE]
+//	 1-byte: Command (bit mask with 0x04=Bind address, 0x02=SCMP enable, 0x01 always set)
+//	 1-byte: L4 Proto (IANA number)
+//	 8-bytes: ISD-AS
+//	 2-bytes: L4 port
+//	 1-byte: Address type
+//	 var-byte: Address
+//	+2-bytes: L4 bind port  \
+//	+1-byte: Address type    ) (optional bind address)
+//	+var-byte: Bind Address /
+//	+2-bytes: SVC (optional SVC type)
 //
 // To communicate with SCIOND, clients must first connect to SCIOND's UNIX socket. Messages
 // for SCIOND must set the ADDR TYPE field in the common header to NONE. The payload contains
@@ -58,7 +61,6 @@
 // with the address type, the address and the layer 4 port of the remote host.
 //
 // Reads and writes to the connection are thread safe.
-//
 package reliable
 
 import (
@@ -191,7 +193,10 @@ func register(ctx context.Context, dispatcher string, ia addr.IA, public *net.UD
 
 		// If a timeout was specified, make reads and writes return if deadline exceeded.
 		if deadline, ok := ctx.Deadline(); ok {
-			conn.SetDeadline(deadline)
+			if err := conn.SetDeadline(deadline); err != nil {
+				resultChannel <- RegistrationReturn{err: err}
+				return
+			}
 		}
 
 		port, err := registrationExchange(conn, reg)
@@ -214,8 +219,8 @@ func register(ctx context.Context, dispatcher string, ia addr.IA, public *net.UD
 				"received", registrationReturn.port)
 		}
 		// Disable deadline to not affect future I/O
-		conn.SetDeadline(time.Time{})
-		return conn, registrationReturn.port, nil
+		err = conn.SetDeadline(time.Time{})
+		return conn, registrationReturn.port, err
 	case <-ctx.Done():
 		// Unblock registration worker I/O
 		conn.Close()
@@ -274,7 +279,9 @@ func (conn *Conn) readFrom(buf []byte) (int, net.Addr, error) {
 		return 0, nil, err
 	}
 	var p UnderlayPacket
-	p.DecodeFromBytes(conn.readBuffer[:n])
+	if err := p.DecodeFromBytes(conn.readBuffer[:n]); err != nil {
+		return 0, nil, err
+	}
 	var underlayAddr *net.UDPAddr
 	if p.Address != nil {
 		underlayAddr = &net.UDPAddr{

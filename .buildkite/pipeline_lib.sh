@@ -5,7 +5,6 @@ gen_bazel_test_steps() {
     parallel="${PARALLELISM:-1}"
     echo "  - group: \"Integration Tests :bazel:\""
     echo "    key: integration-tests"
-    echo "    if: build.message !~ /\[doc\]/"
     echo "    steps:"
 
     targets="$(bazel query "attr(tags, integration, tests(//...)) except attr(tags, \"lint|manual\", tests(//...))" 2>/dev/null)"
@@ -34,7 +33,7 @@ gen_bazel_test_steps() {
           s#:test##
           s#:go_default_test##
           s#^acceptance/#AT: #
-          s#^demo/\(.*\):.*#Demo: \1#
+          s#^demo/\([^:]*\).*#Demo: \1#
           s#\(.*\):go_integration_test$#IT: \1#
           s#tools/cryptoplayground:\(.*\)_test#AT: \1#
         ')
