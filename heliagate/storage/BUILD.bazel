@@ -1,0 +1,13 @@
+load("//tools/lint:go.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["storage.go"],
+    importpath = "github.com/scionproto/scion/heliagate/storage",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/addr:go_default_library",
+        "//pkg/private/serrors:go_default_library",
+        "//pkg/slayers/path/scion:go_default_library",
+    ],
+)
