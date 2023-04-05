@@ -39,6 +39,7 @@ CS_CONFIG_NAME = 'cs.toml'
 PS_CONFIG_NAME = 'ps.toml'
 CO_CONFIG_NAME = 'co.toml'
 SD_CONFIG_NAME = 'sd.toml'
+HG_CONFIG_NAME = 'hg.toml'
 DISP_CONFIG_NAME = 'disp.toml'
 SIG_CONFIG_NAME = 'sig.toml'
 

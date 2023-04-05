@@ -319,6 +319,8 @@ func topoServiceTypeToSVCAddr(st topology.ServiceType) addr.HostSVC {
 	switch st {
 	case topology.Control:
 		return addr.SvcCS
+	case topology.HeliaGateway:
+		return addr.SvcHeliaGate
 	default:
 		return addr.SvcNone
 	}

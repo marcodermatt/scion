@@ -69,6 +69,7 @@ type (
 
 		CS                        IDAddrMap
 		DS                        IDAddrMap
+		HELIAGATE                 map[string]HeliagateInfo
 		HiddenSegmentLookup       IDAddrMap
 		HiddenSegmentRegistration IDAddrMap
 		SIG                       map[string]GatewayInfo
@@ -80,6 +81,12 @@ type (
 		DataAddr        *net.UDPAddr
 		ProbeAddr       *net.UDPAddr
 		AllowInterfaces []uint64
+	}
+
+	HeliagateInfo struct {
+		Name     string
+		Addr     *net.UDPAddr
+		Egresses []uint32
 	}
 
 	// BRInfo is a list of AS-wide unique interface IDs for a router. These IDs are also used
@@ -142,6 +149,7 @@ func NewRWTopology() *RWTopology {
 		BR:                        make(map[string]BRInfo),
 		CS:                        make(IDAddrMap),
 		DS:                        make(IDAddrMap),
+		HELIAGATE:                 make(map[string]HeliagateInfo),
 		HiddenSegmentLookup:       make(IDAddrMap),
 		HiddenSegmentRegistration: make(IDAddrMap),
 		SIG:                       make(map[string]GatewayInfo),
@@ -301,6 +309,10 @@ func (t *RWTopology) populateServices(raw *jsontopo.Topology) error {
 	if err != nil {
 		return serrors.WrapStr("unable to extract DS address", err)
 	}
+	t.HELIAGATE, err = heliagateMapFromRaw(raw.HeliaGateway)
+	if err != nil {
+		return serrors.WrapStr("unable to extract HELIAGATE address", err)
+	}
 	t.HiddenSegmentLookup, err = svcMapFromRaw(raw.HiddenSegmentLookup)
 	if err != nil {
 		return serrors.WrapStr("unable to extract hidden segment lookup address", err)
@@ -385,10 +397,26 @@ func (t *RWTopology) Copy() *RWTopology {
 
 		CS:                        t.CS.copy(),
 		DS:                        t.DS.copy(),
+		HELIAGATE:                 copyHeliagateMap(t.HELIAGATE),
 		SIG:                       copySIGMap(t.SIG),
 		HiddenSegmentLookup:       t.HiddenSegmentLookup.copy(),
 		HiddenSegmentRegistration: t.HiddenSegmentRegistration.copy(),
 	}
+}
+
+func copyHeliagateMap(m map[string]HeliagateInfo) map[string]HeliagateInfo {
+	if m == nil {
+		return nil
+	}
+	ret := make(map[string]HeliagateInfo)
+	for k, v := range m {
+		ret[k] = HeliagateInfo{
+			Name:     v.Name,
+			Addr:     copyUDPAddr(v.Addr),
+			Egresses: append([]uint32(nil), v.Egresses...),
+		}
+	}
+	return ret
 }
 
 func copySIGMap(m map[string]GatewayInfo) map[string]GatewayInfo {
@@ -463,6 +491,25 @@ func (svc *svcInfo) getAllTopoAddrs() []TopoAddr {
 		topoAddrs = append(topoAddrs, topoAddr)
 	}
 	return topoAddrs
+}
+
+func heliagateMapFromRaw(m map[string]*jsontopo.HeliagateInfo) (map[string]HeliagateInfo, error) {
+	heliagateMap := make(map[string]HeliagateInfo)
+	for name, svc := range m {
+		gatewayAddr, err := rawAddrToUDPAddr(svc.Addr)
+		if err != nil {
+			return nil, serrors.WrapStr(
+				"could not parse address", err,
+				"address", svc.Addr, "process_name", name,
+			)
+		}
+		heliagateMap[name] = HeliagateInfo{
+			Name:     name,
+			Addr:     gatewayAddr,
+			Egresses: svc.Egresses,
+		}
+	}
+	return heliagateMap, nil
 }
 
 func svcMapFromRaw(ras map[string]*jsontopo.ServerInfo) (IDAddrMap, error) {

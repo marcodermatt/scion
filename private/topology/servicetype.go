@@ -25,6 +25,7 @@ const (
 	Router
 	Control
 	Discovery
+	HeliaGateway
 	Gateway
 	HiddenSegmentLookup
 	HiddenSegmentRegistration
@@ -38,6 +39,8 @@ func (t ServiceType) String() string {
 		return "control"
 	case Discovery:
 		return "discovery"
+	case HeliaGateway:
+		return "helia_gateway"
 	case Gateway:
 		return "gateway"
 	case HiddenSegmentLookup:
@@ -58,6 +61,8 @@ func ServiceTypeFromString(s string) ServiceType {
 		return Control
 	case "discovery":
 		return Discovery
+	case "helia_gateway":
+		return HeliaGateway
 	case "gateway":
 		return Gateway
 	case "hiddensegmentlookup":

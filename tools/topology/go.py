@@ -267,6 +267,34 @@ class GoGenerator(object):
         }
         return raw_entry
 
+    def generate_heliagate(self):
+        for topo_id, topo in self.args.topo_dicts.items():
+            for elem_id, elem in topo.get("helia_gateway", {}).items():
+                base = topo_id.base_dir(self.args.output_dir)
+                heliagate_conf = self._build_heliagate_conf(topo_id, topo["isd_as"], base, elem_id)
+                write_file(os.path.join(base, "%s.toml" % elem_id), toml.dumps(heliagate_conf))
+
+    def _build_heliagate_conf(self, topo_id, ia, base, name):
+        config_dir = '/share/conf' if self.args.docker else base
+        sd_ip = sciond_ip(self.args.docker, topo_id, self.args.networks)
+        raw_entry = {
+            'general': {
+                'id': name,
+                'config_dir': config_dir,
+                'reconnect_to_dispatcher': True,
+            },
+            'log': self._log_entry(name),
+            'tracing': self._tracing_entry(),
+            'heliagate': {
+                'NumWorkers': 2,
+                'MaxQueueSizePerWorker': 256,
+            },
+            'sciond_connection': {
+                'address': socket_address_str(sd_ip, SD_API_PORT),
+            }
+        }
+        return raw_entry
+
     def generate_disp(self):
         if self.args.docker:
             self._gen_disp_docker()
