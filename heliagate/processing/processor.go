@@ -461,7 +461,7 @@ func (p *Processor) workerCreateReservation() error {
 			reservation.Authenticator = resp.AuthEnc()
 			p.storage.StoreReservation(&reservation)
 			log.Debug(
-				"Heliagate:  Processed reservation response", "targetAS", resp.ReservAS(),
+				"Heliagate: Processed reservation response", "targetAS", resp.ReservAS(),
 				"ingressIF", resp.IngressIF(), "egressIF", resp.EgressIF(),
 				"bandwidth", resp.Bandwidth(), "tsExp", time.UnixMilli(int64(resp.TsExp())),
 				"authenticator", resp.AuthEnc(),

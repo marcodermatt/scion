@@ -581,7 +581,9 @@ func (p *Packet) Serialize() error {
 	}
 
 	packetLayers = append(packetLayers, &scionLayer)
-	packetLayers = append(packetLayers, p.Payload.toLayers(&scionLayer)...)
+
+	// Payload layers
+	payloadLayers := p.Payload.toLayers(&scionLayer)
 
 	// Add HopByHopExtension
 	if p.HopByHopOption != nil {
@@ -592,6 +594,7 @@ func (p *Packet) Serialize() error {
 
 		packetLayers = append(packetLayers, hbh)
 	}
+	packetLayers = append(packetLayers, payloadLayers...)
 
 	buffer := gopacket.NewSerializeBuffer()
 	options := gopacket.SerializeOptions{
