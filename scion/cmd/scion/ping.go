@@ -27,6 +27,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
 
+	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/daemon"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
@@ -87,6 +88,7 @@ func newPing(pather CommandPather) *cobra.Command {
 		tracer      string
 		epic        bool
 		format      string
+		helia       bool
 	}
 
 	var cmd = &cobra.Command{
@@ -158,6 +160,26 @@ On other errors, ping will exit with code 2.
 			}
 			span.SetTag("src.isd_as", info.IA)
 
+			// If the helia flag is set, point NextHop to the Helia gateway
+			var hgAddr *net.UDPAddr
+			if flags.helia {
+				// Requesting heliagate address from SD
+				svcEntries, err := sd.SVCInfo(ctx, []addr.HostSVC{})
+				if err != nil {
+					return serrors.WrapStr("resolving SVC address", err)
+				}
+				log.Debug("Requesting Services", "svcEntries", svcEntries)
+				hgUri, ok := svcEntries[addr.SvcHeliaGate]
+				if !ok {
+					return serrors.New("No heliagate address found")
+				}
+				hgAddr, err = net.ResolveUDPAddr("udp", hgUri[0])
+				if err != nil {
+					return serrors.WrapStr("parsing heliagate address", err)
+				}
+				log.Debug("Using Helia", "heliagate", hgAddr)
+			}
+
 			opts := []path.Option{
 				path.WithInteractive(flags.interactive),
 				path.WithRefresh(flags.refresh),
@@ -194,7 +216,15 @@ On other errors, ping will exit with code 2.
 			} else {
 				remote.Path = path.Dataplane()
 			}
-			remote.NextHop = path.UnderlayNextHop()
+
+			// If the helia flag is set, point NextHop to the Helia gateway
+			if flags.helia {
+				oldHop := path.UnderlayNextHop()
+				remote.NextHop = hgAddr
+				fmt.Printf("Replacing next hop: %s -> %s\n", oldHop, hgAddr)
+			} else {
+				remote.NextHop = path.UnderlayNextHop()
+			}
 
 			// Resolve local IP based on underlay next hop
 			if localIP == nil {
@@ -363,6 +393,7 @@ SCMP echo header and payload are equal to the MTU of the path. This flag overrid
 	cmd.Flags().BoolVar(&flags.epic, "epic", false, "Enable EPIC for path probing.")
 	cmd.Flags().StringVar(&flags.format, "format", "human",
 		"Specify the output format (human|json|yaml)")
+	cmd.Flags().BoolVar(&flags.helia, "helia", false, "Enable Helia reservation traffic.")
 	return cmd
 }
 

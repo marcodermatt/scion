@@ -18,6 +18,24 @@ isolation, and explicit trust information for end-to-end communication. To find
 out more about the project, please visit our [documentation
 site](https://docs.scion.org/en/latest/).
 
+## Helia implementation fork
+
+The included topology configuration automatically starts a Helia gateway for each
+AS. To use the gateway, query its address from the local scion daemon and change
+the traffics `NextHop` to point at the gateway. See example configuration in
+the ping command [ping.go](scion/cmd/scion/ping.go).
+
+To directly see an example, watch the log files
+(e.g. `grep -h Helia logs/hg1-ff00_0_110-1.log logs/br* | sort`) and use ping with
+the `--helia` flag.
+
+```bash
+./bin/scion ping --sciond "[fd00:f00d:cafe::7f00:16]:30255" --helia -i --log.level debug -c 3 1-ff00:0:112,127.0.0.61
+```
+
+This command sends 3 SCMP ping packets over the selected path, the first one initiates
+the reservation setup, all subsequent ones are sent with Helia traffic options.
+
 ## Connecting to the SCION Test Network
 
 Join [SCIONLab](https://www.scionlab.org) if you're interested in playing with
