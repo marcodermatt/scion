@@ -132,10 +132,10 @@ type PacketReservTrafficParams struct {
 	CurrRF          uint8
 	MaxBackwardLen  uint16
 	TsPkt           uint64
-	ReservHopFields []ReservationHopField
+	ReservHopFields []ReservationField
 }
 
-type ReservationHopField struct {
+type ReservationField struct {
 	ASHash uint8
 	RVF    [3]byte
 }
@@ -505,8 +505,8 @@ func (o PacketReservTrafficOption) MaxBackwardLen() uint16 {
 }
 
 // TsPkt returns the packet timestamp in the option
-func (o PacketReservTrafficOption) TsPkt() uint16 {
-	return binary.BigEndian.Uint16(o.OptData[2:4])
+func (o PacketReservTrafficOption) TsPkt() uint64 {
+	return binary.BigEndian.Uint64(o.OptData[4:12])
 }
 
 // NumRF returns the number of reservation fields in the option
@@ -515,12 +515,12 @@ func (o PacketReservTrafficOption) NumRF() uint8 {
 }
 
 // GetRF returns the reservation field at index i in the option
-func (o PacketReservTrafficOption) GetRF(i uint8) (ReservationHopField, error) {
+func (o PacketReservTrafficOption) GetRF(i uint8) (ReservationField, error) {
 	if i >= o.NumRF() {
-		return ReservationHopField{}, serrors.New("Index out of range", "actual length", o.NumRF())
+		return ReservationField{}, serrors.New("Index out of range", "actual length", o.NumRF())
 	}
 	offset := 12 + 4*i
-	rf := ReservationHopField{ASHash: o.OptData[offset]}
+	rf := ReservationField{ASHash: o.OptData[offset]}
 	copy(rf.RVF[:], o.OptData[offset+1:offset+4])
 	return rf, nil
 }

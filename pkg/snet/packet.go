@@ -346,7 +346,7 @@ type Packet struct {
 func (p *Packet) Decode() error {
 	var (
 		scionLayer slayers.SCION
-		hbhLayer   slayers.HopByHopExtnSkipper
+		hbhLayer   slayers.HopByHopExtn
 		e2eLayer   slayers.EndToEndExtnSkipper
 		udpLayer   slayers.UDP
 		scmpLayer  slayers.SCMP
@@ -395,6 +395,10 @@ func (p *Packet) Decode() error {
 		}
 	}
 	p.Path = rpath
+
+	if len(hbhLayer.Options) > 0 {
+		p.HopByHopOption = hbhLayer.Options[0]
+	}
 
 	switch l4 {
 	case slayers.LayerTypeSCIONUDP:
@@ -579,6 +583,16 @@ func (p *Packet) Serialize() error {
 	packetLayers = append(packetLayers, &scionLayer)
 	packetLayers = append(packetLayers, p.Payload.toLayers(&scionLayer)...)
 
+	// Add HopByHopExtension
+	if p.HopByHopOption != nil {
+		hbh := &slayers.HopByHopExtn{}
+		hbh.NextHdr = scionLayer.NextHdr
+		scionLayer.NextHdr = slayers.HopByHopClass
+		hbh.Options = []*slayers.HopByHopOption{p.HopByHopOption}
+
+		packetLayers = append(packetLayers, hbh)
+	}
+
 	buffer := gopacket.NewSerializeBuffer()
 	options := gopacket.SerializeOptions{
 		ComputeChecksums: true,
@@ -611,6 +625,8 @@ type PacketInfo struct {
 	Path DataplanePath
 	// Payload is the Payload of the message.
 	Payload Payload
+	//HopByHopOptions are the options of the HopByHopExtension
+	HopByHopOption *slayers.HopByHopOption
 }
 
 func netAddrToHostAddr(a net.Addr) (addr.HostAddr, error) {
