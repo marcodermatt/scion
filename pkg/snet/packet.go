@@ -344,7 +344,7 @@ type Packet struct {
 func (p *Packet) Decode() error {
 	var (
 		scionLayer slayers.SCION
-		hbhLayer   slayers.HopByHopExtnSkipper
+		hbhLayer   slayers.HopByHopExtn
 		e2eLayer   slayers.EndToEndExtnSkipper
 		udpLayer   slayers.UDP
 		scmpLayer  slayers.SCMP
@@ -557,7 +557,20 @@ func (p *Packet) Serialize() error {
 	}
 
 	packetLayers = append(packetLayers, &scionLayer)
-	packetLayers = append(packetLayers, p.Payload.toLayers(&scionLayer)...)
+
+	// Payload layers
+	payloadLayers := p.Payload.toLayers(&scionLayer)
+
+	// Add HopByHopExtension
+	if p.HopByHopOption != nil {
+		hbh := &slayers.HopByHopExtn{}
+		hbh.NextHdr = scionLayer.NextHdr
+		scionLayer.NextHdr = slayers.HopByHopClass
+		hbh.Options = []*slayers.HopByHopOption{p.HopByHopOption}
+
+		packetLayers = append(packetLayers, hbh)
+	}
+	packetLayers = append(packetLayers, payloadLayers...)
 
 	buffer := gopacket.NewSerializeBuffer()
 	options := gopacket.SerializeOptions{
@@ -591,4 +604,6 @@ type PacketInfo struct {
 	Path DataplanePath
 	// Payload is the Payload of the message.
 	Payload Payload
+	// HopByHopOption is an optional hbh extension option
+	HopByHopOption *slayers.HopByHopOption
 }
