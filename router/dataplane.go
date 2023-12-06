@@ -216,7 +216,7 @@ func (d *DataPlane) AddDRKeySecret(protocolID int32, sv control.SecretValue) err
 func (d *DataPlane) getDRKeySecret(protocolID int32, t time.Time) (*control.SecretValue, error) {
 	secrets := d.drKeySecrets[protocolID]
 	for _, sv := range secrets {
-		if !t.After(sv.EpochBegin) && sv.EpochEnd.After(t) {
+		if !sv.EpochBegin.After(t) && sv.EpochEnd.After(t) {
 			return sv, nil
 		}
 	}
@@ -536,6 +536,7 @@ func (d *DataPlane) AddNextHopBFD(ifID uint16, src, dst *net.UDPAddr, cfg contro
 func (d *DataPlane) UpdateFabridPolicies(policies map[uint8]uint32) error {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
+	log.Debug("Fabrid policy map has been updated")
 	// TODO(rohrerj): check for concurrency issues
 	// when an update happens during reading
 	d.fabridPolicyMap = policies
@@ -1047,11 +1048,11 @@ type processResult struct {
 
 func newPacketProcessor(d *DataPlane) *scionPacketProcessor {
 	p := &scionPacketProcessor{
-		d:      d,
-		buffer: gopacket.NewSerializeBuffer(),
-		mac:    d.macFactory(),
-		macInputBuffer: make([]byte, max(path.MACBufferSize,
-			max(libepic.MACBufferSize, fabrid.FabridMacInputSize))),
+		d:                 d,
+		buffer:            gopacket.NewSerializeBuffer(),
+		mac:               d.macFactory(),
+		macInputBuffer:    make([]byte, max(path.MACBufferSize, libepic.MACBufferSize)),
+		fabridInputBuffer: make([]byte, fabrid.FabridMacInputSize),
 	}
 	p.scionLayer.RecyclePaths()
 	return p
@@ -1083,26 +1084,26 @@ func (p *scionPacketProcessor) reset() error {
 
 var nullByte = [16]byte{}
 
-func (dp *DataPlane) deriveASToASKey(protocolID int32, t time.Time, dstAS addr.IA) ([16]byte, error) {
+func (dp *DataPlane) deriveASToASKey(protocolID int32, t time.Time, srcAS addr.IA) ([16]byte, error) {
 	d := specific.Deriver{}
 	secret, err := dp.getDRKeySecret(protocolID, t)
 	if err != nil {
 		return nullByte, err
 	}
-	asToAsKey, err := d.DeriveLevel1(dstAS, secret.Key)
+	asToAsKey, err := d.DeriveLevel1(srcAS, secret.Key)
 	if err != nil {
 		return nullByte, err
 	}
 	return asToAsKey, nil
 }
 
-func (dp *DataPlane) deriveASToHostKey(protocolID int32, t time.Time, dstAS addr.IA, dst string) ([16]byte, error) {
+func (dp *DataPlane) deriveASToHostKey(protocolID int32, t time.Time, srcAS addr.IA, src string) ([16]byte, error) {
 	d := specific.Deriver{}
-	asToAsKey, err := dp.deriveASToASKey(protocolID, t, dstAS)
+	asToAsKey, err := dp.deriveASToASKey(protocolID, t, srcAS)
 	if err != nil {
 		return nullByte, err
 	}
-	asToHostKey, err := d.DeriveASHost(dst, asToAsKey)
+	asToHostKey, err := d.DeriveASHost(src, asToAsKey)
 	if err != nil {
 		return nullByte, err
 	}
@@ -1112,22 +1113,22 @@ func (dp *DataPlane) deriveASToHostKey(protocolID int32, t time.Time, dstAS addr
 
 func (p *scionPacketProcessor) processFabrid() error {
 	meta := p.fabrid.HopfieldMetadata[0]
-	dst, err := p.scionLayer.DstAddr()
+	src, err := p.scionLayer.SrcAddr()
 	if err != nil {
 		return err
 	}
 	var key [16]byte
 	if p.fabrid.HopfieldMetadata[0].ASLevelKey {
 		key, err = p.d.deriveASToASKey(int32(drkey.FABRID), p.identifier.Timestamp,
-			p.scionLayer.DstIA)
+			p.scionLayer.SrcIA)
 	} else {
 		key, err = p.d.deriveASToHostKey(int32(drkey.FABRID), p.identifier.Timestamp,
-			p.scionLayer.DstIA, dst.String())
+			p.scionLayer.SrcIA, src.String())
 	}
 	if err != nil {
 		return err
 	}
-	policyID, err := fabrid.ComputePolicyID(&meta, p.identifier, key[:])
+	policyID, err := fabrid.ComputePolicyID(meta, p.identifier, key[:])
 	if err != nil {
 		return err
 	}
@@ -1136,8 +1137,7 @@ func (p *scionPacketProcessor) processFabrid() error {
 		return serrors.New("Provided policyID is invalid", "policyID", policyID, "id", p.identifier)
 	}
 	p.mplsLabel = mplsLabel
-
-	err = fabrid.VerifyAndUpdate(&meta, p.identifier, &p.scionLayer, p.macInputBuffer, key[:], p.cachedMac[:6])
+	err = fabrid.VerifyAndUpdate(meta, p.identifier, &p.scionLayer, p.fabridInputBuffer, key[:], p.cachedMac[:6])
 	if err != nil {
 		return err
 	}
@@ -1172,6 +1172,7 @@ func (p *scionPacketProcessor) processHbhOptions() error {
 				if err = p.processFabrid(); err != nil {
 					return err
 				}
+				fabrid.HopfieldMetadata[0].SerializeTo(opt.OptData[p.path.Base.PathMeta.CurrHF*4:])
 			}
 		default:
 		}
@@ -1371,9 +1372,10 @@ type scionPacketProcessor struct {
 	// bfdLayer is reusable buffer for parsing BFD messages
 	bfdLayer layers.BFD
 
-	identifier *extension.IdentifierOption
-	fabrid     *extension.FabridOption
-	mplsLabel  uint32
+	identifier        *extension.IdentifierOption
+	fabrid            *extension.FabridOption
+	fabridInputBuffer []byte
+	mplsLabel         uint32
 }
 
 type slowPathType int
