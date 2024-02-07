@@ -143,7 +143,7 @@ func TestSuccessfullValidators(t *testing.T) {
 						}
 					}
 
-					err := fabrid.InitValidators(f, id, s, tmpBuffer, pathKey, asHostKeys, asAsKeys, ases, ingresses, egresses)
+					srcValidationNumber, srcValidationReply, err := fabrid.InitValidators(f, id, s, tmpBuffer, pathKey, asHostKeys, asAsKeys, ases, ingresses, egresses)
 					assert.NoError(t, err)
 
 					for i, meta := range f.HopfieldMetadata {
@@ -160,8 +160,11 @@ func TestSuccessfullValidators(t *testing.T) {
 							assert.NoError(t, err)
 						}
 					}
-					_, err = fabrid.VerifyPathValidator(f, tmpBuffer, pathKey)
+					dstValidationNumber, dstValidationReply, err := fabrid.VerifyPathValidator(f, tmpBuffer, pathKey)
 					assert.NoError(t, err)
+
+					assert.Equal(t, srcValidationNumber, dstValidationNumber)
+					assert.Equal(t, srcValidationReply, dstValidationReply)
 				}
 			})
 		}(tc)

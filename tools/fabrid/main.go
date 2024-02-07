@@ -254,7 +254,7 @@ func (s *server) handlePing(conn snet.PacketConn) error {
 		}
 
 		tmpBuffer := make([]byte, (len(fabridOption.HopfieldMetadata)*3+15)&^15+16)
-		_, err = fabrid.VerifyPathValidator(fabridOption, tmpBuffer, hostHostKey[:])
+		_, _, err = fabrid.VerifyPathValidator(fabridOption, tmpBuffer, hostHostKey[:])
 		if err != nil {
 			return err
 		}
