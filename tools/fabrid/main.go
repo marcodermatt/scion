@@ -438,7 +438,7 @@ func (c *client) attemptRequest(n int) bool {
 			}
 			var policies []snet.FabridPolicyPerHop
 			fabridPath, err := snetpath.NewFABRIDDataplanePath(s, path.Metadata().Interfaces,
-				policies, fabridConfig)
+				policies, fabridConfig, nil)
 			if err != nil {
 				logger.Error("Error creating FABRID path", "err", err)
 				return false

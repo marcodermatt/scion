@@ -54,9 +54,10 @@ type FABRID struct {
 	policyIDs        []*fabrid.FabridPolicyID
 	ias              []addr.IA
 	support          map[addr.IA]bool
+	pathState        *fabrid.PathState
 }
 
-func NewFABRIDDataplanePath(p SCION, interfaces []snet.PathInterface, policyIDsPerHop []snet.FabridPolicyPerHop, conf *FabridConfig) (*FABRID, error) {
+func NewFABRIDDataplanePath(p SCION, interfaces []snet.PathInterface, policyIDsPerHop []snet.FabridPolicyPerHop, conf *FabridConfig, state *fabrid.PathState) (*FABRID, error) {
 
 	var decoded scion.Decoded
 	if err := decoded.DecodeFromBytes(p.Raw); err != nil {
@@ -96,6 +97,7 @@ func NewFABRIDDataplanePath(p SCION, interfaces []snet.PathInterface, policyIDsP
 		support:          make(map[addr.IA]bool),
 		Raw:              append([]byte(nil), p.Raw...),
 		policyIDs:        policyIDs,
+		pathState:        state,
 	}
 
 	// Get ingress/egress IFs and IAs from path interfaces
@@ -238,7 +240,7 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 		}
 		fabridOption.HopfieldMetadata[i] = meta
 	}
-	_, _, err = fabrid.InitValidators(fabridOption, identifierOption, s, f.tmpBuffer, f.pathKey.Key[:], f.keys, nil, f.ias, f.ingresses, f.egresses)
+	valNumber, pathValReply, err := fabrid.InitValidators(fabridOption, identifierOption, s, f.tmpBuffer, f.pathKey.Key[:], f.keys, nil, f.ias, f.ingresses, f.egresses)
 	if err != nil {
 		return serrors.WrapStr("initializing validators failed", err)
 	}
@@ -264,6 +266,14 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 			OptDataLen:   uint8(fabridLength),
 			ActualLength: fabridLength,
 		})
+
+	if valNumber <= f.pathState.ValidationRatio {
+		err = f.pathState.StoreValidationResponse(pathValReply, identifierOption.GetRelativeTimestamp(), f.counter)
+		if err != nil {
+			return err
+		}
+	}
+
 	f.counter++
 	return nil
 }

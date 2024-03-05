@@ -218,6 +218,45 @@ func InitValidators(f *ext.FabridOption, id *ext.IdentifierOption, s *slayers.SC
 	return pathValBuffer[4], binary.BigEndian.Uint32(pathValBuffer[5:9]), nil
 }
 
+func computeFabridControlValidator(fc *ext.FabridControlOption, resultBuffer []byte, pathKey []byte) error {
+	fcMacInputLength := 9 + ext.FabridControlOptionDataLen(fc.Type)
+	macInputBuf := make([]byte, (fcMacInputLength+15)&^15) // Next multiple of 16 for macBlock()$
+	tmpBuf := make([]byte, 16)
+	macInputBuf[0] = uint8(fc.Type)
+	binary.BigEndian.PutUint32(macInputBuf[1:5], fc.Timestamp)
+	binary.BigEndian.PutUint32(macInputBuf[5:9], fc.PacketID)
+	copy(macInputBuf[9:fcMacInputLength], fc.Data)
+	err := macBlock(pathKey, tmpBuf, macInputBuf[:fcMacInputLength], resultBuffer)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func InitFabridControlValidator(fc *ext.FabridControlOption, pathKey []byte) error {
+	outBuffer := make([]byte, 16)
+	err := computeFabridControlValidator(fc, outBuffer, pathKey)
+	if err != nil {
+		return err
+	}
+	outBuffer[0] &= 0xF // ignore first four bits
+	copy(fc.Auth[:4], outBuffer[:4])
+	return nil
+}
+
+func VerifyFabridControlValidator(fc *ext.FabridControlOption, pathKey []byte) error {
+	computedValidator := make([]byte, 16)
+	err := computeFabridControlValidator(fc, computedValidator, pathKey)
+	if err != nil {
+		return err
+	}
+	computedValidator[0] &= 0xF // ignore first four bits
+	if !bytes.Equal(computedValidator[:4], fc.Auth[:]) {
+		return serrors.New("Fabrid control validator is not valid")
+	}
+	return nil
+}
+
 var zeroBlock [16]byte
 
 func macBlock(key []byte, tmp []byte, src []byte, dst []byte) error {

@@ -370,7 +370,7 @@ On other errors, ping will exit with code 2.
 						DestinationAddr: remote.Host.IP.String(),
 					}
 					fabridPath, err := snetpath.NewFABRIDDataplanePath(s, pingPath.Metadata().Interfaces,
-						policies, fabridConfig)
+						policies, fabridConfig, nil)
 					if err != nil {
 						return err
 					}

@@ -16,6 +16,7 @@ package fabrid_test
 
 import (
 	crand "crypto/rand"
+	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -166,6 +167,109 @@ func TestSuccessfullValidators(t *testing.T) {
 					assert.Equal(t, srcValidationNumber, dstValidationNumber)
 					assert.Equal(t, srcValidationReply, dstValidationReply)
 				}
+			})
+		}(tc)
+	}
+}
+
+func TestControlOptionValidation(t *testing.T) {
+	type test struct {
+		name string
+		fc   *extension.FabridControlOption
+	}
+
+	tests := []test{
+		{
+			name: "Success shortest control option",
+			fc: &extension.FabridControlOption{
+				Type:      extension.StatisticsRequest,
+				Auth:      [4]byte{},
+				Timestamp: uint32(0x07bbccdd),
+				PacketID:  uint32(0xeeffaabb),
+				Data:      []byte{},
+			},
+		},
+		{
+			name: "Success longest control option",
+			fc: &extension.FabridControlOption{
+				Type:      extension.StatisticsResponse,
+				Auth:      [4]byte{},
+				Timestamp: uint32(0x07bbccdd),
+				PacketID:  uint32(0xeeffaabb),
+				Data: []byte{
+					0x07, 0xbb, 0xcc, 0xdd,
+					0xee, 0xff, 0xaa, 0xbb,
+					0x99, 0x88, 0x77, 0x66,
+					0x55, 0x44, 0x33, 0x22,
+				},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		func(tc test) {
+			t.Run(tc.name, func(t *testing.T) {
+				pathKey := generateRandomBytes(16)
+				err := fabrid.InitFabridControlValidator(tc.fc, pathKey)
+				assert.NoError(t, err)
+
+				err = fabrid.VerifyFabridControlValidator(tc.fc, pathKey)
+				assert.NoError(t, err)
+
+			})
+		}(tc)
+	}
+}
+
+func TestFailedControlOptionValidation(t *testing.T) {
+	type test struct {
+		name string
+		fc   *extension.FabridControlOption
+	}
+
+	tests := []test{
+		{
+			name: "Failure shortest control option",
+			fc: &extension.FabridControlOption{
+				Type:      extension.StatisticsRequest,
+				Auth:      [4]byte{},
+				Timestamp: uint32(0x07bbccdd),
+				PacketID:  uint32(0xeeffaabb),
+				Data:      []byte{},
+			},
+		},
+		{
+			name: "Failure longest control option",
+			fc: &extension.FabridControlOption{
+				Type:      extension.StatisticsResponse,
+				Auth:      [4]byte{},
+				Timestamp: uint32(0x07bbccdd),
+				PacketID:  uint32(0xeeffaabb),
+				Data: []byte{
+					0x07, 0xbb, 0xcc, 0xdd,
+					0xee, 0xff, 0xaa, 0xbb,
+					0x99, 0x88, 0x77, 0x66,
+					0x55, 0x44, 0x33, 0x22,
+				},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		func(tc test) {
+			t.Run(tc.name, func(t *testing.T) {
+				pathKey := generateRandomBytes(16)
+				err := fabrid.InitFabridControlValidator(tc.fc, pathKey)
+				assert.NoError(t, err)
+				randomShift := 4 + rand.Intn(28)
+				byteIdx := randomShift / 8
+				bitIdx := randomShift % 8
+				fmt.Println(randomShift, byteIdx, bitIdx)
+				tc.fc.Auth[byteIdx] ^= 1 << bitIdx
+
+				err = fabrid.VerifyFabridControlValidator(tc.fc, pathKey)
+				assert.Error(t, err)
+
 			})
 		}(tc)
 	}
