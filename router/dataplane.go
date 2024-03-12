@@ -118,8 +118,8 @@ type DataPlane struct {
 	drKeySecrets      [][2]*control.SecretValue
 	// determines whether index 0 or index 1 should be overwritten next
 	drKeySecretNextOverwrite []uint8
-	fabridPolicyMap          map[uint32][]*control.PolicyIPRange
-	externalRemoteAddresses  map[uint16]*net.UDPAddr
+	fabridPolicyIPRangeMap   map[uint32][]*control.PolicyIPRange
+	fabridPolicyInterfaceMap map[uint64]uint32
 
 	ExperimentalSCMPAuthentication bool
 
@@ -299,15 +299,11 @@ func (d *DataPlane) AddExternalInterface(ifID uint16, conn BatchConn, remoteAddr
 	if d.external == nil {
 		d.external = make(map[uint16]BatchConn)
 	}
-	if d.externalRemoteAddresses == nil {
-		d.externalRemoteAddresses = make(map[uint16]*net.UDPAddr)
-	}
 	if d.interfaces == nil {
 		d.interfaces = make(map[uint16]BatchConn)
 	}
 	d.interfaces[ifID] = conn
 	d.external[ifID] = conn
-	d.externalRemoteAddresses[ifID] = remoteAddr
 	return nil
 }
 
@@ -541,12 +537,14 @@ func (d *DataPlane) AddNextHopBFD(ifID uint16, src, dst *net.UDPAddr, cfg contro
 	return d.addBFDController(ifID, s, cfg, m)
 }
 
-func (d *DataPlane) UpdateFabridPolicies(policies map[uint32][]*control.PolicyIPRange) error {
+func (d *DataPlane) UpdateFabridPolicies(ipRangePolicies map[uint32][]*control.PolicyIPRange,
+	interfacePolicies map[uint64]uint32) error {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	// TODO(rohrerj): check for concurrency issues
 	// when an update happens during reading
-	d.fabridPolicyMap = policies
+	d.fabridPolicyIPRangeMap = ipRangePolicies
+	d.fabridPolicyInterfaceMap = interfacePolicies
 	return nil
 }
 
@@ -1145,38 +1143,73 @@ func (p *scionPacketProcessor) processFabrid(egressIF uint16) error {
 	if err != nil {
 		return err
 	}
-
-	// Verify and update for 0 policy, no MPLS label
-	if policyID.ID == 0 {
-		err = fabrid.VerifyAndUpdate(meta, p.identifier, &p.scionLayer, p.fabridInputBuffer, key[:], p.ingressID, egressIF)
-		if err != nil {
-			return err
-		}
-		return nil
-	}
-
-	policyMapKey := uint32(p.ingressID)<<8 + uint32(policyID.ID)
-	ipRanges, found := p.d.fabridPolicyMap[policyMapKey]
-	if !found {
-		return serrors.New("Provided policyID is invalid", "ingress", p.ingressID, "index", policyID.ID)
-	}
-	var bestRange *control.PolicyIPRange
-	for _, r := range ipRanges {
-		if r.IPPrefix.Contains(p.nextHop.IP) {
-			if bestRange == nil || bestRange.IPPrefix.Contains(r.IPPrefix.IP) {
-				bestRange = r
-			}
-		}
-	}
-	if bestRange == nil {
-		return serrors.New("Provided policy index is not valid for nexthop.", "index", policyID.ID, "ip", p.nextHop.IP)
-	}
-	p.mplsLabel = bestRange.MPLSLabel
 	err = fabrid.VerifyAndUpdate(meta, p.identifier, &p.scionLayer, p.fabridInputBuffer, key[:], p.ingressID, egressIF)
 	if err != nil {
 		return err
 	}
+	// Check / set MPLS label only if policy ID != 0
+	// and only if the packet will be sent within the AS or to another router of the local AS
+	if policyID.ID != 0 {
+		var mplsLabel uint32
+		switch p.transitType {
+		case ingressEgressDifferentRouter:
+			mplsLabel, err = p.d.getFabridMplsLabelForInterface(uint32(p.ingressID), uint32(policyID.ID), uint32(egressIF))
+		case internalTraffic:
+			mplsLabel, err = p.d.getFabridMplsLabel(uint32(p.ingressID), uint32(policyID.ID), p.nextHop.IP)
+		case ingressEgressSameRouter:
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		p.mplsLabel = mplsLabel
+	}
 	return nil
+}
+
+func (d *DataPlane) getFabridMplsLabelForInterface(ingressID uint32, policyIndex uint32, egressID uint32) (uint32, error) {
+	policyMapKey := uint64(ingressID)<<24 + uint64(egressID)<<8 + uint64(policyIndex)
+	mplsLabel, found := d.fabridPolicyInterfaceMap[policyMapKey]
+	if !found {
+		//lookup default (instead of using the ingressID as part of the key, use a 1 bit as most significant bit):
+		policyMapKey = 1<<63 + uint64(egressID)<<8 + uint64(policyIndex)
+		mplsLabel, found = d.fabridPolicyInterfaceMap[policyMapKey]
+		if !found {
+			return 0, serrors.New("Provided policyID is invalid", "ingress", ingressID, "index", policyIndex, "egress", egressID)
+		}
+	}
+	return mplsLabel, nil
+}
+
+func (d *DataPlane) getFabridMplsLabel(ingressID uint32, policyIndex uint32, nextHopIP net.IP) (uint32, error) {
+	policyMapKey := ingressID<<8 + policyIndex
+	ipRanges, found := d.fabridPolicyIPRangeMap[policyMapKey]
+	if !found {
+		//lookup default (instead of using the ingressID as part of the key, use a 1 bit as most significant bit):
+		policyMapKey = 1<<31 + policyIndex
+		ipRanges, found = d.fabridPolicyIPRangeMap[policyMapKey]
+		if !found {
+			return 0, serrors.New("Provided policyID is invalid", "ingress", ingressID, "index", policyIndex)
+		}
+	}
+	var bestRange *control.PolicyIPRange
+	for _, r := range ipRanges {
+		if r.IPPrefix.Contains(nextHopIP) {
+			if bestRange == nil {
+				bestRange = r
+			} else {
+				bestPrefixLength, _ := bestRange.IPPrefix.Mask.Size()
+				currentPrefixLength, _ := r.IPPrefix.Mask.Size()
+				if currentPrefixLength > bestPrefixLength {
+					bestRange = r
+				}
+			}
+		}
+	}
+	if bestRange == nil {
+		return 0, serrors.New("Provided policy index is not valid for nexthop.", "index", policyIndex, "next hop IP", nextHopIP)
+	}
+	return bestRange.MPLSLabel, nil
 }
 
 func (p *scionPacketProcessor) processHbhOptions(egressIF uint16) error {
@@ -1205,7 +1238,7 @@ func (p *scionPacketProcessor) processHbhOptions(egressIF uint16) error {
 				currHop -= p.path.PathMeta.CurrINF
 			}
 
-			// SKip if this is an intermediary egress router
+			// Skip if this is an intermediary egress router
 			if p.ingressID == 0 && currHop != 0 {
 				return nil
 			}
@@ -1428,8 +1461,18 @@ type scionPacketProcessor struct {
 	fabrid            *extension.FabridOption
 	fabridInputBuffer []byte
 	mplsLabel         uint32
-	nextHop           *net.UDPAddr
+	// IP of the next hop. Only valid for the inbound or AS transit cases
+	nextHop     *net.UDPAddr
+	transitType transitType
 }
+
+type transitType int
+
+const (
+	ingressEgressSameRouter transitType = iota
+	ingressEgressDifferentRouter
+	internalTraffic
+)
 
 type slowPathType int
 
@@ -2007,6 +2050,7 @@ func (p *scionPacketProcessor) process() (processResult, error) {
 		if err != nil {
 			return r, err
 		}
+		p.transitType = internalTraffic
 		p.nextHop = a
 		if err := p.processHbhOptions(0); err != nil {
 			return processResult{}, err
@@ -2046,21 +2090,18 @@ func (p *scionPacketProcessor) process() (processResult, error) {
 	}
 	egressID := p.egressInterface()
 	if _, ok := p.d.external[egressID]; ok {
+		p.transitType = ingressEgressSameRouter
 		if err := p.processHbhOptions(egressID); err != nil {
 			return processResult{}, err
 		}
 		if err := p.processEgress(); err != nil {
 			return processResult{}, err
 		}
-		if a, ok := p.d.externalRemoteAddresses[egressID]; ok {
-			p.nextHop = a
-			return processResult{EgressID: egressID, OutPkt: p.rawPkt}, nil
-		} else {
-			return processResult{}, serrors.New("External remote address map not consistent with external interfaces", "expected", egressID, "actual", p.d.externalRemoteAddresses)
-		}
+		return processResult{EgressID: egressID, OutPkt: p.rawPkt}, nil
 	}
 	// ASTransit: pkts leaving from another AS BR.
 	if a, ok := p.d.internalNextHops[egressID]; ok {
+		p.transitType = ingressEgressDifferentRouter
 		p.nextHop = a
 		if err := p.processHbhOptions(egressID); err != nil {
 			return processResult{}, err
