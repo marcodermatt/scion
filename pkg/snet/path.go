@@ -223,13 +223,6 @@ type FabridPolicyIdentifier struct {
 	Index      uint8
 }
 
-type FabridPolicyPerHop struct {
-	Pol     *FabridPolicyIdentifier
-	IA      addr.IA
-	Ingress uint16
-	Egress  uint16
-}
-
 func (fpi *FabridPolicyIdentifier) String() string {
 	if fpi.Type == FabridGlobalPolicy {
 		return fmt.Sprintf("G%d", fpi.Identifier)

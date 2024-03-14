@@ -77,7 +77,9 @@ func (f *Fetcher) StartFabridPolicyFetcher() {
 			time.Sleep(30 * time.Minute)
 			continue
 		}
-		err = f.dp.UpdateFabridPolicies(ipPoliciesMapFromPB(mplsPolicyResp), mplsPolicyResp.MplsInterfacePoliciesMap)
+
+		log.Debug("Updated FABRID policies")
+		err = f.dp.UpdateFabridPolicies(ipPoliciesMapFromPB(mplsPolicyResp.MplsIPMap), mplsPolicyResp.MplsInterfacePoliciesMap)
 		if err != nil {
 			log.Debug("Error while adding FABRID policies", "err", err)
 			time.Sleep(retryAfterErrorDuration)
@@ -88,9 +90,9 @@ func (f *Fetcher) StartFabridPolicyFetcher() {
 	}
 }
 
-func ipPoliciesMapFromPB(mplsPolicyResp *experimental.MPLSMapResponse) map[uint32][]*PolicyIPRange {
+func ipPoliciesMapFromPB(mplsPolicyResp map[uint32]*experimental.MPLSIPArray) map[uint32][]*PolicyIPRange {
 	res := make(map[uint32][]*PolicyIPRange)
-	for key, ipArray := range mplsPolicyResp.MplsIPMap {
+	for key, ipArray := range mplsPolicyResp {
 
 		for _, ipRange := range ipArray.Entry {
 			var m net.IPMask

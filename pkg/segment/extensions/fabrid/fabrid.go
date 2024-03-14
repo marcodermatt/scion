@@ -143,6 +143,10 @@ func ConnectionPointToPB(point ConnectionPoint) *fabridpb.FABRIDConnectionPoint 
 			Type:      fabridpb.FABRIDConnectionType_INTERFACE,
 			Interface: uint64(point.InterfaceId),
 		}
+	case Wildcard:
+		return &fabridpb.FABRIDConnectionPoint{
+			Type: fabridpb.FABRIDConnectionType_WILDCARD,
+		}
 	default:
 		return &fabridpb.FABRIDConnectionPoint{}
 	}
@@ -281,6 +285,8 @@ func (d *Detached) String() string {
 			base += fmt.Sprintf("interfaceId: %d }", k.Ingress.InterfaceId)
 		} else if k.Ingress.Type == IPv4Range || k.Ingress.Type == IPv6Range {
 			base += fmt.Sprintf("ip: %s, prefix: %d }", k.Ingress.IP, k.Ingress.Prefix)
+		} else if k.Ingress.Type == Wildcard {
+			base += "wildcard }"
 		}
 
 		base += fmt.Sprintf("} egress : { type: %s ", k.Egress.Type)
@@ -288,6 +294,8 @@ func (d *Detached) String() string {
 			base += fmt.Sprintf("interfaceId: %d } ", k.Egress.InterfaceId)
 		} else if k.Egress.Type == IPv4Range || k.Egress.Type == IPv6Range {
 			base += fmt.Sprintf("ip: %s, prefix: %d } ", k.Egress.IP, k.Egress.Prefix)
+		} else if k.Ingress.Type == Wildcard {
+			base += "wildcard }"
 		}
 		base += " supports: ["
 		supported := d.SupportedIndicesMap[k]

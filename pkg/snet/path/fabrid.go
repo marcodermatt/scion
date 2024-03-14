@@ -56,7 +56,7 @@ type FABRID struct {
 	support          map[addr.IA]bool
 }
 
-func NewFABRIDDataplanePath(p SCION, interfaces []snet.PathInterface, policyIDsPerHop []snet.FabridPolicyPerHop, conf *FabridConfig) (*FABRID, error) {
+func NewFABRIDDataplanePath(p SCION, interfaces []snet.PathInterface, policyIDsPerHop []*snet.FabridPolicyIdentifier, conf *FabridConfig) (*FABRID, error) {
 
 	var decoded scion.Decoded
 	if err := decoded.DecodeFromBytes(p.Raw); err != nil {
@@ -71,17 +71,26 @@ func NewFABRIDDataplanePath(p SCION, interfaces []snet.PathInterface, policyIDsP
 	}
 	keys := make(map[addr.IA]drkey.ASHostKey, len(policyIDsPerHop))
 	var policyIDs []*fabrid.FabridPolicyID
-	var ias []addr.IA
+	ias := make([]addr.IA, numHops)
 	if len(policyIDsPerHop) > 0 {
-		policyIDs, ias = policiesToHopFields(numHops, policyIDsPerHop, decoded, keys)
+		policyIDs = make([]*fabrid.FabridPolicyID, numHops)
+		for i := 0; i < numHops; i++ {
+			if policyIDsPerHop[i] == nil {
+				policyIDs[i] = nil
+				fmt.Println(i, " is not using a policy")
+			} else {
+				policyIDs[i] = &fabrid.FabridPolicyID{
+					ID: policyIDsPerHop[i].Index,
+				}
+				fmt.Println(i, " is using policy index: ", policyIDsPerHop[i].Index)
+			}
+		}
 	} else {
 		// If no policies are provided, use zero policy for all hops
 		policyIDs = make([]*fabrid.FabridPolicyID, numHops)
 		for i := 0; i < numHops; i++ {
 			policyIDs[i] = &fabrid.FabridPolicyID{ID: 0}
 		}
-		ias = make([]addr.IA, numHops)
-
 	}
 	f := &FABRID{
 		numHops:          numHops,
@@ -123,63 +132,6 @@ func NewFABRIDDataplanePath(p SCION, interfaces []snet.PathInterface, policyIDsP
 func isPeering(path scion.Decoded) bool {
 	// Explicit check for assumption that peering paths can only have 2 segments
 	return path.NumINF == 2 && path.InfoFields[0].Peer && path.InfoFields[1].Peer
-}
-
-func hfEqual(consDir bool, consIngress, consEgress, compIngress, compEgress uint16) bool {
-	return (consIngress == compIngress && consEgress == compEgress && consDir) ||
-		(consIngress == compEgress && consEgress == compIngress && !consDir)
-}
-
-func policiesToHopFields(numHops int, policyIDs []snet.FabridPolicyPerHop, decoded scion.Decoded,
-	keys map[addr.IA]drkey.ASHostKey) ([]*fabrid.FabridPolicyID, []addr.IA) {
-	polIds := make([]*fabrid.FabridPolicyID, numHops)
-	ias := make([]addr.IA, numHops)
-	hfIdx := 0
-	fmt.Println(policyIDs)
-	ifIdx := 0
-	polIdx := 0
-
-	for _, seglen := range decoded.PathMeta.SegLen {
-		for seg := uint8(0); seg < seglen; seg++ {
-			if polIdx >= len(policyIDs) {
-				break
-			}
-			keys[policyIDs[polIdx].IA] = drkey.ASHostKey{}
-			hfOneToOne := hfIdx < numHops && hfEqual(decoded.InfoFields[ifIdx].ConsDir,
-				decoded.HopFields[hfIdx].ConsIngress,
-				decoded.HopFields[hfIdx].ConsEgress,
-				policyIDs[polIdx].Ingress,
-				policyIDs[polIdx].Egress)
-
-			fmt.Println("HFPol", hfIdx, hfOneToOne, decoded.InfoFields[ifIdx].ConsDir, decoded.HopFields[hfIdx], policyIDs[polIdx])
-
-			if hfOneToOne {
-				if policyIDs[polIdx].Pol == nil {
-					polIds[hfIdx] = nil
-					fmt.Println(hfIdx, " is not using a policy")
-
-				} else {
-					polIds[hfIdx] = &fabrid.FabridPolicyID{
-						ID: policyIDs[polIdx].Pol.Index,
-					}
-					fmt.Println(hfIdx, " is using policy index: ", policyIDs[polIdx].Pol.Index, policyIDs[polIdx].IA)
-
-				}
-				ias[hfIdx] = policyIDs[polIdx].IA
-			} else {
-				polIds[hfIdx] = nil
-				fmt.Println(hfIdx, " is using policy index nil ")
-				ias[hfIdx] = policyIDs[polIdx].IA
-			}
-			hfIdx++
-			polIdx++
-		}
-		ifIdx++
-	}
-	//for _, policy := range policyIDs {
-	//
-	//}
-	return polIds, ias
 }
 
 func (f *FABRID) RegisterDRKeyFetcher(fn func(context.Context, drkey.ASHostMeta) (drkey.ASHostKey, error),
