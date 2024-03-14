@@ -63,41 +63,49 @@ func NewFetcher(localIP string, csAddr string, dp Dataplane) (*Fetcher, error) {
 	return f, nil
 }
 
-func (f *Fetcher) StartFabridPolicyFetcher(interfaces []uint16) {
+func (f *Fetcher) StartFabridPolicyFetcher() {
 	retryAfterErrorDuration := 10 * time.Second
 	for {
-		policies, err := f.queryFabridPolicies()
+		mplsPolicyResp, err := f.queryFabridPolicies()
+
 		if err != nil {
 			log.Debug("Error while querying the FABRID policies from local control service", "err", err)
 			time.Sleep(retryAfterErrorDuration)
 			continue
 		}
-		// create tmp solution until control service is updated with new data structure
-		// <TODO delete this part>
-		tmp := make(map[uint32][]*PolicyIPRange)
-		for policyIndex, mplsLabel := range policies {
-			for _, iface := range interfaces {
-				_, ipprefix, _ := net.ParseCIDR("0.0.0.0/0")
-				tmp[uint32(iface)<<8+uint32(policyIndex)] = []*PolicyIPRange{
-					{
-						IPPrefix:  ipprefix,
-						MPLSLabel: mplsLabel,
-					},
-				}
-			}
+		if !mplsPolicyResp.Update {
+			time.Sleep(30 * time.Minute)
+			continue
 		}
-		// </>
-		err = f.dp.UpdateFabridPolicies(tmp, nil)
+		err = f.dp.UpdateFabridPolicies(ipPoliciesMapFromPB(mplsPolicyResp), mplsPolicyResp.MplsInterfacePoliciesMap)
 		if err != nil {
 			log.Debug("Error while adding FABRID policies", "err", err)
 			time.Sleep(retryAfterErrorDuration)
 			continue
 		}
+
 		time.Sleep(30 * time.Minute)
 	}
 }
 
-func (f *Fetcher) queryFabridPolicies() (map[uint8]uint32, error) {
+func ipPoliciesMapFromPB(mplsPolicyResp *experimental.MPLSMapResponse) map[uint32][]*PolicyIPRange {
+	res := make(map[uint32][]*PolicyIPRange)
+	for key, ipArray := range mplsPolicyResp.MplsIPMap {
+
+		for _, ipRange := range ipArray.Entry {
+			var m net.IPMask
+			if len(ipRange.Ip) == 4 { //TODO(jvanbommel): test this
+				m = net.CIDRMask(int(ipRange.Prefix), 8*net.IPv4len)
+			} else {
+				m = net.CIDRMask(int(ipRange.Prefix), 8*net.IPv6len)
+			}
+			res[key] = append(res[key], &PolicyIPRange{IPPrefix: &net.IPNet{IP: ipRange.Ip, Mask: m}, MPLSLabel: ipRange.MplsLabel})
+		}
+	}
+	return res
+}
+
+func (f *Fetcher) queryFabridPolicies() (*experimental.MPLSMapResponse, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	dialer := func(ctx context.Context, addr string) (net.Conn, error) {
@@ -117,13 +125,7 @@ func (f *Fetcher) queryFabridPolicies() (map[uint8]uint32, error) {
 	if err != nil {
 		return nil, serrors.WrapStr("requesting policy", err)
 	}
-	result := make(map[uint8]uint32, len(rep.MplsLabelMap))
-	for k, v := range rep.MplsLabelMap {
-		result[uint8(k)] = v
-	}
-	//TODO(jvanbommel): add optional update.
-
-	return result, nil
+	return rep, err
 }
 
 func (f *Fetcher) StartSecretUpdater() {

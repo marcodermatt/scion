@@ -143,7 +143,7 @@ func realMain(ctx context.Context) error {
 			for i, iface := range controlConfig.BR.IFIDs {
 				interfaces[i] = uint16(iface)
 			}
-			fetcher.StartFabridPolicyFetcher(interfaces)
+			fetcher.StartFabridPolicyFetcher()
 		}()
 	}
 	g.Go(func() error {

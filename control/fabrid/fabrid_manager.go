@@ -38,24 +38,13 @@ type RemotePolicyDescription struct {
 	Expires     time.Time
 }
 
-//type FabridManagerInterface interface {
-//	Reload() error
-//	Load() error
-//	Active() bool
-//	GetIndexIdentifierMap() *fabrid.IndexIdentifierMap
-//	GetSupportedIndicesMap() *fabrid.SupportedIndicesMap
-//	GetIdentifierDescriptionMap() *map[uint32]string
-//	GetMPLSMap() *map[uint8]uint32
-//	GetRemotePolicyCache() *map[RemotePolicyIdentifier]RemotePolicyDescription
-//}
-
 type FabridManager struct {
 	autoIncrIndex            int
 	PoliciesPath             string
 	SupportedIndicesMap      fabrid.SupportedIndicesMap
 	IndexIdentifierMap       fabrid.IndexIdentifierMap
 	IdentifierDescriptionMap map[uint32]string
-	MPLSMap                  MPLSMap
+	MPLSMap                  *MplsMaps
 	RemotePolicyCache        map[RemotePolicyIdentifier]RemotePolicyDescription
 }
 
@@ -65,7 +54,7 @@ func NewFabridManager(policyPath string) (*FabridManager, error) {
 		SupportedIndicesMap:      map[fabrid.ConnectionPair][]uint8{},
 		IndexIdentifierMap:       map[uint8]*fabrid.PolicyIdentifier{},
 		IdentifierDescriptionMap: map[uint32]string{},
-		MPLSMap:                  MPLSMap{Data: map[uint32]uint32{}, CurrentHash: []byte{}},
+		MPLSMap:                  NewMplsMaps(),
 		RemotePolicyCache:        map[RemotePolicyIdentifier]RemotePolicyDescription{},
 		autoIncrIndex:            1,
 	}
@@ -75,8 +64,7 @@ func NewFabridManager(policyPath string) (*FabridManager, error) {
 func (f *FabridManager) Reload() error {
 	f.IndexIdentifierMap = make(map[uint8]*fabrid.PolicyIdentifier)
 	f.SupportedIndicesMap = make(map[fabrid.ConnectionPair][]uint8)
-	f.MPLSMap = MPLSMap{Data: map[uint32]uint32{}, CurrentHash: []byte{}}
-	f.IdentifierDescriptionMap = make(map[uint32]string)
+	f.MPLSMap = NewMplsMaps()
 	f.autoIncrIndex = 1
 	return f.Load()
 }
@@ -128,32 +116,12 @@ func (f *FabridManager) parseAndAdd(path string, fi os.FileInfo, err error) erro
 	}
 
 	for _, connection := range pol.SupportedBy {
-		var eg, ig fabrid.ConnectionPoint
-		if connection.Egress.Type == fabrid.Interface {
-			eg = fabrid.ConnectionPoint{
-				Type:        fabrid.Interface,
-				InterfaceId: connection.Egress.Interface,
-			}
-		} else if connection.Egress.Type == fabrid.IPv4Range || connection.Egress.Type == fabrid.IPv6Range {
-			eg = fabrid.ConnectionPointFromString(connection.Egress.IPAddress, uint32(connection.Egress.Prefix), connection.Egress.Type)
-		}
-		if connection.Ingress.Type == fabrid.Interface {
-			ig = fabrid.ConnectionPoint{
-				Type:        fabrid.Interface,
-				InterfaceId: connection.Ingress.Interface,
-			}
-		} else if connection.Ingress.Type == fabrid.IPv4Range || connection.Ingress.Type == fabrid.IPv6Range {
-			ig = fabrid.ConnectionPointFromString(connection.Ingress.IPAddress, uint32(connection.Ingress.Prefix), connection.Ingress.Type)
-		}
 		ie := fabrid.ConnectionPair{
-			Ingress: ig,
-			Egress:  eg,
+			Ingress: createConnectionPoint(connection.Ingress),
+			Egress:  createConnectionPoint(connection.Egress),
 		}
+		f.MPLSMap.AddConnectionPoint(ie, connection.MPLSLabel, policyIdx)
 		f.SupportedIndicesMap[ie] = append(f.SupportedIndicesMap[ie], policyIdx)
-	}
-
-	if pol.MPLSLabel != 0 {
-		f.MPLSMap.Data[uint32(policyIdx)] = pol.MPLSLabel
 	}
 
 	log.Debug("Loaded FABRID policy", "pol", pol)
@@ -166,4 +134,20 @@ func parseFABRIDYAMLPolicy(b []byte) (*config.FABRIDPolicy, error) {
 		return nil, serrors.WrapStr("Unable to parse policy", err)
 	}
 	return p, nil
+}
+
+func createConnectionPoint(connection config.FABRIDConnectionPoint) fabrid.ConnectionPoint {
+	if connection.Type == fabrid.Interface {
+		return fabrid.ConnectionPoint{
+			Type:        fabrid.Interface,
+			InterfaceId: connection.Interface,
+		}
+	} else if connection.Type == fabrid.IPv4Range || connection.Type == fabrid.IPv6Range {
+		return fabrid.IPConnectionPointFromString(connection.IPAddress, uint32(connection.Prefix), connection.Type)
+	} else if connection.Type == fabrid.Wildcard { //TODO(jvanbommel): explicit wildcard or intf 0 = wildcard?
+		return fabrid.ConnectionPoint{
+			Type: fabrid.Wildcard,
+		}
+	}
+	return fabrid.ConnectionPoint{}
 }

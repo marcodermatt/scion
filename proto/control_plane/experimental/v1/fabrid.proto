@@ -39,6 +39,16 @@ service FABRIDIntraService {
     rpc GetMPLSMapIfNecessary(MPLSMapRequest) returns (MPLSMapResponse) {}
 }
 
+message MPLSIPArray {
+    repeated MPLSIP entry = 1;
+}
+
+message MPLSIP {
+    uint32 mpls_label = 1;
+    bytes ip = 2;
+    uint32 prefix = 3;
+}
+
 message MPLSMapRequest {
     // The MPLS map is only updated if the hash of the map already saved at the router is mismatched with the current
     // active MPLS map. This field is optional, if empty, the active map is always sent in response.
@@ -50,8 +60,11 @@ message MPLSMapResponse {
     bool update = 1;
     // The hash of the current active MPLS map on the control service
     bytes hash = 2;
-    // The actual MPLS map, mapping policy indices (uint8) to MPLS labels (uint32).
-    map<uint32, uint32> mplsLabelMap = 3;
+    // The mapping for policy indices (uint8) to MPLS labels (uint32) that is used for connections where the egress is
+    // an interface.
+    map<uint64, uint32> mplsInterfacePoliciesMap = 3;
+    // The mapping for MPLS labels where the egress is to an IP range:
+    map<uint32, MPLSIPArray> mplsIPMap = 4;
 }
 
 message SupportedIndicesRequest { }

@@ -267,8 +267,8 @@ func TestConnectionPointFromString(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, ConnectionPointFromString(tc.Eq1.IP, tc.Eq1.Prefix, tc.Eq1.Type).IP,
-				ConnectionPointFromString(tc.Eq2.IP, tc.Eq2.Prefix, tc.Eq2.Type).IP)
+			assert.Equal(t, IPConnectionPointFromString(tc.Eq1.IP, tc.Eq1.Prefix, tc.Eq1.Type).IP,
+				IPConnectionPointFromString(tc.Eq2.IP, tc.Eq2.Prefix, tc.Eq2.Type).IP)
 		})
 	}
 }

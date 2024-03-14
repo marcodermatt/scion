@@ -29,14 +29,33 @@ type Server struct {
 	Fetcher       PolicyFetcher
 }
 
+func (s Server) mplsIPMapToPB() map[uint32]*experimental.MPLSIPArray {
+	mplsIpMap := make(map[uint32]*experimental.MPLSIPArray)
+	for i, entry := range s.FabridManager.MPLSMap.IPPoliciesMap {
+		if _, exists := mplsIpMap[i]; !exists {
+			mplsIpMap[i] = &experimental.MPLSIPArray{Entry: make([]*experimental.MPLSIP, 0)}
+		}
+		for _, iprange := range entry {
+			mplsIpMap[i].Entry = append(mplsIpMap[i].Entry, &experimental.MPLSIP{
+				MplsLabel: iprange.MPLSLabel,
+				Ip:        iprange.IP,
+				Prefix:    iprange.Prefix,
+			})
+		}
+	}
+	return mplsIpMap
+}
+
 func (s Server) GetMPLSMapIfNecessary(ctx context.Context, request *experimental.MPLSMapRequest) (*experimental.MPLSMapResponse, error) {
 	if bytes.Equal(request.Hash, s.FabridManager.MPLSMap.CurrentHash) {
 		return &experimental.MPLSMapResponse{Update: false}, nil
 	}
+	// Create the map of mpls labelks for
 	return &experimental.MPLSMapResponse{
-		Update:       true,
-		Hash:         s.FabridManager.MPLSMap.CurrentHash,
-		MplsLabelMap: s.FabridManager.MPLSMap.Data,
+		Update:                   true,
+		Hash:                     s.FabridManager.MPLSMap.CurrentHash,
+		MplsInterfacePoliciesMap: s.FabridManager.MPLSMap.InterfacePoliciesMap,
+		MplsIPMap:                s.mplsIPMapToPB(),
 	}, nil
 }
 

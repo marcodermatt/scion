@@ -66,6 +66,8 @@ enum FABRIDConnectionType {
     IPv6_RANGE = 2;
     // AS egress or ingress interface
     INTERFACE = 3;
+    // Wildcard, policy from any interface
+    WILDCARD = 4;
 }
 message FABRIDIngressEgressPair {
     // Specifies the IP range or interface traffic is coming from, in order to satisfy

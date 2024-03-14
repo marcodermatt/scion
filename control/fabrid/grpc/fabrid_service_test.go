@@ -217,9 +217,9 @@ func TestGetLocalPolicyDescription(t *testing.T) {
 }
 
 func TestGetMPLSMapIfNecessary(t *testing.T) {
-	baseMPLSMap := fabrid.MPLSMap{
-		Data:        map[uint32]uint32{1: 3001, 2: 2030, 3: 200, 255: 1999},
-		CurrentHash: nil,
+	baseMPLSMap := fabrid.MplsMaps{
+		InterfacePoliciesMap: map[uint64]uint32{1: 3001, 2: 2030, 3: 200, 255: 1999},
+		CurrentHash:          nil,
 	}
 	baseMPLSMap.UpdateHash()
 
@@ -246,7 +246,7 @@ func TestGetMPLSMapIfNecessary(t *testing.T) {
 
 	server := Server{
 		FabridManager: &fabrid.FabridManager{
-			MPLSMap: baseMPLSMap,
+			MPLSMap: &baseMPLSMap,
 		},
 	}
 	for name, tc := range tests {
@@ -258,7 +258,7 @@ func TestGetMPLSMapIfNecessary(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.ExpectedUpdate, resp.Update)
 			if resp.Update {
-				require.Equal(t, server.FabridManager.MPLSMap.Data, resp.MplsLabelMap)
+				require.Equal(t, server.FabridManager.MPLSMap.InterfacePoliciesMap, resp.MplsInterfacePoliciesMap)
 			}
 		})
 	}

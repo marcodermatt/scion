@@ -59,6 +59,7 @@ const (
 	IPv4Range   ConnectionPointType = "ipv4"
 	IPv6Range   ConnectionPointType = "ipv6"
 	Interface   ConnectionPointType = "interface"
+	Wildcard    ConnectionPointType = "wildcard"
 )
 
 type ConnectionPoint struct {
@@ -69,7 +70,7 @@ type ConnectionPoint struct {
 }
 
 // To ensure that the connection point strings are identical, i.e. without padding, parse using the net library
-func ConnectionPointFromString(IP string, Prefix uint32, Type ConnectionPointType) ConnectionPoint {
+func IPConnectionPointFromString(IP string, Prefix uint32, Type ConnectionPointType) ConnectionPoint {
 	var m net.IPMask
 	if Type == IPv4Range {
 		m = net.CIDRMask(int(Prefix), 8*net.IPv4len)
@@ -104,7 +105,7 @@ func (c *ConnectionPoint) IPNetwork() *net.IPNet {
 }
 func (c *ConnectionPoint) MatchesIF(intf uint16) bool {
 	return ((c.Type == IPv4Range || c.Type == IPv6Range) && intf == 0) ||
-		(c.Type == Interface && c.InterfaceId == intf)
+		(c.Type == Interface && c.InterfaceId == intf) || c.Type == Wildcard
 }
 
 type ConnectionPair struct {
@@ -166,6 +167,8 @@ func ConnectionPointFromPB(point *fabridpb.FABRIDConnectionPoint) ConnectionPoin
 			Type:        Interface,
 			InterfaceId: uint16(point.Interface),
 		}
+	case fabridpb.FABRIDConnectionType_WILDCARD:
+		return ConnectionPoint{Type: Wildcard}
 	default:
 		return ConnectionPoint{}
 	}

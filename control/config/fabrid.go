@@ -28,7 +28,6 @@ type FABRIDPolicy struct {
 	LocalIdentifier  uint32                   `yaml:"local_identifier,omitempty"`
 	LocalDescription string                   `yaml:"local_description,omitempty"`
 	GlobalIdentifier uint32                   `yaml:"global_identifier,omitempty"`
-	MPLSLabel        uint32                   `yaml:"mpls_label,omitempty"`
 	SupportedBy      []FABRIDConnectionPoints `yaml:"connections,omitempty"`
 }
 
@@ -54,12 +53,17 @@ func (cfg *FABRIDPolicy) Sample(dst io.Writer, path config.Path, ctx config.CtxM
 }
 
 type FABRIDConnectionPoints struct {
-	Ingress FABRIDConnectionPoint `yaml:"ingress,omitempty"`
-	Egress  FABRIDConnectionPoint `yaml:"egress,omitempty"`
+	Ingress   FABRIDConnectionPoint `yaml:"ingress,omitempty"`
+	Egress    FABRIDConnectionPoint `yaml:"egress,omitempty"`
+	MPLSLabel uint32                `yaml:"mpls_label,omitempty"`
 }
 
 // Validate validates that all values are parsable.
 func (cfg *FABRIDConnectionPoints) Validate() error {
+	if cfg.Ingress.Type != fabrid.Interface && cfg.Ingress.Type != fabrid.Wildcard {
+		return serrors.New("FABRID policies are only supported from an interface to an IP range or other interface.")
+	}
+	//TODO(jvanbommel): do we also block the case where someone configures external interface on the same BR?
 	return config.ValidateAll(&cfg.Ingress, &cfg.Egress)
 }
 
@@ -75,6 +79,8 @@ func (cfg *FABRIDConnectionPoint) Validate() error {
 	switch strings.ToLower(string(cfg.Type)) {
 	case string(fabrid.Unspecified):
 		cfg.Type = fabrid.Unspecified
+	case string(fabrid.Wildcard):
+		cfg.Type = fabrid.Wildcard
 	case string(fabrid.IPv4Range):
 		cfg.Type = fabrid.IPv4Range
 	case string(fabrid.IPv6Range):
