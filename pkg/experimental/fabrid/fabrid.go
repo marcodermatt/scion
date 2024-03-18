@@ -16,11 +16,11 @@ package fabrid
 
 import (
 	"context"
-	"fmt"
 	"github.com/scionproto/scion/pkg/addr"
 	drhelper "github.com/scionproto/scion/pkg/daemon/helper"
 	"github.com/scionproto/scion/pkg/drkey"
 	"github.com/scionproto/scion/pkg/drkey/specific"
+	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	drpb "github.com/scionproto/scion/pkg/proto/control_plane"
 	"github.com/scionproto/scion/pkg/slayers"
@@ -29,8 +29,6 @@ import (
 	"google.golang.org/grpc"
 	"time"
 )
-
-const maxValidationRatio uint8 = 128
 
 type SimpleFabridConfig struct {
 	DestinationIA   addr.IA
@@ -54,15 +52,16 @@ type ClientConnection struct {
 }
 
 type Server struct {
-	Local       snet.UDPAddr
-	grpcConn    *grpc.ClientConn
-	Connections map[snet.UDPAddr]*ClientConnection
-	ASKeyCache  map[addr.IA]drkey.HostASKey
+	Local              snet.UDPAddr
+	grpcConn           *grpc.ClientConn
+	Connections        map[string]*ClientConnection
+	ASKeyCache         map[addr.IA]drkey.HostASKey
+	MaxValidationRatio uint8
 }
 
 type Client struct {
 	Destination         snet.UDPAddr
-	ValidationRatio     uint8
+	validationRatio     uint8
 	fabridControlBuffer []byte
 	pathKey             drkey.Key
 	Paths               map[snet.PathFingerprint]*PathState
@@ -76,14 +75,17 @@ type validationIdentifier struct {
 
 type PathState struct {
 	ValidationRatio      uint8
+	UpdateValRatio       bool
+	RequestStatistics    bool
+	Stats                Statistics
 	expectedValResponses map[validationIdentifier]uint32
 }
 
 func NewFabridClient(remote snet.UDPAddr, key drkey.Key, config SimpleFabridConfig) *Client {
 	state := &Client{
 		Destination:         remote,
-		ValidationRatio:     config.ValidationRatio,
-		fabridControlBuffer: make([]byte, 20),
+		validationRatio:     config.ValidationRatio,
+		fabridControlBuffer: make([]byte, 20*3),
 		pathKey:             key,
 		Paths:               make(map[snet.PathFingerprint]*PathState),
 		Config:              config,
@@ -93,20 +95,42 @@ func NewFabridClient(remote snet.UDPAddr, key drkey.Key, config SimpleFabridConf
 
 func (c *Client) NewFabridPathState(fingerprint snet.PathFingerprint) *PathState {
 	state := &PathState{
-		ValidationRatio:      c.ValidationRatio,
+		ValidationRatio:      c.validationRatio,
+		UpdateValRatio:       true,
+		RequestStatistics:    false,
 		expectedValResponses: make(map[validationIdentifier]uint32),
 	}
 	c.Paths[fingerprint] = state
 
+	log.Debug("New FABRID PathState")
 	return state
 }
 
-func NewFabridServer(local *snet.UDPAddr, grpcConn *grpc.ClientConn) *Server {
+func (c *Client) GetFabridPathState(fingerprint snet.PathFingerprint) (*PathState, error) {
+	state, found := c.Paths[fingerprint]
+	if !found {
+		return nil, serrors.New("No state found", "pathFingerprint", fingerprint)
+	}
+	return state, nil
+}
+
+func (c *Client) SetValidationRatio(newRatio uint8) {
+	for _, pathState := range c.Paths {
+		if pathState.ValidationRatio != newRatio {
+			pathState.ValidationRatio = newRatio
+			pathState.UpdateValRatio = true
+		}
+	}
+	c.validationRatio = newRatio
+}
+
+func NewFabridServer(local *snet.UDPAddr, grpcConn *grpc.ClientConn, maxValidationRatio uint8) *Server {
 	server := &Server{
-		Local:       *local,
-		grpcConn:    grpcConn,
-		Connections: make(map[snet.UDPAddr]*ClientConnection),
-		ASKeyCache:  make(map[addr.IA]drkey.HostASKey),
+		Local:              *local,
+		grpcConn:           grpcConn,
+		Connections:        make(map[string]*ClientConnection),
+		ASKeyCache:         make(map[addr.IA]drkey.HostASKey),
+		MaxValidationRatio: maxValidationRatio,
 	}
 	return server
 }
@@ -152,28 +176,29 @@ func (s *Server) DeriveHostHostKey(dstHost snet.UDPAddr) (drkey.Key, error) {
 	return hostHostKey, nil
 }
 
-func (s *Server) HandleFabridPacket(remote snet.UDPAddr, fabridOption *extension.FabridOption, identifierOption *extension.IdentifierOption, controlOption *extension.FabridControlOption) (*slayers.EndToEndExtn, error) {
-	client, found := s.Connections[remote]
+func (s *Server) HandleFabridPacket(remote snet.UDPAddr, fabridOption *extension.FabridOption, identifierOption *extension.IdentifierOption, controlOptions []*extension.FabridControlOption) (*slayers.EndToEndExtn, error) {
+	client, found := s.Connections[remote.String()]
 	if !found {
+		log.Info("Opening new connection", "remote", remote.String())
 		pathKey, err := s.DeriveHostHostKey(remote)
 		if err != nil {
 			return nil, err
 		}
 		client = &ClientConnection{
 			Source:              remote,
-			ValidationRatio:     255,
+			ValidationRatio:     0,
 			Stats:               Statistics{},
-			fabridControlBuffer: make([]byte, 20),
+			fabridControlBuffer: make([]byte, 28*3),
 			tmpBuffer:           make([]byte, 192),
 			pathKey:             pathKey,
 		}
-		s.Connections[remote] = client
+		s.Connections[remote.String()] = client
 	}
 
 	client.Stats.TotalPackets++
 	validationNumber, validationReply, err := VerifyPathValidator(fabridOption, client.tmpBuffer, client.pathKey[:])
 	if err != nil {
-		fmt.Println(err)
+		log.Error("Path validation failed", "err", err)
 		client.Stats.InvalidPackets++
 		// Don't abort on invalid packets
 		// TODO: add callback function here
@@ -181,7 +206,11 @@ func (s *Server) HandleFabridPacket(remote snet.UDPAddr, fabridOption *extension
 	}
 
 	var replyOpts []*extension.FabridControlOption
-	if controlOption != nil {
+	for _, controlOption := range controlOptions {
+		err := VerifyFabridControlValidator(controlOption, client.pathKey[:])
+		if err != nil {
+			return nil, err
+		}
 		controlReplyOpt := &extension.FabridControlOption{
 			Timestamp: identifierOption.GetRelativeTimestamp(),
 			PacketID:  identifierOption.PacketID,
@@ -194,25 +223,25 @@ func (s *Server) HandleFabridPacket(remote snet.UDPAddr, fabridOption *extension
 			if err != nil {
 				return nil, err
 			}
-			if requestedRatio > maxValidationRatio {
-				fmt.Println("FABRID control: requested ratio too large", "requested", requestedRatio, "max", maxValidationRatio)
-				requestedRatio = maxValidationRatio
+			if requestedRatio > s.MaxValidationRatio {
+				log.Debug("FABRID control: requested ratio too large", "requested", requestedRatio, "max", s.MaxValidationRatio)
+				requestedRatio = s.MaxValidationRatio
 			}
-			fmt.Println("FABRID control: updated validation ratio", "new", requestedRatio, "old", client.ValidationRatio)
+			log.Debug("FABRID control: updated validation ratio", "new", requestedRatio, "old", client.ValidationRatio)
 			client.ValidationRatio = requestedRatio
 
 			// Prepare ACK
 			controlReplyOpt.Type = extension.ValidationConfigAck
-			controlReplyOpt.Data = make([]byte, 1)
+			controlReplyOpt.Data = make([]byte, 9)
 			err = controlReplyOpt.SetValidationRatio(client.ValidationRatio)
 			if err != nil {
 				return nil, err
 			}
 		case extension.StatisticsRequest:
-			fmt.Println("FABRID control: statistics request")
+			log.Debug("FABRID control: statistics request")
 			// Prepare statistics reply
 			controlReplyOpt.Type = extension.StatisticsResponse
-			controlReplyOpt.Data = make([]byte, 8)
+			controlReplyOpt.Data = make([]byte, 24)
 			err := controlReplyOpt.SetStatistics(client.Stats.TotalPackets, client.Stats.InvalidPackets)
 			if err != nil {
 				return nil, err
@@ -220,23 +249,15 @@ func (s *Server) HandleFabridPacket(remote snet.UDPAddr, fabridOption *extension
 		}
 	}
 	if validationNumber < client.ValidationRatio {
-		fmt.Println("Send validation response")
+		log.Debug("Send validation response for packetID", identifierOption.PacketID)
 		validationReplyOpt := &extension.FabridControlOption{
 			Timestamp: identifierOption.GetRelativeTimestamp(),
 			PacketID:  identifierOption.PacketID,
 		}
 		replyOpts = append(replyOpts, validationReplyOpt)
 		validationReplyOpt.Type = extension.ValidationResponse
-		validationReplyOpt.Data = make([]byte, 4)
+		validationReplyOpt.Data = make([]byte, 20)
 		err = validationReplyOpt.SetPathValidatorReply(validationReply)
-		if err != nil {
-			return nil, err
-		}
-		err = InitFabridControlValidator(validationReplyOpt, client.pathKey[:])
-		if err != nil {
-			return nil, err
-		}
-		err = validationReplyOpt.SerializeTo(client.fabridControlBuffer)
 		if err != nil {
 			return nil, err
 		}
@@ -244,12 +265,21 @@ func (s *Server) HandleFabridPacket(remote snet.UDPAddr, fabridOption *extension
 
 	if len(replyOpts) > 0 {
 		e2eExt := &slayers.EndToEndExtn{}
-		for _, replyOpt := range replyOpts {
+		for i, replyOpt := range replyOpts {
+			err = InitFabridControlValidator(replyOpt, client.pathKey[:])
+			if err != nil {
+				return nil, err
+			}
+			buffer := client.fabridControlBuffer[i*28 : (i+1)*28]
+			err = replyOpt.SerializeTo(buffer)
+			if err != nil {
+				return nil, err
+			}
 			fabridReplyOptionLength := extension.BaseFabridControlLen + extension.FabridControlOptionDataLen(replyOpt.Type)
 			e2eExt.Options = append(e2eExt.Options,
 				&slayers.EndToEndOption{
 					OptType:      slayers.OptTypeFabridControl,
-					OptData:      client.fabridControlBuffer,
+					OptData:      buffer,
 					OptDataLen:   uint8(fabridReplyOptionLength),
 					ActualLength: fabridReplyOptionLength,
 				})
@@ -267,9 +297,9 @@ func (ps *PathState) HandleFabridControlOption(controlOption *extension.FabridCo
 			return err
 		}
 		if confirmedRatio == ps.ValidationRatio {
-			fmt.Println("FABRID control: validation ratio confirmed", "ratio", confirmedRatio)
+			log.Debug("FABRID control: validation ratio confirmed", "ratio", confirmedRatio)
 		} else if confirmedRatio < ps.ValidationRatio {
-			fmt.Println("FABRID control: validation ratio reduced by server", "requested", ps.ValidationRatio, "confirmed", confirmedRatio)
+			log.Debug("FABRID control: validation ratio reduced by server", "requested", ps.ValidationRatio, "confirmed", confirmedRatio)
 			ps.ValidationRatio = confirmedRatio
 		}
 	case extension.ValidationResponse:
@@ -287,7 +317,7 @@ func (ps *PathState) HandleFabridControlOption(controlOption *extension.FabridCo
 		if err != nil {
 			return err
 		}
-		fmt.Println("FABRID control: statistics response", "totalPackets", totalPkts, "invalidPackets", invalidPkts)
+		log.Debug("FABRID control: statistics response", "totalPackets", totalPkts, "invalidPackets", invalidPkts)
 	}
 	return nil
 }
@@ -301,7 +331,7 @@ func (ps *PathState) StoreValidationResponse(validator uint32, timestamp uint32,
 	if found {
 		return serrors.New("Validation response already stored", "validationIdentifier", valIdent)
 	}
-	fmt.Println("Storing validation response for PacketID:", packetID)
+	log.Debug("Storing validation response", "packetID", packetID)
 	ps.expectedValResponses[valIdent] = validator
 	return nil
 }
@@ -311,11 +341,11 @@ func (ps *PathState) CheckValidationResponse(validatorReply uint32, timestamp ui
 		timestamp: timestamp,
 		packetId:  packetID,
 	}
+	log.Debug("Checking validation response", "timestamp", timestamp, "packetID", packetID)
 	validatorStored, found := ps.expectedValResponses[valIdent]
-	fmt.Println("Checking validation response")
 	if found {
 		if validatorStored == validatorReply {
-			fmt.Println("FABRID control: successful validation of packetID", packetID)
+			log.Debug("FABRID control: successful validation", "packetID", packetID)
 		} else {
 			return serrors.New("FABRID control: failed validation", "packetID", packetID, "stored", validatorStored, "reply", validatorReply)
 		}

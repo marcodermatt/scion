@@ -179,13 +179,13 @@ func FabridControlOptionDataLen(controlOptionType FabridControlOptionType) int {
 	case ValidationConfig:
 		return 1
 	case ValidationConfigAck:
-		return 1
+		return 9
 	case ValidationResponse:
-		return 4
+		return 20
 	case StatisticsRequest:
 		return 0
 	case StatisticsResponse:
-		return 8
+		return 24
 	default:
 		return 0
 	}

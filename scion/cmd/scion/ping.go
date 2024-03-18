@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	"math"
 	"net"
 	"os"
@@ -363,14 +364,27 @@ On other errors, ping will exit with code 2.
 			} else if flags.fabrid {
 				switch s := pingPath.Dataplane().(type) {
 				case snetpath.SCION:
+					polIdentifier := snet.FabridPolicyIdentifier{
+						Type:       snet.FabridGlobalPolicy,
+						Identifier: 0,
+						Index:      0,
+					}
+					fabridClientConfig := fabrid.SimpleFabridConfig{
+						DestinationIA:   remote.IA,
+						DestinationAddr: remote.Host.IP.String(),
+						ValidationRatio: 0,
+						Policy:          polIdentifier,
+					}
+					fabridClient := fabrid.NewFabridClient(*remote, drkey.Key{}, fabridClientConfig)
 					fabridConfig := &snetpath.FabridConfig{
 						LocalIA:         info.IA,
 						LocalAddr:       localIP.String(),
 						DestinationIA:   remote.IA,
 						DestinationAddr: remote.Host.IP.String(),
 					}
+					pathState := fabridClient.NewFabridPathState(snet.Fingerprint(pingPath))
 					fabridPath, err := snetpath.NewFABRIDDataplanePath(s, pingPath.Metadata().Interfaces,
-						policies, fabridConfig, nil)
+						policies, fabridConfig, pathState)
 					if err != nil {
 						return err
 					}

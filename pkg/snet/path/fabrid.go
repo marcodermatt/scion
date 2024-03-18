@@ -16,7 +16,7 @@ package path
 
 import (
 	"context"
-	"fmt"
+	"github.com/scionproto/scion/pkg/log"
 	"time"
 
 	"github.com/scionproto/scion/pkg/addr"
@@ -50,6 +50,7 @@ type FABRID struct {
 	tmpBuffer        []byte
 	identifierBuffer []byte
 	fabridBuffer     []byte
+	e2eBuffer        []byte
 	numHops          int
 	policyIDs        []*fabrid.FabridPolicyID
 	ias              []addr.IA
@@ -94,6 +95,7 @@ func NewFABRIDDataplanePath(p SCION, interfaces []snet.PathInterface, policyIDsP
 		tmpBuffer:        make([]byte, 64),
 		identifierBuffer: make([]byte, 8),
 		fabridBuffer:     make([]byte, 8+4*numHops),
+		e2eBuffer:        make([]byte, 5*2),
 		support:          make(map[addr.IA]bool),
 		Raw:              append([]byte(nil), p.Raw...),
 		policyIDs:        policyIDs,
@@ -137,7 +139,7 @@ func policiesToHopFields(numHops int, policyIDs []snet.FabridPolicyPerHop, decod
 	polIds := make([]*fabrid.FabridPolicyID, numHops)
 	ias := make([]addr.IA, numHops)
 	hfIdx := 0
-	fmt.Println(policyIDs)
+	log.Debug("Policy conversion", "policyIDs", policyIDs)
 	ifIdx := 0
 	polIdx := 0
 
@@ -153,25 +155,25 @@ func policiesToHopFields(numHops int, policyIDs []snet.FabridPolicyPerHop, decod
 				policyIDs[polIdx].Ingress,
 				policyIDs[polIdx].Egress)
 
-			fmt.Println("HFPol", hfIdx, hfOneToOne, decoded.InfoFields[ifIdx].ConsDir, decoded.HopFields[hfIdx], policyIDs[polIdx])
+			log.Debug("HFPol", "hfIdx", hfIdx, "hhfOneToOne", hfOneToOne, "consDir", decoded.InfoFields[ifIdx].ConsDir, "hopField", decoded.HopFields[hfIdx], "policyIDs", policyIDs[polIdx])
 
 			if hfOneToOne {
 				if policyIDs[polIdx].Pol == nil {
 					polIds[hfIdx] = nil
-					fmt.Println(hfIdx, " is not using a policy")
+					log.Debug("HF not using a policy", "hfIdx", hfIdx)
 
 				} else {
 					polIds[hfIdx] = &fabrid.FabridPolicyID{
 						ID: policyIDs[polIdx].Pol.Index,
 					}
-					fmt.Println(hfIdx, " is using policy index: ", policyIDs[polIdx].Pol.Index, policyIDs[polIdx].IA)
+					log.Debug("HF uses a policy", "hfIdx", hfIdx, "policy index", policyIDs[polIdx].Pol.Index, "IA", policyIDs[polIdx].IA)
 
 				}
 				ias[hfIdx] = policyIDs[polIdx].IA
 			} else {
 				polIds[hfIdx] = nil
-				fmt.Println(hfIdx, " is using policy index nil ")
 				ias[hfIdx] = policyIDs[polIdx].IA
+				log.Debug("HF uses nil policy", "hfIdx", hfIdx)
 			}
 			hfIdx++
 			polIdx++
@@ -274,7 +276,65 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 		}
 	}
 
+	var e2eOpts []*extension.FabridControlOption
+	if f.pathState.UpdateValRatio {
+		valConfigOption := &extension.FabridControlOption{
+			Type:      extension.ValidationConfig,
+			Auth:      [4]byte{},
+			Timestamp: identifierOption.GetRelativeTimestamp(),
+			PacketID:  identifierOption.PacketID,
+			Data:      make([]byte, 1),
+		}
+		err = valConfigOption.SetValidationRatio(f.pathState.ValidationRatio)
+		if err != nil {
+			return err
+		}
+		e2eOpts = append(e2eOpts, valConfigOption)
+		f.pathState.UpdateValRatio = false
+		log.Debug("FABRID control: outgoing validation config", "valRatio", f.pathState.ValidationRatio)
+	}
+	if f.pathState.RequestStatistics {
+		statisticsRequestOption := &extension.FabridControlOption{
+			Type:      extension.StatisticsRequest,
+			Auth:      [4]byte{},
+			Timestamp: identifierOption.GetRelativeTimestamp(),
+			PacketID:  identifierOption.PacketID,
+		}
+
+		e2eOpts = append(e2eOpts, statisticsRequestOption)
+		f.pathState.RequestStatistics = false
+		log.Debug("FABRID control: sending statistics request")
+	}
+	if len(e2eOpts) > 0 {
+		if p.E2eExtension == nil {
+			p.E2eExtension = &slayers.EndToEndExtn{}
+		}
+		for i, replyOpt := range e2eOpts {
+			err = fabrid.InitFabridControlValidator(replyOpt, f.pathKey.Key[:])
+			if err != nil {
+				return err
+			}
+			buffer := f.e2eBuffer[i*5 : (i+1)*5]
+			err = replyOpt.SerializeTo(buffer)
+			if err != nil {
+				return err
+			}
+			fabridReplyOptionLength := extension.BaseFabridControlLen + extension.FabridControlOptionDataLen(replyOpt.Type)
+			p.E2eExtension.Options = append(p.E2eExtension.Options,
+				&slayers.EndToEndOption{
+					OptType:      slayers.OptTypeFabridControl,
+					OptData:      buffer,
+					OptDataLen:   uint8(fabridReplyOptionLength),
+					ActualLength: fabridReplyOptionLength,
+				})
+		}
+	}
+
 	f.counter++
+	f.pathState.Stats.TotalPackets++
+	if f.pathState.Stats.TotalPackets%6 == 0 {
+		f.pathState.RequestStatistics = true
+	}
 	return nil
 }
 
@@ -286,10 +346,10 @@ func (f *FABRID) renewExpiredKeys(t time.Time) error {
 				newKey, err := f.fetchKey(t, ia)
 				if err != nil {
 					f.support[ia] = false
-					fmt.Println("Error while fetching drkey for AS", ia)
+					log.Error("Error while fetching drkey for AS", ia)
 					continue
 				}
-				fmt.Println("Successfully fetched drkey for AS", ia)
+				log.Debug("Successfully fetched drkey", "IA", ia)
 				f.keys[ia] = newKey
 			}
 		}

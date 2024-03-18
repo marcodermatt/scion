@@ -20,6 +20,7 @@ import (
 	"crypto/cipher"
 	"encoding/base64"
 	"encoding/binary"
+	"github.com/scionproto/scion/pkg/log"
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
@@ -219,7 +220,15 @@ func InitValidators(f *ext.FabridOption, id *ext.IdentifierOption, s *slayers.SC
 }
 
 func computeFabridControlValidator(fc *ext.FabridControlOption, resultBuffer []byte, pathKey []byte) error {
-	fcMacInputLength := 9 + ext.FabridControlOptionDataLen(fc.Type)
+	dataLen := ext.FabridControlOptionDataLen(fc.Type)
+	var fcMacInputLength int
+	switch fc.Type {
+	case ext.ValidationConfig, ext.StatisticsRequest:
+		fcMacInputLength = 1 + 8 + dataLen
+	case ext.ValidationConfigAck, ext.ValidationResponse, ext.StatisticsResponse:
+		fcMacInputLength = 1 + dataLen
+
+	}
 	macInputBuf := make([]byte, (fcMacInputLength+15)&^15) // Next multiple of 16 for macBlock()$
 	tmpBuf := make([]byte, 16)
 	macInputBuf[0] = uint8(fc.Type)
@@ -227,6 +236,10 @@ func computeFabridControlValidator(fc *ext.FabridControlOption, resultBuffer []b
 	binary.BigEndian.PutUint32(macInputBuf[5:9], fc.PacketID)
 	copy(macInputBuf[9:fcMacInputLength], fc.Data)
 	err := macBlock(pathKey, tmpBuf, macInputBuf[:fcMacInputLength], resultBuffer)
+	//log.Debug("Computing FABRID control validator",
+	//	"key", base64.StdEncoding.EncodeToString(pathKey),
+	//	"input", base64.StdEncoding.EncodeToString(macInputBuf[:fcMacInputLength]),
+	//	"output", base64.StdEncoding.EncodeToString(resultBuffer[:4]))
 	if err != nil {
 		return err
 	}
@@ -240,6 +253,10 @@ func InitFabridControlValidator(fc *ext.FabridControlOption, pathKey []byte) err
 		return err
 	}
 	outBuffer[0] &= 0xF // ignore first four bits
+	log.Debug("Computing FABRID control validator",
+		"key", base64.StdEncoding.EncodeToString(pathKey),
+		"controlOption", fc,
+		"computedValidator", base64.StdEncoding.EncodeToString(outBuffer[:4]))
 	copy(fc.Auth[:4], outBuffer[:4])
 	return nil
 }
@@ -251,6 +268,11 @@ func VerifyFabridControlValidator(fc *ext.FabridControlOption, pathKey []byte) e
 		return err
 	}
 	computedValidator[0] &= 0xF // ignore first four bits
+	log.Debug("Verifying FABRID control validator",
+		"key", base64.StdEncoding.EncodeToString(pathKey),
+		"controlOption", fc,
+		"pktValidator", base64.StdEncoding.EncodeToString(fc.Auth[:]),
+		"computedValidator", base64.StdEncoding.EncodeToString(computedValidator[:4]))
 	if !bytes.Equal(computedValidator[:4], fc.Auth[:]) {
 		return serrors.New("Fabrid control validator is not valid")
 	}

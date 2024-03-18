@@ -430,15 +430,28 @@ func (c *client) attemptRequest(n int) bool {
 	if path != nil {
 		switch s := path.Dataplane().(type) {
 		case snetpath.SCION:
+			polIdentifier := snet.FabridPolicyIdentifier{
+				Type:       snet.FabridGlobalPolicy,
+				Identifier: 0,
+				Index:      0,
+			}
+			fabridClientConfig := fabrid.SimpleFabridConfig{
+				DestinationIA:   remote.IA,
+				DestinationAddr: remote.Host.IP.String(),
+				ValidationRatio: 0,
+				Policy:          polIdentifier,
+			}
+			fabridClient := fabrid.NewFabridClient(remote, drkey.Key{}, fabridClientConfig)
 			fabridConfig := &snetpath.FabridConfig{
 				LocalIA:         integration.Local.IA,
 				LocalAddr:       integration.Local.Host.IP.String(),
 				DestinationIA:   remote.IA,
 				DestinationAddr: remote.Host.IP.String(),
 			}
+			pathState := fabridClient.NewFabridPathState(snet.Fingerprint(path))
 			var policies []snet.FabridPolicyPerHop
 			fabridPath, err := snetpath.NewFABRIDDataplanePath(s, path.Metadata().Interfaces,
-				policies, fabridConfig, nil)
+				policies, fabridConfig, pathState)
 			if err != nil {
 				logger.Error("Error creating FABRID path", "err", err)
 				return false
