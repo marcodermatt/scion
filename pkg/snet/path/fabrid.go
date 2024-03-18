@@ -16,6 +16,7 @@ package path
 
 import (
 	"context"
+	crand "crypto/rand"
 	"github.com/scionproto/scion/pkg/log"
 	"time"
 
@@ -247,6 +248,14 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 	if err != nil {
 		return serrors.WrapStr("initializing validators failed", err)
 	}
+	// TODO: Removing testing code
+	randInt := make([]byte, 1)
+	crand.Read(randInt)
+	if uint8(randInt[0]) < fabrid.CLIENT_FLAKINESS {
+		for i, b := range fabridOption.PathValidator {
+			fabridOption.PathValidator[i] = b ^ 0xFF
+		}
+	}
 	err = identifierOption.Serialize(f.identifierBuffer)
 	if err != nil {
 		return serrors.WrapStr("serializing identifier", err)
@@ -335,9 +344,6 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 
 	f.counter++
 	pathState.Stats.TotalPackets++
-	if pathState.Stats.TotalPackets%6 == 0 {
-		pathState.RequestStatistics = true
-	}
 	return nil
 }
 

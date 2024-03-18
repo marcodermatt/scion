@@ -18,10 +18,7 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
-	"encoding/base64"
 	"encoding/binary"
-	"github.com/scionproto/scion/pkg/log"
-
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
 	"github.com/scionproto/scion/pkg/private/serrors"
@@ -155,25 +152,25 @@ func EncryptPolicyID(f *FabridPolicyID, id *ext.IdentifierOption,
 // VerifyPathValidator recomputes the path validator from the updated HVFs and compares it
 // with the path validator in the packet. Returns validation number and reply for path validation.
 // `tmpBuffer` requires at least (numHops*3 rounded up to next multiple of 16) + 16 bytes
-func VerifyPathValidator(f *ext.FabridOption, tmpBuffer []byte, pathKey []byte) (uint8, uint32, error) {
+func VerifyPathValidator(f *ext.FabridOption, tmpBuffer []byte, pathKey []byte) (uint8, uint32, bool, error) {
 	inputLength := 3 * len(f.HopfieldMetadata)
 	requiredBufferLength := 16 + (inputLength+15)&^15
 	if len(tmpBuffer) < requiredBufferLength {
-		return 0, 0, serrors.New("tmpBuffer length is invalid", "expected", requiredBufferLength, "actual", len(tmpBuffer))
+		return 0, 0, false, serrors.New("tmpBuffer length is invalid", "expected", requiredBufferLength, "actual", len(tmpBuffer))
 	}
 	for i, meta := range f.HopfieldMetadata {
 		copy(tmpBuffer[16+i*3:16+(i+1)*3], meta.HopValidationField[:3])
 	}
 	err := macBlock(pathKey, tmpBuffer[:16], tmpBuffer[16:16+inputLength], tmpBuffer[16:])
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, false, err
 	}
 	validationNumber := tmpBuffer[20]
 	validationReply := binary.BigEndian.Uint32(tmpBuffer[21:25])
 	if !bytes.Equal(tmpBuffer[16:20], f.PathValidator[:]) {
-		return validationNumber, validationReply, serrors.New("Path validator is not valid", "validator", base64.StdEncoding.EncodeToString(f.PathValidator[:]), "computed", base64.StdEncoding.EncodeToString(tmpBuffer[16:20]))
+		return validationNumber, validationReply, false, nil
 	}
-	return validationNumber, validationReply, nil
+	return validationNumber, validationReply, true, nil
 }
 
 // InitValidators sets all HVFs of the FABRID option and computes the
@@ -253,10 +250,10 @@ func InitFabridControlValidator(fc *ext.FabridControlOption, pathKey []byte) err
 		return err
 	}
 	outBuffer[0] &= 0xF // ignore first four bits
-	log.Debug("Computing FABRID control validator",
-		"key", base64.StdEncoding.EncodeToString(pathKey),
-		"controlOption", fc,
-		"computedValidator", base64.StdEncoding.EncodeToString(outBuffer[:4]))
+	//log.Debug("Computing FABRID control validator",
+	//	"key", base64.StdEncoding.EncodeToString(pathKey),
+	//	"controlOption", fc,
+	//	"computedValidator", base64.StdEncoding.EncodeToString(outBuffer[:4]))
 	copy(fc.Auth[:4], outBuffer[:4])
 	return nil
 }
@@ -268,11 +265,11 @@ func VerifyFabridControlValidator(fc *ext.FabridControlOption, pathKey []byte) e
 		return err
 	}
 	computedValidator[0] &= 0xF // ignore first four bits
-	log.Debug("Verifying FABRID control validator",
-		"key", base64.StdEncoding.EncodeToString(pathKey),
-		"controlOption", fc,
-		"pktValidator", base64.StdEncoding.EncodeToString(fc.Auth[:]),
-		"computedValidator", base64.StdEncoding.EncodeToString(computedValidator[:4]))
+	//log.Debug("Verifying FABRID control validator",
+	//	"key", base64.StdEncoding.EncodeToString(pathKey),
+	//	"controlOption", fc,
+	//	"pktValidator", base64.StdEncoding.EncodeToString(fc.Auth[:]),
+	//	"computedValidator", base64.StdEncoding.EncodeToString(computedValidator[:4]))
 	if !bytes.Equal(computedValidator[:4], fc.Auth[:]) {
 		return serrors.New("Fabrid control validator is not valid")
 	}
