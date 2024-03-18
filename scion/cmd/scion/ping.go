@@ -372,33 +372,10 @@ On other errors, ping will exit with code 2.
 					fabridClientConfig := fabrid.SimpleFabridConfig{
 						DestinationIA:   remote.IA,
 						DestinationAddr: remote.Host.IP.String(),
-						ValidationRatio: 0,
-						Policy:          polIdentifier,
-					}
-					fabridClient := fabrid.NewFabridClient(*remote, drkey.Key{}, fabridClientConfig)
-					fabridConfig := &snetpath.FabridConfig{
 						LocalIA:         info.IA,
 						LocalAddr:       localIP.String(),
-						DestinationIA:   remote.IA,
-						DestinationAddr: remote.Host.IP.String(),
-					}
-					pathState := fabridClient.NewFabridPathState(snet.Fingerprint(pingPath))
-					fabridPath, err := snetpath.NewFABRIDDataplanePath(s, pingPath.Metadata().Interfaces,
-						policies, fabridConfig, pathState)
-					if err != nil {
-						return err
-					}
-					remote.Path = fabridPath
-					if localIP == nil {
-						target := remote.Host.IP
-						if remote.NextHop != nil {
-							target = remote.NextHop.IP
-						}
-						if localIP, err = addrutil.ResolveLocal(target); err != nil {
-							return serrors.WrapStr("resolving local address", err)
-						}
-						printf("Resolved local address:\n  %s\n", localIP)
-						fabridConfig.LocalAddr = localIP.String()
+						ValidationRatio: 0,
+						Policy:          polIdentifier,
 					}
 					servicesInfo, err := sd.SVCInfo(ctx, []addr.SVC{addr.SvcCS})
 					if err != nil {
@@ -424,6 +401,31 @@ On other errors, ping will exit with code 2.
 						return err
 					}
 					defer grpcconn.Close()
+					fabridClient := fabrid.NewFabridClient(*remote, fabridClientConfig, grpcconn)
+					fabridConfig := &snetpath.FabridConfig{
+						LocalIA:         info.IA,
+						LocalAddr:       localIP.String(),
+						DestinationIA:   remote.IA,
+						DestinationAddr: remote.Host.IP.String(),
+					}
+					fabridClient.NewFabridPathState(snet.Fingerprint(pingPath))
+					fabridPath, err := snetpath.NewFABRIDDataplanePath(s, pingPath.Metadata().Interfaces,
+						policies, fabridConfig, fabridClient, snet.Fingerprint(pingPath))
+					if err != nil {
+						return err
+					}
+					remote.Path = fabridPath
+					if localIP == nil {
+						target := remote.Host.IP
+						if remote.NextHop != nil {
+							target = remote.NextHop.IP
+						}
+						if localIP, err = addrutil.ResolveLocal(target); err != nil {
+							return serrors.WrapStr("resolving local address", err)
+						}
+						printf("Resolved local address:\n  %s\n", localIP)
+						fabridConfig.LocalAddr = localIP.String()
+					}
 					client := drpb.NewDRKeyIntraServiceClient(grpcconn)
 					fabridPath.RegisterDRKeyFetcher(func(ctx context.Context, meta drkey.ASHostMeta) (drkey.ASHostKey, error) {
 						rep, err := client.DRKeyASHost(ctx, drhelper.AsHostMetaToProtoRequest(meta))
@@ -433,16 +435,6 @@ On other errors, ping will exit with code 2.
 						key, err := drhelper.GetASHostKeyFromReply(rep, meta)
 						if err != nil {
 							return drkey.ASHostKey{}, err
-						}
-						return key, nil
-					}, func(ctx context.Context, meta drkey.HostHostMeta) (drkey.HostHostKey, error) {
-						rep, err := client.DRKeyHostHost(ctx, drhelper.HostHostMetaToProtoRequest(meta))
-						if err != nil {
-							return drkey.HostHostKey{}, err
-						}
-						key, err := drhelper.GetHostHostKeyFromReply(rep, meta)
-						if err != nil {
-							return drkey.HostHostKey{}, err
 						}
 						return key, nil
 					})

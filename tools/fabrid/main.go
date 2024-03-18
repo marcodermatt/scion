@@ -438,25 +438,17 @@ func (c *client) attemptRequest(n int) bool {
 			fabridClientConfig := fabrid.SimpleFabridConfig{
 				DestinationIA:   remote.IA,
 				DestinationAddr: remote.Host.IP.String(),
+				LocalIA:         integration.Local.IA,
+				LocalAddr:       integration.Local.Host.IP.String(),
 				ValidationRatio: 0,
 				Policy:          polIdentifier,
 			}
-			fabridClient := fabrid.NewFabridClient(remote, drkey.Key{}, fabridClientConfig)
 			fabridConfig := &snetpath.FabridConfig{
 				LocalIA:         integration.Local.IA,
 				LocalAddr:       integration.Local.Host.IP.String(),
 				DestinationIA:   remote.IA,
 				DestinationAddr: remote.Host.IP.String(),
 			}
-			pathState := fabridClient.NewFabridPathState(snet.Fingerprint(path))
-			var policies []snet.FabridPolicyPerHop
-			fabridPath, err := snetpath.NewFABRIDDataplanePath(s, path.Metadata().Interfaces,
-				policies, fabridConfig, pathState)
-			if err != nil {
-				logger.Error("Error creating FABRID path", "err", err)
-				return false
-			}
-			remote.Path = fabridPath
 			servicesInfo, err := c.sdConn.SVCInfo(ctx, []addr.SVC{addr.SvcCS})
 			if err != nil {
 				logger.Error("Error getting services", "err", err)
@@ -483,6 +475,16 @@ func (c *client) attemptRequest(n int) bool {
 				return false
 			}
 			defer grpcconn.Close()
+			fabridClient := fabrid.NewFabridClient(remote, fabridClientConfig, grpcconn)
+			fabridClient.NewFabridPathState(snet.Fingerprint(path))
+			var policies []snet.FabridPolicyPerHop
+			fabridPath, err := snetpath.NewFABRIDDataplanePath(s, path.Metadata().Interfaces,
+				policies, fabridConfig, fabridClient, snet.Fingerprint(path))
+			if err != nil {
+				logger.Error("Error creating FABRID path", "err", err)
+				return false
+			}
+			remote.Path = fabridPath
 			drkeyClient := drpb.NewDRKeyIntraServiceClient(grpcconn)
 			fabridPath.RegisterDRKeyFetcher(func(ctx context.Context, meta drkey.ASHostMeta) (drkey.ASHostKey, error) {
 				rep, err := drkeyClient.DRKeyASHost(ctx, drhelper.AsHostMetaToProtoRequest(meta))
@@ -492,16 +494,6 @@ func (c *client) attemptRequest(n int) bool {
 				key, err := drhelper.GetASHostKeyFromReply(rep, meta)
 				if err != nil {
 					return drkey.ASHostKey{}, err
-				}
-				return key, nil
-			}, func(ctx context.Context, meta drkey.HostHostMeta) (drkey.HostHostKey, error) {
-				rep, err := drkeyClient.DRKeyHostHost(ctx, drhelper.HostHostMetaToProtoRequest(meta))
-				if err != nil {
-					return drkey.HostHostKey{}, err
-				}
-				key, err := drhelper.GetHostHostKeyFromReply(rep, meta)
-				if err != nil {
-					return drkey.HostHostKey{}, err
 				}
 				return key, nil
 			})

@@ -504,6 +504,9 @@ local scion_extn_tlv_option_types = {
   [0] = "Pad1",
   [1] = "PadN",
   [2] = "Packet Authenticator Option",
+  [3] = "Identifier Option",
+  [4] = "FABRID Option",
+  [5] = "FABRID Control Option",
 }
 
 local scion_extn_tlv_option_type = ProtoField.uint8("scion_extn_tlv_option.type", "Type", base.DEC, scion_extn_tlv_option_types)
@@ -555,20 +558,28 @@ function scion_extn_tlv_option_dissect(tvbuf, pktinfo, root)
     local ret_len
     if tlv["type"]:uint() == 2 then
         ret_len = scion_packet_authenticator_option_dissect(tvbuf(2, data_len), pktinfo, tree)
+    elseif tlv["type"]:uint() == 3 then
+        ret_len = identifier_option_dissect(tvbuf(2, data_len), pktinfo, tree)
+    elseif tlv["type"]:uint() == 4 then
+        ret_len = fabrid_option_dissect(tvbuf(2, data_len), pktinfo, tree)
+    elseif tlv["type"]:uint() == 5 then
+        ret_len = fabrid_control_option_dissect(tvbuf(2, data_len), pktinfo, tree)
     else
         -- no specific dissector
         ret_len = data_len
-        tree:add(scion_extn_tlv_option_value, tlv.data)
+        if tlv.data ~= nil then
+            tree:add(scion_extn_tlv_option_value, tlv.data)
+        end
     end
 
     local type_str = scion_extn_tlv_option_types[tlv.type:uint()]
     if type_str ~= nil then
-        tree:set_text(type_str)
+    tree:set_text(type_str)
     else
-        tree:append_text(", Unknown Type")
-    end
+    tree:append_text(", Unknown Type")
+        end
 
-    return len
+        return len
 end
 
 -- SCION Packet Authenticator Option
@@ -732,6 +743,158 @@ function scion_packet_authenticator_option_dissect(buffer, pktinfo, tree)
         authenticator_tree:add(scion_packet_authenticator_option_authenticator, buffer(12,authenticator_length))
     end
 
+    return length
+end
+
+-- Identifier Option
+-- Extending scion_extn_tlv_option "protocol"
+local identifier = {}
+
+-- Identifier fields
+local identifier_option_timestamp =
+ProtoField.bytes("identifier_option.path_validator", "Timestamp")
+local identifier_option_packet_id = ProtoField.uint32("identifier_option.packet_id", "Packet ID")
+identifier.fields = {
+    identifier_option_timestamp,
+    identifier_option_packet_id,
+}
+scion_extn_tlv_option.fields = identifier.fields -- This seems to extending the protocol's field table
+
+-- Identifier option dissector
+function identifier_option_dissect(buffer, pktinfo, tree)
+    local length = buffer:len()
+    tree:add(identifier_option_timestamp, buffer(0,4))
+    tree:add(identifier_option_packet_id, buffer(4,4))
+
+    return length
+end
+
+-- FABRID Option
+-- Extending scion_extn_tlv_option "protocol"
+local fabrid = {}
+
+-- FABRID fields
+local fabrid_option_path_validator =
+ProtoField.bytes("fabrid_option.path_validator", "Path validator")
+local fabrid_option_hop_encrypted_policy =
+ProtoField.bytes("fabrid_option.hop.encrypted_policy", "Encrypted policy")
+local fabrid_option_hop_flags = ProtoField.uint8("fabrid_option.hop.flags", "Flags", base.HEX)
+local fabrid_option_hop_flag_enabled = ProtoField.uint8("fabrid_option.hop.flag_enabled", "Enabled",
+    base.HEX, flagType, 0x80)
+local fabrid_option_hop_flag_as_key = ProtoField.uint8("fabrid_option.hop.flag_as_key", "AS level key",
+base.HEX, flagType, 0x40)
+local fabrid_option_hop_hvf =
+ProtoField.bytes("fabrid_option.hop.hvf", "Hop validation field")
+fabrid.fields = {
+    fabrid_option_path_validator,
+    fabrid_option_hop_encrypted_policy,
+    fabrid_option_hop_flags,
+    fabrid_option_hop_flag_enabled,
+    fabrid_option_hop_flag_as_key,
+    fabrid_option_hop_hvf,
+}
+scion_extn_tlv_option.fields = fabrid.fields -- This seems to extending the protocol's field table
+
+-- FABRID option dissector
+function fabrid_option_dissect(buffer, pktinfo, tree)
+    local length = buffer:len()
+    local n_hops = (length - 4)/4
+    if length < 4 then
+        tree:add_proto_expert_info(e_too_short)
+        return -1
+    end
+
+    tree:add(fabrid_option_path_validator, buffer(n_hops * 4, 4))
+
+    local offset = 0
+    for i=0,n_hops-1 do
+        fabrid_hop_dissect(buffer(offset, 4), pktinfo, tree, i)
+        offset = offset + 4
+    end
+
+    return length
+end
+
+function fabrid_hop_dissect(tvbuf, pktinfo, root, index)
+    local tree = root:add(tvbuf, "Fabrid hop", index)
+
+
+    tree:add(fabrid_option_hop_encrypted_policy, tvbuf(0, 1))
+    tree:add(fabrid_option_hop_flags, tvbuf(1, 1))
+    tree:add(fabrid_option_hop_flag_enabled, tvbuf(1, 1))
+    tree:add(fabrid_option_hop_flag_as_key, tvbuf(1, 1))
+    tree:add(fabrid_option_hop_hvf, tvbuf(1, 3))
+end
+
+-- FABRID Control Option
+-- Extending scion_extn_tlv_option "protocol"
+local fabrid_control = {}
+
+-- Value string table for FABRID control types
+fabrid_control.option_types = {
+    [0] = "Validation config",
+    [1] = "Validation config ACK",
+    [2] = "Validation response",
+    [3] = "Statistics request",
+    [4] = "Statistics response",
+}
+
+-- FABRID control fields
+local fabrid_control_option_type =
+ProtoField.uint8("fabrid_control_option.type", "Type", base.DEC, fabrid_control.option_types)
+local fabrid_control_option_authenticator =
+ProtoField.bytes("fabrid_control_option.authenticator", "Authenticator")
+local fabrid_control_option_pkt_id =
+ProtoField.uint32("fabrid_control_option.pkt_id", "Packet ID")
+local fabrid_control_option_timestamp =
+ProtoField.uint32("fabrid_control_option.timestamp", "Timestamp")
+local fabrid_control_option_val_ratio =
+ProtoField.uint8("fabrid_control_option.val_ratio", "Validation ratio")
+local fabrid_control_option_val_hash =
+ProtoField.bytes("fabrid_control_option.val_hash", "Validation hash")
+local fabrid_control_option_statistics_total_pkts =
+ProtoField.uint32("fabrid_control_option.statistics_total_pkts", "Statistics total packets")
+local fabrid_control_option_statistics_failed_pkts =
+ProtoField.uint32("fabrid_control_option.statistics_failed_pkts", "Statistics failed packets")
+fabrid_control.fields = {
+    fabrid_control_option_type,
+    fabrid_control_option_authenticator,
+    fabrid_control_option_pkt_id,
+    fabrid_control_option_timestamp,
+    fabrid_control_option_val_ratio,
+    fabrid_control_option_val_hash,
+    fabrid_control_option_statistics_total_pkts,
+    fabrid_control_option_statistics_failed_pkts,
+}
+scion_extn_tlv_option.fields = fabrid_control.fields -- This seems to extending the protocol's field table
+
+-- FABRID control option dissector
+function fabrid_control_option_dissect(buffer, pktinfo, tree)
+    local length = buffer:len()
+    if length < 4 then
+        tree:add_proto_expert_info(e_too_short)
+        return -1
+    end
+
+    fabrid_control.type = bit.rshift(buffer(0,1):uint(),4)
+    tree:add(fabrid_control_option_type, fabrid_control.type)
+    tree:add(fabrid_control_option_authenticator, buffer(1,3))
+    if fabrid_control.type == 0 then
+        tree:add(fabrid_control_option_val_ratio, buffer(4,1))
+    elseif fabrid_control.type == 1 then
+        tree:add(fabrid_control_option_timestamp, buffer(4,4))
+        tree:add(fabrid_control_option_pkt_id, buffer(8,4))
+        tree:add(fabrid_control_option_val_ratio, buffer(12,1))
+    elseif fabrid_control.type == 2 then
+        tree:add(fabrid_control_option_timestamp, buffer(4,4))
+        tree:add(fabrid_control_option_pkt_id, buffer(8,4))
+        tree:add(fabrid_control_option_val_hash, buffer(12,4))
+    elseif fabrid_control.type == 4 then
+        tree:add(fabrid_control_option_timestamp, buffer(4,4))
+        tree:add(fabrid_control_option_pkt_id, buffer(8,4))
+        tree:add(fabrid_control_option_statistics_total_pkts, buffer(12,4))
+        tree:add(fabrid_control_option_statistics_failed_pkts, buffer(16,4))
+    end
     return length
 end
 

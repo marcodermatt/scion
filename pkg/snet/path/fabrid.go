@@ -41,9 +41,7 @@ type FABRID struct {
 	keys             map[addr.IA]drkey.ASHostKey
 	ingresses        []uint16
 	egresses         []uint16
-	pathKey          drkey.HostHostKey
 	drkeyFn          func(context.Context, drkey.ASHostMeta) (drkey.ASHostKey, error)
-	drkeyPathFn      func(context.Context, drkey.HostHostMeta) (drkey.HostHostKey, error)
 	conf             *FabridConfig
 	counter          uint32
 	baseTimestamp    uint32
@@ -55,10 +53,11 @@ type FABRID struct {
 	policyIDs        []*fabrid.FabridPolicyID
 	ias              []addr.IA
 	support          map[addr.IA]bool
-	pathState        *fabrid.PathState
+	client           *fabrid.Client
+	fingerprint      snet.PathFingerprint
 }
 
-func NewFABRIDDataplanePath(p SCION, interfaces []snet.PathInterface, policyIDsPerHop []snet.FabridPolicyPerHop, conf *FabridConfig, state *fabrid.PathState) (*FABRID, error) {
+func NewFABRIDDataplanePath(p SCION, interfaces []snet.PathInterface, policyIDsPerHop []snet.FabridPolicyPerHop, conf *FabridConfig, client *fabrid.Client, fingerprint snet.PathFingerprint) (*FABRID, error) {
 
 	var decoded scion.Decoded
 	if err := decoded.DecodeFromBytes(p.Raw); err != nil {
@@ -99,7 +98,8 @@ func NewFABRIDDataplanePath(p SCION, interfaces []snet.PathInterface, policyIDsP
 		support:          make(map[addr.IA]bool),
 		Raw:              append([]byte(nil), p.Raw...),
 		policyIDs:        policyIDs,
-		pathState:        state,
+		client:           client,
+		fingerprint:      fingerprint,
 	}
 
 	// Get ingress/egress IFs and IAs from path interfaces
@@ -186,11 +186,8 @@ func policiesToHopFields(numHops int, policyIDs []snet.FabridPolicyPerHop, decod
 	return polIds, ias
 }
 
-func (f *FABRID) RegisterDRKeyFetcher(fn func(context.Context, drkey.ASHostMeta) (drkey.ASHostKey, error),
-	fn2 func(context.Context, drkey.HostHostMeta) (drkey.HostHostKey, error)) {
-
+func (f *FABRID) RegisterDRKeyFetcher(fn func(context.Context, drkey.ASHostMeta) (drkey.ASHostKey, error)) {
 	f.drkeyFn = fn
-	f.drkeyPathFn = fn2
 }
 
 func (f *FABRID) SetPath(s *slayers.SCION) error {
@@ -215,6 +212,10 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 	err := f.renewExpiredKeys(now)
 	if err != nil {
 		return serrors.WrapStr("While obtaining fabrid keys", err)
+	}
+	err = f.client.RenewPathKey(now)
+	if err != nil {
+		return err
 	}
 	identifierOption := &extension.IdentifierOption{
 		Timestamp:     now,
@@ -242,7 +243,7 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 		}
 		fabridOption.HopfieldMetadata[i] = meta
 	}
-	valNumber, pathValReply, err := fabrid.InitValidators(fabridOption, identifierOption, s, f.tmpBuffer, f.pathKey.Key[:], f.keys, nil, f.ias, f.ingresses, f.egresses)
+	valNumber, pathValReply, err := fabrid.InitValidators(fabridOption, identifierOption, s, f.tmpBuffer, f.client.PathKey.Key[:], f.keys, nil, f.ias, f.ingresses, f.egresses)
 	if err != nil {
 		return serrors.WrapStr("initializing validators failed", err)
 	}
@@ -269,15 +270,17 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 			ActualLength: fabridLength,
 		})
 
-	if valNumber <= f.pathState.ValidationRatio {
-		err = f.pathState.StoreValidationResponse(pathValReply, identifierOption.GetRelativeTimestamp(), f.counter)
+	pathState, _ := f.client.GetFabridPathState(f.fingerprint)
+
+	if valNumber <= pathState.ValidationRatio {
+		err = f.client.StoreValidationResponse(f.fingerprint, pathValReply, identifierOption.GetRelativeTimestamp(), f.counter)
 		if err != nil {
 			return err
 		}
 	}
 
 	var e2eOpts []*extension.FabridControlOption
-	if f.pathState.UpdateValRatio {
+	if pathState.UpdateValRatio {
 		valConfigOption := &extension.FabridControlOption{
 			Type:      extension.ValidationConfig,
 			Auth:      [4]byte{},
@@ -285,15 +288,15 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 			PacketID:  identifierOption.PacketID,
 			Data:      make([]byte, 1),
 		}
-		err = valConfigOption.SetValidationRatio(f.pathState.ValidationRatio)
+		err = valConfigOption.SetValidationRatio(pathState.ValidationRatio)
 		if err != nil {
 			return err
 		}
 		e2eOpts = append(e2eOpts, valConfigOption)
-		f.pathState.UpdateValRatio = false
-		log.Debug("FABRID control: outgoing validation config", "valRatio", f.pathState.ValidationRatio)
+		pathState.UpdateValRatio = false
+		log.Debug("FABRID control: outgoing validation config", "valRatio", pathState.ValidationRatio)
 	}
-	if f.pathState.RequestStatistics {
+	if pathState.RequestStatistics {
 		statisticsRequestOption := &extension.FabridControlOption{
 			Type:      extension.StatisticsRequest,
 			Auth:      [4]byte{},
@@ -302,7 +305,7 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 		}
 
 		e2eOpts = append(e2eOpts, statisticsRequestOption)
-		f.pathState.RequestStatistics = false
+		pathState.RequestStatistics = false
 		log.Debug("FABRID control: sending statistics request")
 	}
 	if len(e2eOpts) > 0 {
@@ -310,7 +313,7 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 			p.E2eExtension = &slayers.EndToEndExtn{}
 		}
 		for i, replyOpt := range e2eOpts {
-			err = fabrid.InitFabridControlValidator(replyOpt, f.pathKey.Key[:])
+			err = fabrid.InitFabridControlValidator(replyOpt, f.client.PathKey.Key[:])
 			if err != nil {
 				return err
 			}
@@ -331,9 +334,9 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 	}
 
 	f.counter++
-	f.pathState.Stats.TotalPackets++
-	if f.pathState.Stats.TotalPackets%6 == 0 {
-		f.pathState.RequestStatistics = true
+	pathState.Stats.TotalPackets++
+	if pathState.Stats.TotalPackets%6 == 0 {
+		pathState.RequestStatistics = true
 	}
 	return nil
 }
@@ -346,7 +349,7 @@ func (f *FABRID) renewExpiredKeys(t time.Time) error {
 				newKey, err := f.fetchKey(t, ia)
 				if err != nil {
 					f.support[ia] = false
-					log.Error("Error while fetching drkey for AS", ia)
+					log.Error("Error while fetching drkey", "IA", ia)
 					continue
 				}
 				log.Debug("Successfully fetched drkey", "IA", ia)
@@ -354,34 +357,8 @@ func (f *FABRID) renewExpiredKeys(t time.Time) error {
 			}
 		}
 	}
-	if f.pathKey.Epoch.NotAfter.Before(t) {
-		// key is expired, renew it
-		newKey, err := f.fetchPathKey(t)
-		if err != nil {
-			return err
-		}
-		f.pathKey = newKey
-	}
 	return nil
 }
-
-func (f *FABRID) fetchPathKey(t time.Time) (drkey.HostHostKey, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	key, err := f.drkeyPathFn(ctx, drkey.HostHostMeta{
-		Validity: t,
-		SrcIA:    f.conf.DestinationIA,
-		SrcHost:  f.conf.DestinationAddr,
-		DstIA:    f.conf.LocalIA,
-		DstHost:  f.conf.LocalAddr,
-		ProtoId:  drkey.FABRID,
-	})
-	if err != nil {
-		return drkey.HostHostKey{}, err
-	}
-	return key, nil
-}
-
 func (f *FABRID) fetchKey(t time.Time, ia addr.IA) (drkey.ASHostKey, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

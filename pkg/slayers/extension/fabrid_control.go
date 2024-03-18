@@ -191,7 +191,7 @@ func FabridControlOptionDataLen(controlOptionType FabridControlOptionType) int {
 	}
 }
 
-func ParseFabridControlOption(o *slayers.EndToEndOption) (*FabridControlOption, error) {
+func ParseFabridControlOption(o *slayers.EndToEndOption, id *IdentifierOption) (*FabridControlOption, error) {
 	if o.OptType != slayers.OptTypeFabridControl {
 		return nil,
 			serrors.New("Wrong option type", "expected", slayers.OptTypeFabridControl, "actual", o.OptType)
@@ -199,6 +199,14 @@ func ParseFabridControlOption(o *slayers.EndToEndOption) (*FabridControlOption, 
 	fc := &FabridControlOption{}
 	if err := fc.Decode(o.OptData); err != nil {
 		return nil, err
+	}
+	switch fc.Type {
+	case ValidationConfig, StatisticsRequest:
+		if id == nil {
+			return nil, serrors.New("Identifiere option required for this control option", "optionType", fc.Type)
+		}
+		fc.PacketID = id.PacketID
+		fc.Timestamp = id.GetRelativeTimestamp()
 	}
 	return fc, nil
 }

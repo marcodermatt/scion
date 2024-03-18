@@ -171,7 +171,7 @@ func TestFabridControlDecode(t *testing.T) {
 		func(tc test) {
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel()
-				fc, err := extension.ParseFabridControlOption(tc.o)
+				fc, err := extension.ParseFabridControlOption(tc.o, nil)
 				tc.validate(fc, err, t)
 			})
 		}(tc)

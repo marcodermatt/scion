@@ -33,6 +33,8 @@ import (
 type SimpleFabridConfig struct {
 	DestinationIA   addr.IA
 	DestinationAddr string
+	LocalIA         addr.IA
+	LocalAddr       string
 	ValidationRatio uint8
 	Policy          snet.FabridPolicyIdentifier
 }
@@ -63,9 +65,11 @@ type Client struct {
 	Destination         snet.UDPAddr
 	validationRatio     uint8
 	fabridControlBuffer []byte
-	pathKey             drkey.Key
+	PathKey             drkey.HostHostKey
 	Paths               map[snet.PathFingerprint]*PathState
 	Config              SimpleFabridConfig
+	drkeyPathFn         func(context.Context, drkey.HostHostMeta) (drkey.HostHostKey, error)
+	GrpcConn            *grpc.ClientConn
 }
 
 type validationIdentifier struct {
@@ -81,14 +85,14 @@ type PathState struct {
 	expectedValResponses map[validationIdentifier]uint32
 }
 
-func NewFabridClient(remote snet.UDPAddr, key drkey.Key, config SimpleFabridConfig) *Client {
+func NewFabridClient(remote snet.UDPAddr, config SimpleFabridConfig, grpcConn *grpc.ClientConn) *Client {
 	state := &Client{
 		Destination:         remote,
 		validationRatio:     config.ValidationRatio,
 		fabridControlBuffer: make([]byte, 20*3),
-		pathKey:             key,
 		Paths:               make(map[snet.PathFingerprint]*PathState),
 		Config:              config,
+		GrpcConn:            grpcConn,
 	}
 	return state
 }
@@ -249,7 +253,7 @@ func (s *Server) HandleFabridPacket(remote snet.UDPAddr, fabridOption *extension
 		}
 	}
 	if validationNumber < client.ValidationRatio {
-		log.Debug("Send validation response for packetID", identifierOption.PacketID)
+		log.Debug("Send validation response", "packetID", identifierOption.PacketID)
 		validationReplyOpt := &extension.FabridControlOption{
 			Timestamp: identifierOption.GetRelativeTimestamp(),
 			PacketID:  identifierOption.PacketID,
@@ -289,7 +293,49 @@ func (s *Server) HandleFabridPacket(remote snet.UDPAddr, fabridOption *extension
 	return nil, nil
 }
 
-func (ps *PathState) HandleFabridControlOption(controlOption *extension.FabridControlOption) error {
+func (c *Client) RenewPathKey(t time.Time) error {
+	if c.PathKey.Epoch.NotAfter.Before(t) {
+		// key is expired, renew it
+		newKey, err := c.fetchHostHostKey(t)
+		if err != nil {
+			return err
+		}
+		c.PathKey = newKey
+	}
+	return nil
+}
+
+func (c *Client) fetchHostHostKey(t time.Time) (drkey.HostHostKey, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	drkeyClient := drpb.NewDRKeyIntraServiceClient(c.GrpcConn)
+	meta := drkey.HostHostMeta{
+		Validity: t,
+		SrcIA:    c.Config.DestinationIA,
+		SrcHost:  c.Config.DestinationAddr,
+		DstIA:    c.Config.LocalIA,
+		DstHost:  c.Config.LocalAddr,
+		ProtoId:  drkey.FABRID,
+	}
+	rep, err := drkeyClient.DRKeyHostHost(ctx, drhelper.HostHostMetaToProtoRequest(meta))
+	if err != nil {
+		return drkey.HostHostKey{}, err
+	}
+	key, err := drhelper.GetHostHostKeyFromReply(rep, meta)
+	if err != nil {
+		return drkey.HostHostKey{}, err
+	}
+	return key, nil
+}
+
+func (c *Client) HandleFabridControlOption(fp snet.PathFingerprint, controlOption *extension.FabridControlOption) error {
+
+	err := VerifyFabridControlValidator(controlOption, c.PathKey.Key[:])
+	if err != nil {
+		return err
+	}
+	ps, _ := c.Paths[fp]
+
 	switch controlOption.Type {
 	case extension.ValidationConfigAck:
 		confirmedRatio, err := controlOption.ValidationRatio()
@@ -307,7 +353,7 @@ func (ps *PathState) HandleFabridControlOption(controlOption *extension.FabridCo
 		if err != nil {
 			return err
 		}
-		err = ps.CheckValidationResponse(validatorReply, controlOption.Timestamp, controlOption.PacketID)
+		err = c.CheckValidationResponse(fp, validatorReply, controlOption.Timestamp, controlOption.PacketID)
 		if err != nil {
 			return err
 		}
@@ -322,7 +368,8 @@ func (ps *PathState) HandleFabridControlOption(controlOption *extension.FabridCo
 	return nil
 }
 
-func (ps *PathState) StoreValidationResponse(validator uint32, timestamp uint32, packetID uint32) error {
+func (c *Client) StoreValidationResponse(fp snet.PathFingerprint, validator uint32, timestamp uint32, packetID uint32) error {
+	ps, _ := c.Paths[fp]
 	valIdent := validationIdentifier{
 		timestamp: timestamp,
 		packetId:  packetID,
@@ -336,7 +383,8 @@ func (ps *PathState) StoreValidationResponse(validator uint32, timestamp uint32,
 	return nil
 }
 
-func (ps *PathState) CheckValidationResponse(validatorReply uint32, timestamp uint32, packetID uint32) error {
+func (c *Client) CheckValidationResponse(fp snet.PathFingerprint, validatorReply uint32, timestamp uint32, packetID uint32) error {
+	ps, _ := c.Paths[fp]
 	valIdent := validationIdentifier{
 		timestamp: timestamp,
 		packetId:  packetID,
@@ -354,44 +402,3 @@ func (ps *PathState) CheckValidationResponse(validatorReply uint32, timestamp ui
 	}
 	return nil
 }
-
-//if f.counter%5 == 0 || f.counter%5 == 3 {
-//if p.E2eExtension == nil {
-//p.E2eExtension = &slayers.EndToEndExtn{}
-//}
-//controlOption := &extension.FabridControlOption{
-//Timestamp: identifierOption.GetRelativeTimestamp(),
-//PacketID:  identifierOption.PacketID,
-//}
-//switch f.counter % 5 {
-//case 0:
-//controlOption.Type = extension.ValidationConfig
-//controlOption.Data = []byte{0xaa}
-////case 1:
-////	controlOption.ControlOptionType = extension.ValidationConfigAck
-////	controlOption.Data = []byte{0xa0}
-////case 2:
-////	controlOption.ControlOptionType = extension.ValidationResponse
-////	controlOption.Data = []byte{0xaa, 0xbb, 0xcc, 0xdd}
-//case 3:
-//controlOption.Type = extension.StatisticsRequest
-////case 4:
-////	controlOption.ControlOptionType = extension.StatisticsResponse
-////	controlOption.Data = []byte{0x1, 0x2, 0x3, 0x4, 0x11, 0x22, 0x33, 0x44}
-//
-//}
-//
-//err = controlOption.SerializeTo(f.fabridControlBuffer)
-//if err != nil {
-//return serrors.WrapStr("serializing fabrid control option", err)
-//}
-//fabridControlLength := extension.FabridControlOptionLen(controlOption.ControlOptionType)
-//p.E2eExtension.Options = append(p.E2eExtension.Options,
-//&slayers.EndToEndOption{
-//OptType:      slayers.OptTypeFabridControl,
-//OptData:      f.fabridControlBuffer,
-//OptDataLen:   uint8(fabridControlLength),
-//ActualLength: fabridControlLength,
-//})
-//
-//}

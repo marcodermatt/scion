@@ -237,7 +237,7 @@ func computeFabridControlValidator(fc *ext.FabridControlOption, resultBuffer []b
 	copy(macInputBuf[9:fcMacInputLength], fc.Data)
 	err := macBlock(pathKey, tmpBuf, macInputBuf[:fcMacInputLength], resultBuffer)
 	//log.Debug("Computing FABRID control validator",
-	//	"key", base64.StdEncoding.EncodeToString(pathKey),
+	//	"key", base64.StdEncoding.EncodeToString(PathKey),
 	//	"input", base64.StdEncoding.EncodeToString(macInputBuf[:fcMacInputLength]),
 	//	"output", base64.StdEncoding.EncodeToString(resultBuffer[:4]))
 	if err != nil {
