@@ -33,7 +33,7 @@ import (
 
 // Testing options for failing validation
 const CLIENT_FLAKINESS = 0
-const SERVER_FLAKINESS = 64
+const SERVER_FLAKINESS = 0
 
 type SimpleFabridConfig struct {
 	DestinationIA     addr.IA
@@ -42,7 +42,7 @@ type SimpleFabridConfig struct {
 	LocalAddr         string
 	ValidationRatio   uint8
 	Policy            snet.FabridPolicyIdentifier
-	ValidationHandler func(*PathState, *extension.FabridControlOption, bool)
+	ValidationHandler func(*PathState, *extension.FabridControlOption, bool) error
 }
 
 type Statistics struct {
@@ -65,7 +65,7 @@ type Server struct {
 	Connections        map[string]*ClientConnection
 	ASKeyCache         map[addr.IA]drkey.HostASKey
 	MaxValidationRatio uint8
-	ValidationHandler  func(*ClientConnection, *extension.IdentifierOption, bool)
+	ValidationHandler  func(*ClientConnection, *extension.IdentifierOption, bool) error
 }
 
 type Client struct {
@@ -210,7 +210,10 @@ func (s *Server) HandleFabridPacket(remote snet.UDPAddr, fabridOption *extension
 	if err != nil {
 		return nil, nil
 	}
-	s.ValidationHandler(client, identifierOption, success)
+	err = s.ValidationHandler(client, identifierOption, success)
+	if err != nil {
+		return nil, err
+	}
 
 	var replyOpts []*extension.FabridControlOption
 	for _, controlOption := range controlOptions {
@@ -354,7 +357,7 @@ func (c *Client) HandleFabridControlOption(fp snet.PathFingerprint, controlOptio
 		if confirmedRatio == ps.ValidationRatio {
 			log.Debug("FABRID control: validation ratio confirmed", "ratio", confirmedRatio)
 		} else if confirmedRatio < ps.ValidationRatio {
-			log.Debug("FABRID control: validation ratio reduced by server", "requested", ps.ValidationRatio, "confirmed", confirmedRatio)
+			log.Info("FABRID control: validation ratio reduced by server", "requested", ps.ValidationRatio, "confirmed", confirmedRatio)
 			ps.ValidationRatio = confirmedRatio
 		}
 	case extension.ValidationResponse:
@@ -363,7 +366,10 @@ func (c *Client) HandleFabridControlOption(fp snet.PathFingerprint, controlOptio
 			return err
 		}
 		success := c.CheckValidationResponse(fp, validatorReply, controlOption.Timestamp, controlOption.PacketID)
-		c.Config.ValidationHandler(ps, controlOption, success)
+		err = c.Config.ValidationHandler(ps, controlOption, success)
+		if err != nil {
+			return err
+		}
 		//log.Debug("FABRID control: validation response", "packetID", controlOption.PacketID, "success", success)
 
 	case extension.StatisticsResponse:

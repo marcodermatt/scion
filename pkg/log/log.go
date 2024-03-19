@@ -78,7 +78,7 @@ func convertCfg(cfg ConsoleConfig) (zap.Config, error) {
 		DisableStacktrace: cfg.StacktraceLevel == "none",
 		Encoding:          encoding,
 		EncoderConfig:     encoderConfig,
-		OutputPaths:       []string{"stderr"},
+		OutputPaths:       []string{"stdout"},
 		ErrorOutputPaths:  []string{"stderr"},
 		DisableCaller:     cfg.DisableCaller,
 	}, nil
