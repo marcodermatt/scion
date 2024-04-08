@@ -22,7 +22,7 @@ type MplsMaps struct {
 func NewMplsMaps() *MplsMaps {
 	return &MplsMaps{
 		IPPoliciesMap:        make(map[uint32][]PolicyIPRange),
-		InterfacePoliciesMap: make(map[uint64]uint32), // TODO(jvanbommel): amazing the shorthand for InterfacePolicies is IP... IP ... :')
+		InterfacePoliciesMap: make(map[uint64]uint32),
 		CurrentHash:          []byte{},
 	}
 }

@@ -93,6 +93,7 @@ func newPing(pather CommandPather) *cobra.Command {
 		epic        bool
 		format      string
 		fabrid      bool
+		fabridQuery string
 	}
 
 	var cmd = &cobra.Command{
@@ -169,7 +170,6 @@ On other errors, ping will exit with code 2.
 				path.WithSequence(flags.sequence),
 				path.WithColorScheme(path.DefaultColorScheme(flags.noColor)),
 				path.WithEPIC(flags.epic),
-				path.WithFABRID(flags.fabrid),
 			}
 			if flags.healthyOnly {
 				opts = append(opts, path.WithProbing(&path.ProbeConfig{
@@ -178,174 +178,39 @@ On other errors, ping will exit with code 2.
 					Dispatcher: dispatcher,
 				}))
 			}
+			if flags.fabrid {
+				cfg := snetpath.FabridConfig{
+					LocalIA:         info.IA,
+					LocalAddr:       localIP.String(),
+					DestinationIA:   remote.IA,
+					DestinationAddr: remote.Host.IP.String(),
+				}
+				//TODO(jvanbommel): @rohrerj I get why we have this, but would be nice if we didn't need to hard specify our IP
+				// and drkey would just take it from our request. Or?
+				if localIP == nil {
+					target := remote.Host.IP
+					if remote.NextHop != nil {
+						target = remote.NextHop.IP
+					}
+					if localIP, err = addrutil.ResolveLocal(target); err != nil {
+						return serrors.WrapStr("resolving local address", err)
+					}
+					printf("Resolved local address:\n  %s\n", localIP)
+					cfg.LocalAddr = localIP.String()
+				}
+				opts = append(opts, path.WithFABRID(&path.FABRIDQuery{
+					Query:        flags.fabridQuery,
+					FabridConfig: cfg,
+				}))
+			}
 			cs := path.DefaultColorScheme(false)
 			pingPath, err := path.Choose(traceCtx, sd, remote.IA, opts...)
 
 			if err != nil {
 				return err
 			}
-			// Now select the Fabrid Policies that should be applied
-			//TODO(jvanbommel): reuse?
-			selectSeq, err := pathpol.NewSequence(flags.sequence)
-			policies := selectSeq.ListSelectedPolicies(pingPath)
-			//now := time.Now()
-			//tmp := make([]byte, 100)
-			//identifier := extension.IdentifierOption{
-			//	Timestamp:     now,
-			//	PacketID:      0xabcd,
-			//	BaseTimestamp: uint32(now.Unix()),
-			//}
-			//identifierData := make([]byte, 8)
-			//identifier.Serialize(identifierData)
-			//
-			//switch s := pingPath.Dataplane().(type) {
-			//case snetpath.SCION:
-			//
-			//	var sp scion.Raw
-			//	if err := sp.DecodeFromBytes(s.Raw); err != nil {
-			//		return err
-			//	}
-			//	decoded, err := sp.ToDecoded()
-			//	if err != nil {
-			//		return err
-			//
-			//	}
-			//	fmt.Println(decoded.HopFields)
-			//	fabridHops := make([]extension.FabridHopfieldMetadata, len(decoded.HopFields))
-			//
-			//	for _, policy := range policies {
-			//		hfOneToOne := hfIdx < len(decoded.HopFields) &&
-			//			decoded.HopFields[hfIdx].ConsIngress == policy.Ingress &&
-			//			decoded.HopFields[hfIdx].ConsEgress == policy.Egress
-			//		hfTwoToOne := hfIdx+1 < len(decoded.HopFields) &&
-			//			decoded.HopFields[hfIdx].ConsIngress == policy.Ingress &&
-			//			decoded.HopFields[hfIdx].ConsEgress == 0 &&
-			//			decoded.HopFields[hfIdx+1].ConsIngress == 0 &&
-			//			decoded.HopFields[hfIdx+1].ConsEgress == policy.Egress
-			//		if hfOneToOne {
-			//
-			//		}
-			//	}
-			//	polIdx := 0
-			//	for i := 0; i < len(decoded.HopFields); i++ {
-			//		if decoded.HopFields[i].ConsIngress == policies[polIdx].Ingress &&
-			//			decoded.HopFields[i].ConsEgress == policies[polIdx].Egress {
-			//			polIdx++
-			//		} else if decoded.HopFields[i].ConsIngress == policies[polIdx].Ingress &&
-			//			decoded.HopFields[i].ConsEgress == 0 && hf.ConsIngress == 0 && decoded.HopFields[i+1] == policies[polIdx].Egress {
-			//
-			//		}
-			//
-			//	}
-			//	//decoded.HopFields[0].
-			//	hfIdx := 0
-			//	for _, policy := range policies {
-			//		hfOneToOne := hfIdx < len(decoded.HopFields) &&
-			//			decoded.HopFields[hfIdx].ConsIngress == policy.Ingress &&
-			//			decoded.HopFields[hfIdx].ConsEgress == policy.Egress
-			//		hfTwoToOne := hfIdx+1 < len(decoded.HopFields) &&
-			//			decoded.HopFields[hfIdx].ConsIngress == policy.Ingress &&
-			//			decoded.HopFields[hfIdx].ConsEgress == 0 &&
-			//			decoded.HopFields[hfIdx+1].ConsIngress == 0 &&
-			//			decoded.HopFields[hfIdx+1].ConsEgress == policy.Egress
-			//		if policy.Pol == nil {
-			//			if hfOneToOne {
-			//				fabridHops[hfIdx] = extension.FabridHopfieldMetadata{}
-			//				hfIdx++
-			//			} else if hfTwoToOne {
-			//				fabridHops[hfIdx] = extension.FabridHopfieldMetadata{}
-			//				fabridHops[hfIdx+1] = extension.FabridHopfieldMetadata{}
-			//				hfIdx = hfIdx + 2
-			//			}
-			//			continue
-			//		}
-			//		key, err := sd.DRKeyGetASHostKey(traceCtx, drkey.ASHostMeta{
-			//			ProtoId:  drkey.Protocol(int32(drkey.FABRID)),
-			//			Validity: now,
-			//			SrcIA:    xtest.MustParseIA("1-ff00:0:110"),
-			//			DstIA:    info.IA,
-			//			DstHost:  localIP.String(),
-			//		})
-			//		if err != nil {
-			//			return err
-			//		}
-			//
-			//		policyID := fabrid.FabridPolicyID{
-			//			ID: policy.Pol.Index,
-			//		}
-			//
-			//		encPolicyID, err := fabrid.EncryptPolicyID(&policyID, &identifier, key.Key[:])
-			//
-			//		meta := extension.FabridHopfieldMetadata{
-			//			FabridEnabled:     true,
-			//			EncryptedPolicyID: encPolicyID,
-			//		}
-			//		mac, err := scrypto.InitMac(key.Key[:])
-			//		if err != nil {
-			//			return err
-			//		}
-			//
-			//		var scionLayer slayers.SCION
-			//		scionLayer.Version = 0
-			//		scionLayer.FlowID = 1
-			//		scionLayer.DstIA = remote.IA
-			//		scionLayer.SrcIA = info.IA
-			//		remoteHostIP, ok := netip.AddrFromSlice(remote.Host.IP)
-			//		if !ok {
-			//			return serrors.New("invalid remote host IP", "ip", remote.Host.IP)
-			//		}
-			//		localHostIP, ok := netip.AddrFromSlice(localIP)
-			//		if !ok {
-			//			return serrors.New("invalid local host IP", "ip", localIP)
-			//		}
-			//
-			//		if err := scionLayer.SetDstAddr(addr.HostIP(remoteHostIP)); err != nil {
-			//			return serrors.WrapStr("setting destination address", err)
-			//		}
-			//		if err := scionLayer.SetSrcAddr(addr.HostIP(localHostIP)); err != nil {
-			//			return serrors.WrapStr("setting source address", err)
-			//		}
-			//		sigma := slayerspath.MAC(mac, decoded.InfoFields[0], decoded.HopFields[1], nil)
-			//		err = fabrid.ComputeBaseHVF(&meta, &identifier, &scionLayer, tmp, key.Key[:], sigma[:])
-			//
-			//		fabridHops[i] = meta
-			//		if hfOneToOne {
-			//			fabridHops[hfIdx] = extension.FabridHopfieldMetadata{}
-			//			hfIdx++
-			//		} else if hfTwoToOne {
-			//			fabridHops[hfIdx] = extension.FabridHopfieldMetadata{}
-			//			fabridHops[hfIdx+1] = extension.FabridHopfieldMetadata{}
-			//			hfIdx = hfIdx + 2
-			//		}
-			//	}
-			//}
-			//
 			fmt.Println(cs.Path(pingPath))
-			fmt.Println(policies)
-			//fmt.Println(fabridHops)
 
-			//fabrid := extension.FabridOption{
-			//	HopfieldMetadata: fabridHops,
-			//}
-			//fabridData := make([]byte, extension.FabridOptionLen(len(policies)))
-			//err = fabrid.SerializeTo(fabridData)
-			//if err != nil {
-			//	return err
-			//}
-			//hbh := slayers.HopByHopExtn{
-			//	Options: []*slayers.HopByHopOption{
-			//		{
-			//			OptType:    slayers.OptTypeIdentifier,
-			//			OptData:    identifierData,
-			//			OptDataLen: uint8(len(identifierData)),
-			//		},
-			//		{
-			//			OptType:    slayers.OptTypeFabrid,
-			//			OptData:    fabridData,
-			//			OptDataLen: uint8(len(fabridData)),
-			//		},
-			//	},
-			//}
 			// If the EPIC flag is set, use the EPIC-HP path type
 			if flags.epic {
 				switch s := pingPath.Dataplane().(type) {
@@ -362,30 +227,9 @@ On other errors, ping will exit with code 2.
 				}
 			} else if flags.fabrid {
 				switch s := pingPath.Dataplane().(type) {
-				case snetpath.SCION:
-					fabridConfig := &snetpath.FabridConfig{
-						LocalIA:         info.IA,
-						LocalAddr:       localIP.String(),
-						DestinationIA:   remote.IA,
-						DestinationAddr: remote.Host.IP.String(),
-					}
-					fabridPath, err := snetpath.NewFABRIDDataplanePath(s, pingPath.Metadata().Interfaces,
-						policies, fabridConfig)
-					if err != nil {
-						return err
-					}
-					remote.Path = fabridPath
-					if localIP == nil {
-						target := remote.Host.IP
-						if remote.NextHop != nil {
-							target = remote.NextHop.IP
-						}
-						if localIP, err = addrutil.ResolveLocal(target); err != nil {
-							return serrors.WrapStr("resolving local address", err)
-						}
-						printf("Resolved local address:\n  %s\n", localIP)
-						fabridConfig.LocalAddr = localIP.String()
-					}
+				case *snetpath.FABRID:
+					remote.Path = s
+
 					servicesInfo, err := sd.SVCInfo(ctx, []addr.SVC{addr.SvcCS})
 					if err != nil {
 						return err
@@ -411,7 +255,7 @@ On other errors, ping will exit with code 2.
 					}
 					defer grpcconn.Close()
 					client := drpb.NewDRKeyIntraServiceClient(grpcconn)
-					fabridPath.RegisterDRKeyFetcher(func(ctx context.Context, meta drkey.ASHostMeta) (drkey.ASHostKey, error) {
+					s.RegisterDRKeyFetcher(func(ctx context.Context, meta drkey.ASHostMeta) (drkey.ASHostKey, error) {
 						rep, err := client.DRKeyASHost(ctx, drhelper.AsHostMetaToProtoRequest(meta))
 						if err != nil {
 							return drkey.ASHostKey{}, err
@@ -584,6 +428,8 @@ On other errors, ping will exit with code 2.
 	cmd.Flags().BoolVar(&flags.noColor, "no-color", false, "disable colored output")
 	cmd.Flags().DurationVar(&flags.timeout, "timeout", time.Second, "timeout per packet")
 	cmd.Flags().StringVar(&flags.sequence, "sequence", "", app.SequenceUsage)
+	cmd.Flags().StringVar(&flags.fabridQuery, "fabridquery", "", "the query for policies that the "+
+		"path must adhere to")
 	cmd.Flags().BoolVar(&flags.healthyOnly, "healthy-only", false, "only use healthy paths")
 	cmd.Flags().BoolVar(&flags.refresh, "refresh", false, "set refresh flag for path request")
 	cmd.Flags().DurationVar(&flags.interval, "interval", time.Second, "time between packets")

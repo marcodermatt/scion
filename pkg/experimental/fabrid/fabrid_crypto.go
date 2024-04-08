@@ -29,10 +29,6 @@ import (
 	ext "github.com/scionproto/scion/pkg/slayers/extension"
 )
 
-type FabridPolicyID struct {
-	ID uint8
-}
-
 const FabridMacInputSize int = 46
 
 //	MAC input:
@@ -118,25 +114,21 @@ func VerifyAndUpdate(f *ext.FabridHopfieldMetadata, id *ext.IdentifierOption,
 }
 
 func ComputePolicyID(f *ext.FabridHopfieldMetadata, id *ext.IdentifierOption,
-	key []byte) (FabridPolicyID, error) {
+	key []byte) (PolicyID, error) {
 
 	cipher, err := aes.NewCipher(key)
 	if err != nil {
-		return FabridPolicyID{}, err
+		return 0, err
 	}
 	buf := make([]byte, aes.BlockSize)
 	if err = id.Serialize(buf); err != nil {
-		return FabridPolicyID{}, err
+		return 0, err
 	}
 	cipher.Encrypt(buf, buf)
-	policyID := f.EncryptedPolicyID ^ buf[0]
-	fp := FabridPolicyID{
-		ID: policyID,
-	}
-	return fp, nil
+	return PolicyID(f.EncryptedPolicyID ^ buf[0]), nil
 }
 
-func EncryptPolicyID(f *FabridPolicyID, id *ext.IdentifierOption,
+func EncryptPolicyID(f PolicyID, id *ext.IdentifierOption,
 	key []byte) (uint8, error) {
 
 	cipher, err := aes.NewCipher(key)
@@ -148,8 +140,7 @@ func EncryptPolicyID(f *FabridPolicyID, id *ext.IdentifierOption,
 		return 0, err
 	}
 	cipher.Encrypt(buf, buf)
-	policyID := f.ID ^ buf[0]
-	return policyID, nil
+	return uint8(f) ^ buf[0], nil
 }
 
 // VerifyPathValidator recomputes the path validator from the updated HVFs and compares it

@@ -44,7 +44,7 @@ import (
 	"github.com/scionproto/scion/control/config"
 	"github.com/scionproto/scion/control/drkey"
 	drkeygrpc "github.com/scionproto/scion/control/drkey/grpc"
-	fabrid "github.com/scionproto/scion/control/fabrid"
+	"github.com/scionproto/scion/control/fabrid"
 	fabridgrpc "github.com/scionproto/scion/control/fabrid/grpc"
 	"github.com/scionproto/scion/control/ifstate"
 	api "github.com/scionproto/scion/control/mgmtapi"

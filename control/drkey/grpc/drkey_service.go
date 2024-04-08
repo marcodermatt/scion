@@ -132,6 +132,7 @@ func (d *Server) DRKeyASHost(
 	ctx context.Context,
 	req *cppb.DRKeyASHostRequest,
 ) (*cppb.DRKeyASHostResponse, error) {
+
 	peer, ok := peer.FromContext(ctx)
 	if !ok {
 		return nil, serrors.New("cannot retrieve peer information from ctx")

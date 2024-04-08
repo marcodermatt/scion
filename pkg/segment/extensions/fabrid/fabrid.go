@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	fabridpb "github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	"github.com/scionproto/scion/pkg/segment/extensions/digest"
 	"net"
@@ -13,13 +14,6 @@ import (
 type SupportedIndicesMap map[ConnectionPair][]uint8
 
 type IndexIdentifierMap map[uint8]*PolicyIdentifier
-
-type PolicyType int32
-
-const (
-	LocalPolicy  PolicyType = 0
-	GlobalPolicy PolicyType = 1
-)
 
 type Detached struct {
 	SupportedIndicesMap SupportedIndicesMap
@@ -118,11 +112,39 @@ func (c *ConnectionPair) Matches(ingress, egress uint16) bool {
 }
 
 type PolicyIdentifier struct {
-	Type       PolicyType
+	Type       fabrid.PolicyType
 	Identifier uint32
 }
 
-//TODO(jvanbommel): policy identifier to from pb
+func PolicyIdentifierToPB(identifier *PolicyIdentifier) *fabridpb.FABRIDPolicyIdentifier {
+	if identifier.Type == fabrid.GlobalPolicy {
+		return &fabridpb.FABRIDPolicyIdentifier{
+			PolicyType:       fabridpb.FABRIDPolicyType_GLOBAL,
+			PolicyIdentifier: identifier.Identifier,
+		}
+	} else if identifier.Type == fabrid.LocalPolicy {
+		return &fabridpb.FABRIDPolicyIdentifier{
+			PolicyType:       fabridpb.FABRIDPolicyType_LOCAL,
+			PolicyIdentifier: identifier.Identifier,
+		}
+	}
+	return &fabridpb.FABRIDPolicyIdentifier{}
+}
+
+func PolicyIdentifierFromPB(identifier *fabridpb.FABRIDPolicyIdentifier) *PolicyIdentifier {
+	if identifier.PolicyType == fabridpb.FABRIDPolicyType_GLOBAL {
+		return &PolicyIdentifier{
+			Type:       fabrid.GlobalPolicy,
+			Identifier: identifier.PolicyIdentifier,
+		}
+	} else if identifier.PolicyType == fabridpb.FABRIDPolicyType_LOCAL {
+		return &PolicyIdentifier{
+			Type:       fabrid.LocalPolicy,
+			Identifier: identifier.PolicyIdentifier,
+		}
+	}
+	return nil
+}
 
 func ConnectionPointToPB(point ConnectionPoint) *fabridpb.FABRIDConnectionPoint {
 	switch point.Type {
@@ -216,18 +238,7 @@ func SupportedIndicesMapFromPB(indicesMap []*fabridpb.FABRIDIndexMapEntry) Suppo
 func IndexIdentifierMapToPB(identifierMap IndexIdentifierMap) map[uint32]*fabridpb.FABRIDPolicyIdentifier {
 	identMap := make(map[uint32]*fabridpb.FABRIDPolicyIdentifier, len(identifierMap))
 	for index, identifier := range identifierMap {
-		if identifier.Type == GlobalPolicy {
-			identMap[uint32(index)] = &fabridpb.FABRIDPolicyIdentifier{
-				PolicyType:       fabridpb.FABRIDPolicyType_GLOBAL,
-				PolicyIdentifier: identifier.Identifier,
-			}
-		} else if identifier.Type == LocalPolicy {
-
-			identMap[uint32(index)] = &fabridpb.FABRIDPolicyIdentifier{
-				PolicyType:       fabridpb.FABRIDPolicyType_LOCAL,
-				PolicyIdentifier: identifier.Identifier,
-			}
-		}
+		identMap[uint32(index)] = PolicyIdentifierToPB(identifier)
 	}
 	return identMap
 }
@@ -235,17 +246,7 @@ func IndexIdentifierMapToPB(identifierMap IndexIdentifierMap) map[uint32]*fabrid
 func IndexIdentifierMapFromPB(identifierMap map[uint32]*fabridpb.FABRIDPolicyIdentifier) IndexIdentifierMap {
 	identMap := make(IndexIdentifierMap, len(identifierMap))
 	for index, identifier := range identifierMap {
-		if identifier.PolicyType == fabridpb.FABRIDPolicyType_GLOBAL {
-			identMap[uint8(index)] = &PolicyIdentifier{
-				Type:       GlobalPolicy,
-				Identifier: identifier.PolicyIdentifier,
-			}
-		} else if identifier.PolicyType == fabridpb.FABRIDPolicyType_LOCAL {
-			identMap[uint8(index)] = &PolicyIdentifier{
-				Type:       LocalPolicy,
-				Identifier: identifier.PolicyIdentifier,
-			}
-		}
+		identMap[uint8(index)] = PolicyIdentifierFromPB(identifier)
 	}
 	return identMap
 }

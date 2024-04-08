@@ -60,7 +60,7 @@ func (s Server) GetMPLSMapIfNecessary(ctx context.Context, request *experimental
 }
 
 func (s Server) GetRemotePolicyDescription(ctx context.Context, request *experimental.RemotePolicyDescriptionRequest) (*experimental.PolicyDescriptionResponse, error) {
-	//TODO(jvanbommel): signature?
+	//TODO(jvanbommel): signature / hash?
 	identifier := fabrid.RemotePolicyIdentifier{ISDAS: request.IsdAs, Identifier: request.PolicyIdentifier}
 	if val, ok := s.FabridManager.RemotePolicyCache[identifier]; ok && val.Expires.UnixNano() > time.Now().UnixNano() {
 		return &experimental.PolicyDescriptionResponse{Description: val.Description}, nil

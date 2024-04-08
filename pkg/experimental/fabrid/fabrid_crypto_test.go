@@ -38,12 +38,9 @@ func TestEncryptPolicyID(t *testing.T) {
 	}
 	// test with 64 different randomly chosen keys and policyIDs
 	for i := 0; i < 64; i++ {
-		idNumber := uint8(rand.Uint32())
-		policyID := fabrid.FabridPolicyID{
-			ID: idNumber,
-		}
+		policyID := fabrid.PolicyID(rand.Uint32())
 		key := generateRandomBytes(16)
-		encPolicyID, err := fabrid.EncryptPolicyID(&policyID, id, key)
+		encPolicyID, err := fabrid.EncryptPolicyID(policyID, id, key)
 		assert.NoError(t, err)
 		meta := &extension.FabridHopfieldMetadata{
 			EncryptedPolicyID:  encPolicyID,

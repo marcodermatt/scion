@@ -1,0 +1,14 @@
+load("//tools/lint:go.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "pathpolicyconstraints_base_listener.go",
+        "pathpolicyconstraints_lexer.go",
+        "pathpolicyconstraints_listener.go",
+        "pathpolicyconstraints_parser.go",
+    ],
+    importpath = "github.com/scionproto/scion/antlr/pathpolicyconstraints",
+    visibility = ["//visibility:public"],
+    deps = ["@com_github_antlr_antlr4_runtime_go_antlr//:go_default_library"],
+)

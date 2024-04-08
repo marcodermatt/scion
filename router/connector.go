@@ -141,7 +141,7 @@ func (c *Connector) AddExternalInterface(localIfID common.IFIDType, link control
 			return serrors.WrapStr("adding external BFD", err, "if_id", localIfID)
 		}
 	}
-	return c.DataPlane.AddExternalInterface(intf, connection, link.Remote.Addr)
+	return c.DataPlane.AddExternalInterface(intf, connection)
 }
 
 // AddSvc adds the service address for the given ISD-AS.

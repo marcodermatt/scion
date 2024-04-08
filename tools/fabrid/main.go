@@ -436,7 +436,7 @@ func (c *client) attemptRequest(n int) bool {
 				DestinationIA:   remote.IA,
 				DestinationAddr: remote.Host.IP.String(),
 			}
-			var policies []*snet.FabridPolicyIdentifier
+			var policies []fabrid.PolicyID
 			fabridPath, err := snetpath.NewFABRIDDataplanePath(s, path.Metadata().Interfaces,
 				policies, fabridConfig)
 			if err != nil {

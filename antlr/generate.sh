@@ -12,7 +12,7 @@ function generate {
     PACKAGE=$1
 
     bazel build //antlr:${PACKAGE}
-    rm ${ROOTDIR}/antlr/${PACKAGE}/*.go
+    rm -f ${ROOTDIR}/antlr/${PACKAGE}/*.go
     mkdir -p ${ROOTDIR}/antlr/${PACKAGE}
     cp ${ROOTDIR}/bazel-bin/antlr/${PACKAGE}.go/${PACKAGE}/*.go ${ROOTDIR}/antlr/${PACKAGE}
     chmod 0644 ${ROOTDIR}/antlr/${PACKAGE}/*
@@ -23,3 +23,4 @@ function generate {
 
 generate traffic_class
 generate sequence
+generate pathpolicyconstraints

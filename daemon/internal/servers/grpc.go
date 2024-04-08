@@ -17,6 +17,8 @@ package servers
 import (
 	"context"
 	"fmt"
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
+	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	"net"
 	"time"
 
@@ -163,7 +165,7 @@ func pathToPB(path snet.Path) *sdpb.Path {
 	if nextHop := path.UnderlayNextHop(); nextHop != nil {
 		nextHopStr = nextHop.String()
 	}
-	fabridPolicies := make([]*sdpb.FABRIDPolicyIdentifierList, len(meta.FabridPolicies))
+	fabridPolicies := make([]*sdpb.FabridPolicies, len(meta.FabridPolicies))
 	for i, v := range meta.FabridPolicies {
 		fabridPolicies[i] = fabridPolicyIdentifiersToPB(v)
 	}
@@ -192,31 +194,28 @@ func pathToPB(path snet.Path) *sdpb.Path {
 
 }
 
-func fabridPolicyIdentifiersToPB(fpList []*snet.FabridPolicyIdentifier) *sdpb.FABRIDPolicyIdentifierList {
-	pbPolicies := make([]*sdpb.FABRIDPolicyIdentifier, len(fpList))
-	for i, fp := range fpList {
-		switch fp.Type {
-		case snet.FabridGlobalPolicy:
-			pbPolicies[i] = &sdpb.FABRIDPolicyIdentifier{
-				PolicyType:       sdpb.FABRIDPolicyType_GLOBAL,
-				PolicyIdentifier: fp.Identifier,
-				PolicyIndex:      uint32(fp.Index),
-			}
-		case snet.FabridLocalPolicy:
-			pbPolicies[i] = &sdpb.FABRIDPolicyIdentifier{
-				PolicyType:       sdpb.FABRIDPolicyType_LOCAL,
-				PolicyIdentifier: fp.Identifier,
-				PolicyIndex:      uint32(fp.Index),
-			}
-		default:
-			pbPolicies[i] = &sdpb.FABRIDPolicyIdentifier{
-				PolicyType:       sdpb.FABRIDPolicyType_UNSPECIFIED,
-				PolicyIdentifier: fp.Identifier,
-				PolicyIndex:      uint32(fp.Index),
-			}
-		}
+func fabridPolicyToPB(fp *fabrid.Policy) *sdpb.FabridPolicy {
+	var policyType experimental.FABRIDPolicyType
+	if fp.Type == fabrid.GlobalPolicy {
+		policyType = experimental.FABRIDPolicyType_GLOBAL
+	} else if fp.Type == fabrid.LocalPolicy {
+		policyType = experimental.FABRIDPolicyType_LOCAL
 	}
-	return &sdpb.FABRIDPolicyIdentifierList{
+	return &sdpb.FabridPolicy{
+		PolicyIdentifier: &experimental.FABRIDPolicyIdentifier{
+			PolicyType:       policyType,
+			PolicyIdentifier: fp.Identifier,
+		},
+		PolicyIndex: uint32(fp.Index),
+	}
+}
+
+func fabridPolicyIdentifiersToPB(fpList []*fabrid.Policy) *sdpb.FabridPolicies {
+	pbPolicies := make([]*sdpb.FabridPolicy, len(fpList))
+	for i, fp := range fpList {
+		pbPolicies[i] = fabridPolicyToPB(fp)
+	}
+	return &sdpb.FabridPolicies{
 		Policies: pbPolicies,
 	}
 }

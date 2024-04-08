@@ -118,34 +118,30 @@ func TestDataPlaneAddExternalInterface(t *testing.T) {
 
 		d := &router.DataPlane{}
 		d.FakeStart()
-		remoteIP1, _ := net.ResolveUDPAddr("udp", "127.0.0.7:8888")
-		assert.Error(t, d.AddExternalInterface(42, mock_router.NewMockBatchConn(ctrl), remoteIP1))
+		assert.Error(t, d.AddExternalInterface(42, mock_router.NewMockBatchConn(ctrl)))
 	})
 	t.Run("setting nil value is not allowed", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
 		d := &router.DataPlane{}
-		assert.Error(t, d.AddExternalInterface(42, nil, nil))
+		assert.Error(t, d.AddExternalInterface(42, nil))
 	})
 	t.Run("normal add works", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
 		d := &router.DataPlane{}
-		remoteIP1, _ := net.ResolveUDPAddr("udp", "127.0.0.7:8888")
-		remoteIP2, _ := net.ResolveUDPAddr("udp", "127.0.0.7:8888")
-		assert.NoError(t, d.AddExternalInterface(42, mock_router.NewMockBatchConn(ctrl), remoteIP1))
-		assert.NoError(t, d.AddExternalInterface(45, mock_router.NewMockBatchConn(ctrl), remoteIP2))
+		assert.NoError(t, d.AddExternalInterface(42, mock_router.NewMockBatchConn(ctrl)))
+		assert.NoError(t, d.AddExternalInterface(45, mock_router.NewMockBatchConn(ctrl)))
 	})
 	t.Run("overwrite fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
 		d := &router.DataPlane{}
-		remoteIP1, _ := net.ResolveUDPAddr("udp", "127.0.0.7:8888")
-		assert.NoError(t, d.AddExternalInterface(42, mock_router.NewMockBatchConn(ctrl), remoteIP1))
-		assert.Error(t, d.AddExternalInterface(42, mock_router.NewMockBatchConn(ctrl), remoteIP1))
+		assert.NoError(t, d.AddExternalInterface(42, mock_router.NewMockBatchConn(ctrl)))
+		assert.Error(t, d.AddExternalInterface(42, mock_router.NewMockBatchConn(ctrl)))
 	})
 }
 
@@ -391,9 +387,9 @@ func TestDataPlaneRun(t *testing.T) {
 					}).Times(1)
 				mExternal2.EXPECT().ReadBatch(gomock.Any()).Return(0, nil).AnyTimes()
 
-				_ = ret.AddExternalInterface(3, mExternal, xtest.MustParseUDPAddr(t, "127.0.0.7:8888"))
+				_ = ret.AddExternalInterface(3, mExternal)
 				_ = ret.AddLinkType(3, topology.Core)
-				_ = ret.AddExternalInterface(4, mExternal2, xtest.MustParseUDPAddr(t, "127.0.0.8:8888"))
+				_ = ret.AddExternalInterface(4, mExternal2)
 				_ = ret.AddLinkType(4, topology.Core)
 
 				_ = ret.SetIA(local)
@@ -586,7 +582,7 @@ func TestDataPlaneRun(t *testing.T) {
 					}).Times(1)
 				_ = ret.AddInternalInterface(mInternal, net.IP{})
 
-				_ = ret.AddExternalInterface(3, mExternal, xtest.MustParseUDPAddr(t, "127.0.0.7:8888"))
+				_ = ret.AddExternalInterface(3, mExternal)
 				_ = ret.AddLinkType(3, topology.Core)
 
 				_ = ret.SetIA(local)
@@ -790,7 +786,7 @@ func TestDataPlaneRun(t *testing.T) {
 					}).Times(1)
 				_ = ret.AddInternalInterface(mInternal, net.IP{})
 
-				_ = ret.AddExternalInterface(3, mExternal, xtest.MustParseUDPAddr(t, "127.0.0.7:8888"))
+				_ = ret.AddExternalInterface(3, mExternal)
 				_ = ret.AddLinkType(3, topology.Core)
 
 				_ = ret.SetIA(local)
@@ -866,7 +862,7 @@ func TestDataPlaneRun(t *testing.T) {
 				mExternal.EXPECT().ReadBatch(gomock.Any()).Return(0, nil).AnyTimes()
 				mExternal.EXPECT().WriteTo(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
 
-				_ = ret.AddExternalInterface(1, mExternal, xtest.MustParseUDPAddr(t, "127.0.0.6:8888"))
+				_ = ret.AddExternalInterface(1, mExternal)
 
 				_ = ret.SetIA(local)
 				_ = ret.SetKey(key)
@@ -1056,7 +1052,7 @@ func TestDataPlaneRun(t *testing.T) {
 				}
 				_ = ret.SetKey([]byte("randomkeyformacs"))
 				_ = ret.AddInternalInterface(mInternal, net.IP{})
-				_ = ret.AddExternalInterface(ifID, mExternal, xtest.MustParseUDPAddr(t, "127.0.0.8:8888"))
+				_ = ret.AddExternalInterface(ifID, mExternal)
 				_ = ret.AddExternalInterfaceBFD(ifID, mExternal, local, remote, bfd())
 
 				return ret
@@ -1136,7 +1132,7 @@ func TestDataPlaneRun(t *testing.T) {
 				}
 				_ = ret.SetKey([]byte("randomkeyformacs"))
 				_ = ret.AddInternalInterface(mInternal, net.IP{})
-				_ = ret.AddExternalInterface(1, mExternal, xtest.MustParseUDPAddr(t, "127.0.0.8:8888"))
+				_ = ret.AddExternalInterface(1, mExternal)
 				_ = ret.AddExternalInterfaceBFD(1, mExternal, local, remote, bfd())
 
 				return ret

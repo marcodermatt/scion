@@ -63,10 +63,12 @@ func (cfg *FABRIDConnectionPoints) Validate() error {
 	if cfg.Ingress.Type != fabrid.Interface && cfg.Ingress.Type != fabrid.Wildcard {
 		return serrors.New("FABRID policies are only supported from an interface to an IP range or other interface.")
 	}
-	//TODO(jvanbommel): do we also block the case where someone configures external interface on the same BR?
+	//TODO(jvanbommel): do we also block the case where someone configures external interface on the same BR as internal?
 	return config.ValidateAll(&cfg.Ingress, &cfg.Egress)
 }
 
+// A connection point describes a specific interface, or an IP range. A FABRID policy can be valid for a pair of
+// connection points.
 type FABRIDConnectionPoint struct {
 	Type      fabrid.ConnectionPointType `yaml:"type,omitempty"`
 	IPAddress string                     `yaml:"ip,omitempty"`

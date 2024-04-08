@@ -16,9 +16,10 @@ package fabrid
 
 import (
 	"github.com/scionproto/scion/control/config"
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
-	"github.com/scionproto/scion/pkg/segment/extensions/fabrid"
+	fabrid_ext "github.com/scionproto/scion/pkg/segment/extensions/fabrid"
 	"gopkg.in/yaml.v2"
 	"os"
 	"path/filepath"
@@ -41,8 +42,8 @@ type RemotePolicyDescription struct {
 type FabridManager struct {
 	autoIncrIndex            int
 	PoliciesPath             string
-	SupportedIndicesMap      fabrid.SupportedIndicesMap
-	IndexIdentifierMap       fabrid.IndexIdentifierMap
+	SupportedIndicesMap      fabrid_ext.SupportedIndicesMap
+	IndexIdentifierMap       fabrid_ext.IndexIdentifierMap
 	IdentifierDescriptionMap map[uint32]string
 	MPLSMap                  *MplsMaps
 	RemotePolicyCache        map[RemotePolicyIdentifier]RemotePolicyDescription
@@ -51,8 +52,8 @@ type FabridManager struct {
 func NewFabridManager(policyPath string) (*FabridManager, error) {
 	fb := &FabridManager{
 		PoliciesPath:             policyPath,
-		SupportedIndicesMap:      map[fabrid.ConnectionPair][]uint8{},
-		IndexIdentifierMap:       map[uint8]*fabrid.PolicyIdentifier{},
+		SupportedIndicesMap:      map[fabrid_ext.ConnectionPair][]uint8{},
+		IndexIdentifierMap:       map[uint8]*fabrid_ext.PolicyIdentifier{},
 		IdentifierDescriptionMap: map[uint32]string{},
 		MPLSMap:                  NewMplsMaps(),
 		RemotePolicyCache:        map[RemotePolicyIdentifier]RemotePolicyDescription{},
@@ -62,8 +63,8 @@ func NewFabridManager(policyPath string) (*FabridManager, error) {
 }
 
 func (f *FabridManager) Reload() error {
-	f.IndexIdentifierMap = make(map[uint8]*fabrid.PolicyIdentifier)
-	f.SupportedIndicesMap = make(map[fabrid.ConnectionPair][]uint8)
+	f.IndexIdentifierMap = make(map[uint8]*fabrid_ext.PolicyIdentifier)
+	f.SupportedIndicesMap = make(map[fabrid_ext.ConnectionPair][]uint8)
 	f.MPLSMap = NewMplsMaps()
 	f.autoIncrIndex = 1
 	return f.Load()
@@ -103,20 +104,20 @@ func (f *FabridManager) parseAndAdd(path string, fi os.FileInfo, err error) erro
 	f.autoIncrIndex++
 
 	if pol.IsLocalPolicy {
-		f.IndexIdentifierMap[policyIdx] = &fabrid.PolicyIdentifier{
+		f.IndexIdentifierMap[policyIdx] = &fabrid_ext.PolicyIdentifier{
 			Type:       fabrid.LocalPolicy,
 			Identifier: pol.LocalIdentifier,
 		}
 		f.IdentifierDescriptionMap[pol.LocalIdentifier] = pol.LocalDescription
 	} else {
-		f.IndexIdentifierMap[policyIdx] = &fabrid.PolicyIdentifier{
+		f.IndexIdentifierMap[policyIdx] = &fabrid_ext.PolicyIdentifier{
 			Type:       fabrid.GlobalPolicy,
 			Identifier: pol.GlobalIdentifier,
 		}
 	}
 
 	for _, connection := range pol.SupportedBy {
-		ie := fabrid.ConnectionPair{
+		ie := fabrid_ext.ConnectionPair{
 			Ingress: createConnectionPoint(connection.Ingress),
 			Egress:  createConnectionPoint(connection.Egress),
 		}
@@ -136,18 +137,18 @@ func parseFABRIDYAMLPolicy(b []byte) (*config.FABRIDPolicy, error) {
 	return p, nil
 }
 
-func createConnectionPoint(connection config.FABRIDConnectionPoint) fabrid.ConnectionPoint {
-	if connection.Type == fabrid.Interface {
-		return fabrid.ConnectionPoint{
-			Type:        fabrid.Interface,
+func createConnectionPoint(connection config.FABRIDConnectionPoint) fabrid_ext.ConnectionPoint {
+	if connection.Type == fabrid_ext.Interface {
+		return fabrid_ext.ConnectionPoint{
+			Type:        fabrid_ext.Interface,
 			InterfaceId: connection.Interface,
 		}
-	} else if connection.Type == fabrid.IPv4Range || connection.Type == fabrid.IPv6Range {
-		return fabrid.IPConnectionPointFromString(connection.IPAddress, uint32(connection.Prefix), connection.Type)
-	} else if connection.Type == fabrid.Wildcard { //TODO(jvanbommel): explicit wildcard or intf 0 = wildcard?
-		return fabrid.ConnectionPoint{
-			Type: fabrid.Wildcard,
+	} else if connection.Type == fabrid_ext.IPv4Range || connection.Type == fabrid_ext.IPv6Range {
+		return fabrid_ext.IPConnectionPointFromString(connection.IPAddress, uint32(connection.Prefix), connection.Type)
+	} else if connection.Type == fabrid_ext.Wildcard { //TODO(jvanbommel): explicit wildcard or intf 0 = wildcard?
+		return fabrid_ext.ConnectionPoint{
+			Type: fabrid_ext.Wildcard,
 		}
 	}
-	return fabrid.ConnectionPoint{}
+	return fabrid_ext.ConnectionPoint{}
 }

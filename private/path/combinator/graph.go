@@ -18,13 +18,14 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/scionproto/scion/pkg/log"
-	"github.com/scionproto/scion/pkg/segment/extensions/fabrid"
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
+	fabrid_ext "github.com/scionproto/scion/pkg/segment/extensions/fabrid"
 	"math"
 	"sort"
 	"time"
 
 	"github.com/scionproto/scion/pkg/addr"
+	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/ctrl/path_mgmt/proto"
 	"github.com/scionproto/scion/pkg/private/util"
@@ -318,7 +319,7 @@ type pathSolution struct {
 // and replace with the newer FABRID maps. This results in a map[IA]fabridMapEntry, which can be used
 // to find the policies that are available for each of the interface pairs on the path.
 type fabridMapEntry struct {
-	Map *fabrid.Detached
+	Map *fabrid_ext.Detached
 	Ts  time.Time
 }
 
@@ -338,7 +339,6 @@ func (solution *pathSolution) Path() Path {
 		// up segments.
 		// We go through each ASEntry, starting from the last one until we
 		// find a shortcut (which can be 0, meaning the end of the segment).
-
 		asEntries := solEdge.segment.ASEntries
 		for asEntryIdx := len(asEntries) - 1; asEntryIdx >= solEdge.edge.Shortcut; asEntryIdx-- {
 			isShortcut := asEntryIdx == solEdge.edge.Shortcut && solEdge.edge.Shortcut != 0
@@ -396,7 +396,7 @@ func (solution *pathSolution) Path() Path {
 			if (!exists || fabridMap.Map == nil) && asEntry.UnsignedExtensions.FabridDetached != nil ||
 				fabridMap.Ts.Before(solEdge.segment.Info.Timestamp) {
 				fabridMaps[asEntry.Local] = struct {
-					Map *fabrid.Detached
+					Map *fabrid_ext.Detached
 					Ts  time.Time
 				}{Map: asEntry.UnsignedExtensions.FabridDetached, Ts: solEdge.segment.Info.Timestamp}
 			}
@@ -407,6 +407,7 @@ func (solution *pathSolution) Path() Path {
 				mtu = minUint16(mtu, uint16(forwardingLinkMtu))
 			}
 		}
+
 		// Put the hops in forwarding order. Needed for down segments
 		// since we collected hops from the end, just like for up
 		// segments.
@@ -462,14 +463,14 @@ func (solution *pathSolution) Path() Path {
 	return path
 }
 
-func collectFabridPolicies(ifaces []snet.PathInterface, maps map[addr.IA]fabridMapEntry) [][]*snet.FabridPolicyIdentifier {
+func collectFabridPolicies(ifaces []snet.PathInterface, maps map[addr.IA]fabridMapEntry) [][]*fabrid.Policy {
 	switch {
 	case len(ifaces)%2 != 0:
 		return nil
 	case len(ifaces) == 0:
 		return nil
 	default:
-		hops := make([][]*snet.FabridPolicyIdentifier, 0, len(ifaces)/2+1)
+		hops := make([][]*fabrid.Policy, 0, len(ifaces)/2+1)
 
 		hops = append(hops, getPoliciesForIntfs(ifaces[0].IA, 0, uint16(ifaces[0].ID), maps))
 
@@ -481,34 +482,39 @@ func collectFabridPolicies(ifaces []snet.PathInterface, maps map[addr.IA]fabridM
 	}
 }
 
-func getPoliciesForIntfs(ia addr.IA, ig, eg uint16, maps map[addr.IA]fabridMapEntry) []*snet.FabridPolicyIdentifier {
-	policies := make([]*snet.FabridPolicyIdentifier, 0)
+func getPoliciesForIntfs(ia addr.IA, ig, eg uint16, maps map[addr.IA]fabridMapEntry) []*fabrid.Policy {
+	policies := make([]*fabrid.Policy, 0)
 	fabridMap, exist := maps[ia]
-	if exist && fabridMap.Map != nil {
-		for k, v := range fabridMap.Map.SupportedIndicesMap {
-			if !k.Matches(ig, eg) {
+	if !exist || fabridMap.Map == nil {
+		return policies
+	}
+	for k, v := range fabridMap.Map.SupportedIndicesMap {
+		if !k.Matches(ig, eg) {
+			continue
+		}
+		for _, policy := range v {
+			val, ok := fabridMap.Map.IndexIdentiferMap[policy]
+			if !ok {
 				continue
 			}
-			for _, policy := range v {
-				if val, ok := fabridMap.Map.IndexIdentiferMap[policy]; ok {
-					log.Info("PolicyAdded", "is", val.Identifier, "egIf", eg, "ig", ig)
-					if val.Type == fabrid.GlobalPolicy {
-						policies = append(policies, &snet.FabridPolicyIdentifier{
-							Type:       snet.FabridGlobalPolicy,
-							Identifier: val.Identifier,
-							Index:      policy,
-						})
-					} else {
-						policies = append(policies, &snet.FabridPolicyIdentifier{
-							Type:       snet.FabridLocalPolicy,
-							Identifier: val.Identifier,
-							Index:      policy,
-						})
-					}
-				}
+			log.Debug("PolicyAdded", "id", val.Identifier, "egIf", eg, "ig", ig)
+			if val.Type == fabrid.GlobalPolicy {
+				policies = append(policies, &fabrid.Policy{
+					Type:       fabrid.GlobalPolicy,
+					Identifier: val.Identifier,
+					Index:      fabrid.PolicyID(policy),
+				})
+			} else {
+				policies = append(policies, &fabrid.Policy{
+					Type:       fabrid.LocalPolicy,
+					Identifier: val.Identifier,
+					Index:      fabrid.PolicyID(policy),
+				})
 			}
+
 		}
 	}
+
 	return policies
 }
 

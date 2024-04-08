@@ -284,7 +284,7 @@ func (d *DataPlane) AddInternalInterface(conn BatchConn, ip net.IP) error {
 // AddExternalInterface adds the inter AS connection for the given interface ID.
 // If a connection for the given ID is already set this method will return an
 // error. This can only be called on a not yet running dataplane.
-func (d *DataPlane) AddExternalInterface(ifID uint16, conn BatchConn, remoteAddr *net.UDPAddr) error {
+func (d *DataPlane) AddExternalInterface(ifID uint16, conn BatchConn) error {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	if d.running {
@@ -1149,13 +1149,13 @@ func (p *scionPacketProcessor) processFabrid(egressIF uint16) error {
 	}
 	// Check / set MPLS label only if policy ID != 0
 	// and only if the packet will be sent within the AS or to another router of the local AS
-	if policyID.ID != 0 {
+	if policyID != 0 {
 		var mplsLabel uint32
 		switch p.transitType {
 		case ingressEgressDifferentRouter:
-			mplsLabel, err = p.d.getFabridMplsLabelForInterface(uint32(p.ingressID), uint32(policyID.ID), uint32(egressIF))
+			mplsLabel, err = p.d.getFabridMplsLabelForInterface(uint32(p.ingressID), uint32(policyID), uint32(egressIF))
 		case internalTraffic:
-			mplsLabel, err = p.d.getFabridMplsLabel(uint32(p.ingressID), uint32(policyID.ID), p.nextHop.IP)
+			mplsLabel, err = p.d.getFabridMplsLabel(uint32(p.ingressID), uint32(policyID), p.nextHop.IP)
 		case ingressEgressSameRouter:
 			return nil
 		}

@@ -34,6 +34,7 @@ type FabridConfig struct {
 	LocalAddr       string
 	DestinationIA   addr.IA
 	DestinationAddr string
+	Query           string
 }
 
 type FABRID struct {
@@ -51,12 +52,12 @@ type FABRID struct {
 	identifierBuffer []byte
 	fabridBuffer     []byte
 	numHops          int
-	policyIDs        []*fabrid.FabridPolicyID
+	policyIDs        []fabrid.PolicyID
 	ias              []addr.IA
 	support          map[addr.IA]bool
 }
 
-func NewFABRIDDataplanePath(p SCION, interfaces []snet.PathInterface, policyIDsPerHop []*snet.FabridPolicyIdentifier, conf *FabridConfig) (*FABRID, error) {
+func NewFABRIDDataplanePath(p SCION, interfaces []snet.PathInterface, policyIDs []fabrid.PolicyID, conf *FabridConfig) (*FABRID, error) {
 
 	var decoded scion.Decoded
 	if err := decoded.DecodeFromBytes(p.Raw); err != nil {
@@ -69,27 +70,14 @@ func NewFABRIDDataplanePath(p SCION, interfaces []snet.PathInterface, policyIDsP
 	} else {
 		numHops = len(decoded.HopFields) - numSegs + 1 // Remove hops introduced by crossovers
 	}
-	keys := make(map[addr.IA]drkey.ASHostKey, len(policyIDsPerHop))
-	var policyIDs []*fabrid.FabridPolicyID
+	keys := make(map[addr.IA]drkey.ASHostKey, len(policyIDs))
 	ias := make([]addr.IA, numHops)
-	if len(policyIDsPerHop) > 0 {
-		policyIDs = make([]*fabrid.FabridPolicyID, numHops)
-		for i := 0; i < numHops; i++ {
-			if policyIDsPerHop[i] == nil {
-				policyIDs[i] = nil
-				fmt.Println(i, " is not using a policy")
-			} else {
-				policyIDs[i] = &fabrid.FabridPolicyID{
-					ID: policyIDsPerHop[i].Index,
-				}
-				fmt.Println(i, " is using policy index: ", policyIDsPerHop[i].Index)
-			}
-		}
-	} else {
+
+	if len(policyIDs) == 0 {
 		// If no policies are provided, use zero policy for all hops
-		policyIDs = make([]*fabrid.FabridPolicyID, numHops)
+		policyIDs = make([]fabrid.PolicyID, numHops)
 		for i := 0; i < numHops; i++ {
-			policyIDs[i] = &fabrid.FabridPolicyID{ID: 0}
+			policyIDs[i] = 0
 		}
 	}
 	f := &FABRID{
@@ -106,6 +94,7 @@ func NewFABRIDDataplanePath(p SCION, interfaces []snet.PathInterface, policyIDsP
 		Raw:              append([]byte(nil), p.Raw...),
 		policyIDs:        policyIDs,
 	}
+	//TODO(jvanbommel): ask others, can we not just use the snet.path.hops() for this?
 
 	// Get ingress/egress IFs and IAs from path interfaces
 	f.ingresses[0] = 0
@@ -173,10 +162,6 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 		HopfieldMetadata: make([]*extension.FabridHopfieldMetadata, f.numHops),
 	}
 	for i := 0; i < f.numHops; i++ {
-		if f.policyIDs[i] == nil {
-			fabridOption.HopfieldMetadata[i] = &extension.FabridHopfieldMetadata{}
-			continue
-		}
 		meta := &extension.FabridHopfieldMetadata{}
 		if f.support[f.ias[i]] {
 			meta.FabridEnabled = true

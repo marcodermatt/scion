@@ -18,6 +18,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	"net"
 	"time"
 
@@ -79,6 +80,18 @@ type PathInterface struct {
 
 func (iface PathInterface) String() string {
 	return fmt.Sprintf("%s#%d", iface.IA, iface.ID)
+}
+
+// IgIf represents the interface
+type HopInterface struct {
+	// IgIf represents the ingress interface ID for a hop in the path.
+	IgIf common.IFIDType
+	// EgIf represents the ingress interface ID for a hop in the path.
+	EgIf common.IFIDType
+	// IA is the ISD AS identifier of the hop.
+	IA addr.IA
+	// Policies are the FABRID Policies that are supported by this hop.
+	Policies []*fabrid.Policy
 }
 
 // EpicAuths is a container for the EPIC hop authenticators.
@@ -144,7 +157,27 @@ type PathMetadata struct {
 	EpicAuths EpicAuths
 
 	// FabridPolicies Contains the policy identifiers of interfaces on the path
-	FabridPolicies [][]*FabridPolicyIdentifier
+	FabridPolicies [][]*fabrid.Policy
+}
+
+func (pm *PathMetadata) Hops() []HopInterface {
+	ifaces := pm.Interfaces
+	fabridPolicies := pm.FabridPolicies
+	switch {
+	case len(ifaces)%2 != 0 || (len(fabridPolicies) != len(ifaces)/2+1):
+		return []HopInterface{}
+	case len(ifaces) == 0 || len(fabridPolicies) == 0:
+		return []HopInterface{}
+	default:
+		hops := make([]HopInterface, 0, len(ifaces)/2+1)
+		hops = append(hops, HopInterface{IA: ifaces[0].IA, IgIf: 0, EgIf: ifaces[0].ID, Policies: fabridPolicies[0]})
+		for i := 1; i < len(ifaces)-1; i += 2 {
+			hops = append(hops, HopInterface{IA: ifaces[i].IA, IgIf: ifaces[i].ID, EgIf: ifaces[i+1].ID, Policies: fabridPolicies[(i+1)/2]})
+		}
+		hops = append(hops, HopInterface{IA: ifaces[len(ifaces)-1].IA,
+			IgIf: ifaces[len(ifaces)-1].ID, EgIf: 0, Policies: fabridPolicies[len(ifaces)/2]})
+		return hops
+	}
 }
 
 func (pm *PathMetadata) Copy() *PathMetadata {
@@ -207,29 +240,6 @@ type GeoCoordinates struct {
 	Longitude float32
 	// Civic address of the location.
 	Address string
-}
-
-type PolicyType int32
-
-const (
-	FabridUnspecifiedPolicy PolicyType = 0
-	FabridLocalPolicy       PolicyType = 1
-	FabridGlobalPolicy      PolicyType = 2
-)
-
-type FabridPolicyIdentifier struct {
-	Type       PolicyType
-	Identifier uint32
-	Index      uint8
-}
-
-func (fpi *FabridPolicyIdentifier) String() string {
-	if fpi.Type == FabridGlobalPolicy {
-		return fmt.Sprintf("G%d", fpi.Identifier)
-	} else if fpi.Type == FabridLocalPolicy {
-		return fmt.Sprintf("L%d", fpi.Identifier)
-	}
-	return ""
 }
 
 type PathFingerprint string

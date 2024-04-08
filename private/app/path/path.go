@@ -18,6 +18,8 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
+	"github.com/scionproto/scion/private/path/fabridquery"
 	"math/rand"
 	"net"
 	"os"
@@ -101,6 +103,34 @@ func Choose(
 		}
 		paths = epicPaths
 	}
+	if o.fabrid != nil {
+		query, err := fabridquery.ParseFabridQuery(o.fabrid.Query)
+		if err != nil {
+			return nil, serrors.WrapStr("parsing fabrid query", err)
+		}
+
+		for _, p := range paths {
+			scionPath, isSCIONPath := p.Dataplane().(snetpath.SCION)
+			if !isSCIONPath {
+				continue
+			}
+			hopIntfs := p.Metadata().Hops()
+			ml := fabridquery.MatchList{SelectedPolicies: make([]*fabridquery.Policy, len(hopIntfs))}
+			_, pols := query.Evaluate(hopIntfs, &ml)
+
+			if !pols.Accepted() {
+				continue
+			}
+			fabridPath, err := snetpath.NewFABRIDDataplanePath(scionPath, p.Metadata().Interfaces,
+				pols.Policies(), &o.fabrid.FabridConfig)
+			if err != nil {
+				return nil, serrors.WrapStr("creating fabrid path from scion path", err)
+			}
+			return snetpath.Path{Src: p.Source(), Dst: p.Destination(), DataplanePath: fabridPath,
+				NextHop: p.UnderlayNextHop(), Meta: *p.Metadata()}, nil
+		}
+		return nil, serrors.New(fmt.Sprintf("no fabrid paths available satisfying query '%s'", o.fabrid.Query))
+	}
 	if o.probeCfg != nil {
 		paths, err = filterUnhealthy(ctx, paths, remote, conn, o.probeCfg, o.epic)
 		if err != nil {
@@ -118,9 +148,6 @@ func Choose(
 		}
 	} else {
 		selectedPath = paths[rand.Intn(len(paths))]
-	}
-	if o.fabrid {
-		// TODO set policyIDs
 	}
 	return selectedPath, nil
 }
@@ -286,15 +313,15 @@ func (cs ColorScheme) KeyValues(kv ...string) []string {
 	}
 	return entries
 }
-func (cs ColorScheme) Policies(policies [][]*snet.FabridPolicyIdentifier, idx int) string {
+func (cs ColorScheme) Policies(policies [][]*fabrid.Policy, idx int) string {
 	if len(policies) < idx {
 		return ""
 	}
 	policyStr := make([]string, len(policies[idx]))
 	for i, v := range policies[idx] {
-		if v.Type == snet.FabridGlobalPolicy {
+		if v.Type == fabrid.GlobalPolicy {
 			policyStr[i] = cs.GlobalPolicy.Sprintf(v.String())
-		} else if v.Type == snet.FabridLocalPolicy {
+		} else if v.Type == fabrid.LocalPolicy {
 			policyStr[i] = cs.LocalPolicy.Sprintf(v.String())
 		}
 	}
@@ -346,6 +373,10 @@ type ProbeConfig struct {
 	SCIONPacketConnMetrics snet.SCIONPacketConnMetrics
 }
 
+type FABRIDQuery struct {
+	Query        string
+	FabridConfig snetpath.FabridConfig
+}
 type options struct {
 	interactive bool
 	refresh     bool
@@ -353,7 +384,7 @@ type options struct {
 	colorScheme ColorScheme
 	probeCfg    *ProbeConfig
 	epic        bool
-	fabrid      bool
+	fabrid      *FABRIDQuery
 }
 
 type Option func(o *options)
@@ -402,7 +433,7 @@ func WithEPIC(epic bool) Option {
 	}
 }
 
-func WithFABRID(f bool) Option {
+func WithFABRID(f *FABRIDQuery) Option {
 	return func(o *options) {
 		o.fabrid = f
 	}

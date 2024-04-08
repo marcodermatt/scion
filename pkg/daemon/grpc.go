@@ -16,6 +16,8 @@ package daemon
 
 import (
 	"context"
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
+	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	"net"
 	"time"
 
@@ -76,6 +78,7 @@ func (c grpcConn) LocalIA(ctx context.Context) (addr.IA, error) {
 
 func (c grpcConn) Paths(ctx context.Context, dst, src addr.IA,
 	f PathReqFlags) ([]snet.Path, error) {
+
 	client := sdpb.NewDaemonServiceClient(c.conn)
 	response, err := client.Paths(ctx, &sdpb.PathsRequest{
 		SourceIsdAs:      uint64(src),
@@ -271,7 +274,7 @@ func convertPath(p *sdpb.Path, dst addr.IA) (path.Path, error) {
 		linkType[i] = linkTypeFromPB(v)
 	}
 
-	policyIdentifiers := make([][]*snet.FabridPolicyIdentifier, len(p.FabridPolicies))
+	policyIdentifiers := make([][]*fabrid.Policy, len(p.FabridPolicies))
 	for i, v := range p.FabridPolicies {
 		policyIdentifiers[i] = fabridPolicyIdentifiersFromPB(v)
 	}
@@ -307,28 +310,24 @@ func convertPath(p *sdpb.Path, dst addr.IA) (path.Path, error) {
 	return res, nil
 }
 
-func fabridPolicyIdentifiersFromPB(fpList *sdpb.FABRIDPolicyIdentifierList) []*snet.FabridPolicyIdentifier {
-	pbPolicies := make([]*snet.FabridPolicyIdentifier, len(fpList.Policies))
+func fabridPolicyIdentifiersFromPB(fpList *sdpb.FabridPolicies) []*fabrid.Policy {
+	pbPolicies := make([]*fabrid.Policy, len(fpList.Policies))
 	for i, fp := range fpList.Policies {
-		switch fp.PolicyType {
-		case sdpb.FABRIDPolicyType_GLOBAL:
-			pbPolicies[i] = &snet.FabridPolicyIdentifier{
-				Type:       snet.FabridGlobalPolicy,
-				Identifier: fp.PolicyIdentifier,
-				Index:      uint8(fp.PolicyIndex),
+		switch fp.PolicyIdentifier.PolicyType {
+		case experimental.FABRIDPolicyType_GLOBAL:
+			pbPolicies[i] = &fabrid.Policy{
+				Type:       fabrid.GlobalPolicy,
+				Identifier: fp.PolicyIdentifier.PolicyIdentifier,
+				Index:      fabrid.PolicyID(fp.PolicyIndex),
 			}
-		case sdpb.FABRIDPolicyType_LOCAL:
-			pbPolicies[i] = &snet.FabridPolicyIdentifier{
-				Type:       snet.FabridLocalPolicy,
-				Identifier: fp.PolicyIdentifier,
-				Index:      uint8(fp.PolicyIndex),
+		case experimental.FABRIDPolicyType_LOCAL:
+			pbPolicies[i] = &fabrid.Policy{
+				Type:       fabrid.LocalPolicy,
+				Identifier: fp.PolicyIdentifier.PolicyIdentifier,
+				Index:      fabrid.PolicyID(fp.PolicyIndex),
 			}
 		default:
-			pbPolicies[i] = &snet.FabridPolicyIdentifier{
-				Type:       snet.FabridUnspecifiedPolicy,
-				Identifier: fp.PolicyIdentifier,
-				Index:      uint8(fp.PolicyIndex),
-			}
+			continue
 		}
 	}
 	return pbPolicies

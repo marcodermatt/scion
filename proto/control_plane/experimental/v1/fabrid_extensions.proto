@@ -28,11 +28,6 @@ message FABRIDDetachableMaps {
     map<uint32, FABRIDPolicyIdentifier> index_identifier_map = 2;
 }
 
-//message FABRIDPolicyIdentifierMap {
-//    // Provides a mapping from policy index a
-//    uint32 policy_index = 1;
-//    FABRIDPolicyIdentifier policy_identifier = 2;
-//}
 enum FABRIDPolicyType {
     // The type of policy has not been specified
     UNSPECIFIED = 0;
@@ -85,7 +80,6 @@ message FABRIDConnectionPoint {
     bytes ip_address = 2;
     // IP prefix length, as in CIDR notation.
     uint32 ip_prefix = 3;
-    // TODO(jvanbommel): Q we can also from-to the IP range.
     // The interface for the interface type.
     uint64 interface = 4;
 
