@@ -32,8 +32,8 @@ import (
 )
 
 // Testing options for failing validation
-const CLIENT_FLAKINESS = 0
-const SERVER_FLAKINESS = 0
+const CLIENT_FLAKINESS = 64
+const SERVER_FLAKINESS = 64
 
 type SimpleFabridConfig struct {
 	DestinationIA     addr.IA
@@ -141,6 +141,9 @@ func NewFabridServer(local *snet.UDPAddr, grpcConn *grpc.ClientConn) *Server {
 		grpcConn:    grpcConn,
 		Connections: make(map[string]*ClientConnection),
 		ASKeyCache:  make(map[addr.IA]drkey.HostASKey),
+		ValidationHandler: func(_ *ClientConnection, _ *extension.IdentifierOption, _ bool) error {
+			return nil
+		},
 	}
 	return server
 }

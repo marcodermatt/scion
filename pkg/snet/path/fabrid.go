@@ -281,7 +281,7 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 
 	pathState, _ := f.client.GetFabridPathState(f.fingerprint)
 
-	if valNumber <= pathState.ValidationRatio {
+	if valNumber < pathState.ValidationRatio {
 		err = f.client.StoreValidationResponse(f.fingerprint, pathValReply, identifierOption.GetRelativeTimestamp(), f.counter)
 		if err != nil {
 			return err
