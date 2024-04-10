@@ -167,7 +167,7 @@ func pathToPB(path snet.Path) *sdpb.Path {
 	}
 	fabridPolicies := make([]*sdpb.FabridPolicies, len(meta.FabridPolicies))
 	for i, v := range meta.FabridPolicies {
-		fabridPolicies[i] = fabridPolicyIdentifiersToPB(v)
+		fabridPolicies[i] = fabridPoliciesToPB(v)
 	}
 	epicAuths := &sdpb.EpicAuths{
 		AuthPhvf: append([]byte(nil), meta.EpicAuths.AuthPHVF...),
@@ -210,7 +210,7 @@ func fabridPolicyToPB(fp *fabrid.Policy) *sdpb.FabridPolicy {
 	}
 }
 
-func fabridPolicyIdentifiersToPB(fpList []*fabrid.Policy) *sdpb.FabridPolicies {
+func fabridPoliciesToPB(fpList []*fabrid.Policy) *sdpb.FabridPolicies {
 	pbPolicies := make([]*sdpb.FabridPolicy, len(fpList))
 	for i, fp := range fpList {
 		pbPolicies[i] = fabridPolicyToPB(fp)

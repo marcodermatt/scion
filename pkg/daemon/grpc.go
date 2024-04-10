@@ -276,7 +276,7 @@ func convertPath(p *sdpb.Path, dst addr.IA) (path.Path, error) {
 
 	policyIdentifiers := make([][]*fabrid.Policy, len(p.FabridPolicies))
 	for i, v := range p.FabridPolicies {
-		policyIdentifiers[i] = fabridPolicyIdentifiersFromPB(v)
+		policyIdentifiers[i] = fabridPoliciesFromPB(v)
 	}
 
 	res := path.Path{
@@ -310,7 +310,7 @@ func convertPath(p *sdpb.Path, dst addr.IA) (path.Path, error) {
 	return res, nil
 }
 
-func fabridPolicyIdentifiersFromPB(fpList *sdpb.FabridPolicies) []*fabrid.Policy {
+func fabridPoliciesFromPB(fpList *sdpb.FabridPolicies) []*fabrid.Policy {
 	pbPolicies := make([]*fabrid.Policy, len(fpList.Policies))
 	for i, fp := range fpList.Policies {
 		switch fp.PolicyIdentifier.PolicyType {
