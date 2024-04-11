@@ -98,8 +98,7 @@ func (c *ConnectionPoint) IPNetwork() *net.IPNet {
 	return &net.IPNet{}
 }
 func (c *ConnectionPoint) MatchesIF(intf uint16) bool {
-	return ((c.Type == IPv4Range || c.Type == IPv6Range) && intf == 0) ||
-		(c.Type == Interface && c.InterfaceId == intf) || c.Type == Wildcard
+	return (c.Type == Interface && c.InterfaceId == intf) || c.Type == Wildcard
 }
 
 type ConnectionPair struct {
@@ -107,8 +106,12 @@ type ConnectionPair struct {
 	Egress  ConnectionPoint
 }
 
-func (c *ConnectionPair) Matches(ingress, egress uint16) bool {
-	return c.Ingress.MatchesIF(ingress) && c.Egress.MatchesIF(egress)
+func (c *ConnectionPair) Matches(ingress, egress uint16, allowIpPolicies bool) bool {
+	match := c.Ingress.MatchesIF(ingress) && c.Egress.MatchesIF(egress)
+	if allowIpPolicies {
+		match = match || (c.Ingress.MatchesIF(ingress) && (c.Egress.Type == IPv4Range || c.Egress.Type == IPv6Range) && egress == 0)
+	}
+	return match
 }
 
 type PolicyIdentifier struct {

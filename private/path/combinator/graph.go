@@ -440,17 +440,17 @@ func (solution *pathSolution) Path() Path {
 	path := Path{
 		SCIONPath: segments.ScionPath(),
 		Metadata: snet.PathMetadata{
-			Interfaces:     interfaces,
-			MTU:            mtu,
-			Expiry:         segments.ComputeExpTime(),
-			Latency:        staticInfo.Latency,
-			Bandwidth:      staticInfo.Bandwidth,
+			Interfaces:      interfaces,
+			MTU:             mtu,
+			Expiry:          segments.ComputeExpTime(),
+			Latency:         staticInfo.Latency,
+			Bandwidth:       staticInfo.Bandwidth,
 			CarbonIntensity: staticInfo.CarbonIntensity,
-			Geo:            staticInfo.Geo,
-			LinkType:       staticInfo.LinkType,
-			InternalHops:   staticInfo.InternalHops,
-			Notes:          staticInfo.Notes,
-			FabridPolicies: policies,
+			Geo:             staticInfo.Geo,
+			LinkType:        staticInfo.LinkType,
+			InternalHops:    staticInfo.InternalHops,
+			Notes:           staticInfo.Notes,
+			FabridPolicies:  policies,
 		},
 		Weight: solution.cost,
 	}
@@ -474,24 +474,24 @@ func collectFabridPolicies(ifaces []snet.PathInterface, maps map[addr.IA]fabridM
 	default:
 		hops := make([][]*fabrid.Policy, 0, len(ifaces)/2+1)
 
-		hops = append(hops, getPoliciesForIntfs(ifaces[0].IA, 0, uint16(ifaces[0].ID), maps))
+		hops = append(hops, getPoliciesForIntfs(ifaces[0].IA, 0, uint16(ifaces[0].ID), maps, false))
 
 		for i := 1; i < len(ifaces)-1; i += 2 {
-			hops = append(hops, getPoliciesForIntfs(ifaces[i].IA, uint16(ifaces[i].ID), uint16(ifaces[i+1].ID), maps))
+			hops = append(hops, getPoliciesForIntfs(ifaces[i].IA, uint16(ifaces[i].ID), uint16(ifaces[i+1].ID), maps, false))
 		}
-		hops = append(hops, getPoliciesForIntfs(ifaces[len(ifaces)-1].IA, uint16(ifaces[len(ifaces)-1].ID), 0, maps))
+		hops = append(hops, getPoliciesForIntfs(ifaces[len(ifaces)-1].IA, uint16(ifaces[len(ifaces)-1].ID), 0, maps, true))
 		return hops
 	}
 }
 
-func getPoliciesForIntfs(ia addr.IA, ig, eg uint16, maps map[addr.IA]fabridMapEntry) []*fabrid.Policy {
+func getPoliciesForIntfs(ia addr.IA, ig, eg uint16, maps map[addr.IA]fabridMapEntry, allowIpPolicies bool) []*fabrid.Policy {
 	policies := make([]*fabrid.Policy, 0)
 	fabridMap, exist := maps[ia]
 	if !exist || fabridMap.Map == nil {
 		return policies
 	}
 	for k, v := range fabridMap.Map.SupportedIndicesMap {
-		if !k.Matches(ig, eg) {
+		if !k.Matches(ig, eg, allowIpPolicies) {
 			continue
 		}
 		for _, policy := range v {

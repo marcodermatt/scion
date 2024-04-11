@@ -26,7 +26,7 @@ LOCALPOLICY: 'L';
 REJECT: 'REJECT';
 
 start
-    : LPAR expression RPAR
+    : expression
     ;
 
 query
