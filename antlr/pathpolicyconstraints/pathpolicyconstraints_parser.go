@@ -15,41 +15,42 @@ var _ = reflect.Copy
 var _ = strconv.Itoa
 
 var parserATN = []uint16{
-	3, 24715, 42794, 33075, 47597, 16764, 15335, 30598, 22884, 3, 21, 88, 4,
+	3, 24715, 42794, 33075, 47597, 16764, 15335, 30598, 22884, 3, 21, 90, 4,
 	2, 9, 2, 4, 3, 9, 3, 4, 4, 9, 4, 4, 5, 9, 5, 4, 6, 9, 6, 4, 7, 9, 7, 4,
-	8, 9, 8, 4, 9, 9, 9, 4, 10, 9, 10, 3, 2, 3, 2, 3, 3, 3, 3, 3, 3, 3, 3,
-	3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 5, 3, 37, 10,
-	3, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 5, 4, 46, 10, 4, 3, 4, 3,
-	4, 3, 4, 7, 4, 51, 10, 4, 12, 4, 14, 4, 54, 11, 4, 3, 5, 3, 5, 3, 5, 3,
-	5, 3, 5, 3, 5, 3, 5, 3, 5, 3, 5, 3, 6, 3, 6, 5, 6, 67, 10, 6, 3, 7, 3,
-	7, 3, 7, 5, 7, 72, 10, 7, 3, 8, 3, 8, 5, 8, 76, 10, 8, 3, 9, 3, 9, 3, 9,
-	3, 9, 3, 9, 3, 9, 5, 9, 84, 10, 9, 3, 10, 3, 10, 3, 10, 2, 3, 6, 11, 2,
-	4, 6, 8, 10, 12, 14, 16, 18, 2, 2, 2, 89, 2, 20, 3, 2, 2, 2, 4, 36, 3,
-	2, 2, 2, 6, 45, 3, 2, 2, 2, 8, 55, 3, 2, 2, 2, 10, 66, 3, 2, 2, 2, 12,
-	71, 3, 2, 2, 2, 14, 75, 3, 2, 2, 2, 16, 83, 3, 2, 2, 2, 18, 85, 3, 2, 2,
-	2, 20, 21, 5, 6, 4, 2, 21, 3, 3, 2, 2, 2, 22, 23, 7, 16, 2, 2, 23, 24,
-	5, 6, 4, 2, 24, 25, 7, 11, 2, 2, 25, 26, 5, 6, 4, 2, 26, 27, 7, 12, 2,
-	2, 27, 28, 5, 6, 4, 2, 28, 29, 7, 17, 2, 2, 29, 37, 3, 2, 2, 2, 30, 31,
-	7, 16, 2, 2, 31, 32, 5, 6, 4, 2, 32, 33, 7, 11, 2, 2, 33, 34, 5, 6, 4,
-	2, 34, 35, 7, 17, 2, 2, 35, 37, 3, 2, 2, 2, 36, 22, 3, 2, 2, 2, 36, 30,
-	3, 2, 2, 2, 37, 5, 3, 2, 2, 2, 38, 39, 8, 4, 1, 2, 39, 40, 7, 14, 2, 2,
-	40, 41, 5, 6, 4, 2, 41, 42, 7, 15, 2, 2, 42, 46, 3, 2, 2, 2, 43, 46, 5,
-	8, 5, 2, 44, 46, 5, 4, 3, 2, 45, 38, 3, 2, 2, 2, 45, 43, 3, 2, 2, 2, 45,
-	44, 3, 2, 2, 2, 46, 52, 3, 2, 2, 2, 47, 48, 12, 5, 2, 2, 48, 49, 7, 13,
-	2, 2, 49, 51, 5, 6, 4, 6, 50, 47, 3, 2, 2, 2, 51, 54, 3, 2, 2, 2, 52, 50,
-	3, 2, 2, 2, 52, 53, 3, 2, 2, 2, 53, 7, 3, 2, 2, 2, 54, 52, 3, 2, 2, 2,
-	55, 56, 5, 10, 6, 2, 56, 57, 5, 12, 7, 2, 57, 58, 7, 10, 2, 2, 58, 59,
-	5, 14, 8, 2, 59, 60, 7, 3, 2, 2, 60, 61, 5, 14, 8, 2, 61, 62, 7, 18, 2,
-	2, 62, 63, 5, 16, 9, 2, 63, 9, 3, 2, 2, 2, 64, 67, 7, 5, 2, 2, 65, 67,
-	7, 6, 2, 2, 66, 64, 3, 2, 2, 2, 66, 65, 3, 2, 2, 2, 67, 11, 3, 2, 2, 2,
-	68, 72, 7, 7, 2, 2, 69, 72, 7, 8, 2, 2, 70, 72, 7, 9, 2, 2, 71, 68, 3,
-	2, 2, 2, 71, 69, 3, 2, 2, 2, 71, 70, 3, 2, 2, 2, 72, 13, 3, 2, 2, 2, 73,
-	76, 7, 5, 2, 2, 74, 76, 7, 6, 2, 2, 75, 73, 3, 2, 2, 2, 75, 74, 3, 2, 2,
-	2, 76, 15, 3, 2, 2, 2, 77, 78, 7, 19, 2, 2, 78, 84, 5, 18, 10, 2, 79, 80,
-	7, 20, 2, 2, 80, 84, 5, 18, 10, 2, 81, 84, 7, 5, 2, 2, 82, 84, 7, 21, 2,
-	2, 83, 77, 3, 2, 2, 2, 83, 79, 3, 2, 2, 2, 83, 81, 3, 2, 2, 2, 83, 82,
-	3, 2, 2, 2, 84, 17, 3, 2, 2, 2, 85, 86, 7, 6, 2, 2, 86, 19, 3, 2, 2, 2,
-	9, 36, 45, 52, 66, 71, 75, 83,
+	8, 9, 8, 4, 9, 9, 9, 4, 10, 9, 10, 3, 2, 3, 2, 3, 2, 3, 2, 3, 3, 3, 3,
+	3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+	5, 3, 39, 10, 3, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 3, 4, 5, 4, 48, 10,
+	4, 3, 4, 3, 4, 3, 4, 7, 4, 53, 10, 4, 12, 4, 14, 4, 56, 11, 4, 3, 5, 3,
+	5, 3, 5, 3, 5, 3, 5, 3, 5, 3, 5, 3, 5, 3, 5, 3, 6, 3, 6, 5, 6, 69, 10,
+	6, 3, 7, 3, 7, 3, 7, 5, 7, 74, 10, 7, 3, 8, 3, 8, 5, 8, 78, 10, 8, 3, 9,
+	3, 9, 3, 9, 3, 9, 3, 9, 3, 9, 5, 9, 86, 10, 9, 3, 10, 3, 10, 3, 10, 2,
+	3, 6, 11, 2, 4, 6, 8, 10, 12, 14, 16, 18, 2, 2, 2, 91, 2, 20, 3, 2, 2,
+	2, 4, 38, 3, 2, 2, 2, 6, 47, 3, 2, 2, 2, 8, 57, 3, 2, 2, 2, 10, 68, 3,
+	2, 2, 2, 12, 73, 3, 2, 2, 2, 14, 77, 3, 2, 2, 2, 16, 85, 3, 2, 2, 2, 18,
+	87, 3, 2, 2, 2, 20, 21, 7, 14, 2, 2, 21, 22, 5, 6, 4, 2, 22, 23, 7, 15,
+	2, 2, 23, 3, 3, 2, 2, 2, 24, 25, 7, 16, 2, 2, 25, 26, 5, 6, 4, 2, 26, 27,
+	7, 11, 2, 2, 27, 28, 5, 6, 4, 2, 28, 29, 7, 12, 2, 2, 29, 30, 5, 6, 4,
+	2, 30, 31, 7, 17, 2, 2, 31, 39, 3, 2, 2, 2, 32, 33, 7, 16, 2, 2, 33, 34,
+	5, 6, 4, 2, 34, 35, 7, 11, 2, 2, 35, 36, 5, 6, 4, 2, 36, 37, 7, 17, 2,
+	2, 37, 39, 3, 2, 2, 2, 38, 24, 3, 2, 2, 2, 38, 32, 3, 2, 2, 2, 39, 5, 3,
+	2, 2, 2, 40, 41, 8, 4, 1, 2, 41, 42, 7, 14, 2, 2, 42, 43, 5, 6, 4, 2, 43,
+	44, 7, 15, 2, 2, 44, 48, 3, 2, 2, 2, 45, 48, 5, 8, 5, 2, 46, 48, 5, 4,
+	3, 2, 47, 40, 3, 2, 2, 2, 47, 45, 3, 2, 2, 2, 47, 46, 3, 2, 2, 2, 48, 54,
+	3, 2, 2, 2, 49, 50, 12, 5, 2, 2, 50, 51, 7, 13, 2, 2, 51, 53, 5, 6, 4,
+	6, 52, 49, 3, 2, 2, 2, 53, 56, 3, 2, 2, 2, 54, 52, 3, 2, 2, 2, 54, 55,
+	3, 2, 2, 2, 55, 7, 3, 2, 2, 2, 56, 54, 3, 2, 2, 2, 57, 58, 5, 10, 6, 2,
+	58, 59, 5, 12, 7, 2, 59, 60, 7, 10, 2, 2, 60, 61, 5, 14, 8, 2, 61, 62,
+	7, 3, 2, 2, 62, 63, 5, 14, 8, 2, 63, 64, 7, 18, 2, 2, 64, 65, 5, 16, 9,
+	2, 65, 9, 3, 2, 2, 2, 66, 69, 7, 5, 2, 2, 67, 69, 7, 6, 2, 2, 68, 66, 3,
+	2, 2, 2, 68, 67, 3, 2, 2, 2, 69, 11, 3, 2, 2, 2, 70, 74, 7, 7, 2, 2, 71,
+	74, 7, 8, 2, 2, 72, 74, 7, 9, 2, 2, 73, 70, 3, 2, 2, 2, 73, 71, 3, 2, 2,
+	2, 73, 72, 3, 2, 2, 2, 74, 13, 3, 2, 2, 2, 75, 78, 7, 5, 2, 2, 76, 78,
+	7, 6, 2, 2, 77, 75, 3, 2, 2, 2, 77, 76, 3, 2, 2, 2, 78, 15, 3, 2, 2, 2,
+	79, 80, 7, 19, 2, 2, 80, 86, 5, 18, 10, 2, 81, 82, 7, 20, 2, 2, 82, 86,
+	5, 18, 10, 2, 83, 86, 7, 5, 2, 2, 84, 86, 7, 21, 2, 2, 85, 79, 3, 2, 2,
+	2, 85, 81, 3, 2, 2, 2, 85, 83, 3, 2, 2, 2, 85, 84, 3, 2, 2, 2, 86, 17,
+	3, 2, 2, 2, 87, 88, 7, 6, 2, 2, 88, 19, 3, 2, 2, 2, 9, 38, 47, 54, 68,
+	73, 77, 85,
 }
 var literalNames = []string{
 	"", "','", "", "'0'", "", "", "", "", "'#'", "'?'", "':'", "'+'", "'('",
@@ -170,6 +171,10 @@ func NewStartContext(parser antlr.Parser, parent antlr.ParserRuleContext, invoki
 
 func (s *StartContext) GetParser() antlr.Parser { return s.parser }
 
+func (s *StartContext) LPAR() antlr.TerminalNode {
+	return s.GetToken(PathPolicyConstraintsParserLPAR, 0)
+}
+
 func (s *StartContext) Expression() IExpressionContext {
 	var t = s.GetTypedRuleContext(reflect.TypeOf((*IExpressionContext)(nil)).Elem(), 0)
 
@@ -178,6 +183,10 @@ func (s *StartContext) Expression() IExpressionContext {
 	}
 
 	return t.(IExpressionContext)
+}
+
+func (s *StartContext) RPAR() antlr.TerminalNode {
+	return s.GetToken(PathPolicyConstraintsParserRPAR, 0)
 }
 
 func (s *StartContext) GetRuleContext() antlr.RuleContext {
@@ -226,7 +235,15 @@ func (p *PathPolicyConstraintsParser) Start() (localctx IStartContext) {
 	p.EnterOuterAlt(localctx, 1)
 	{
 		p.SetState(18)
+		p.Match(PathPolicyConstraintsParserLPAR)
+	}
+	{
+		p.SetState(19)
 		p.expression(0)
+	}
+	{
+		p.SetState(20)
+		p.Match(PathPolicyConstraintsParserRPAR)
 	}
 
 	return localctx
@@ -439,23 +456,15 @@ func (p *PathPolicyConstraintsParser) Query() (localctx IQueryContext) {
 		}
 	}()
 
-	p.SetState(34)
+	p.SetState(36)
 	p.GetErrorHandler().Sync(p)
 	switch p.GetInterpreter().AdaptivePredict(p.GetTokenStream(), 0, p.GetParserRuleContext()) {
 	case 1:
 		localctx = NewIfElseContext(p, localctx)
 		p.EnterOuterAlt(localctx, 1)
 		{
-			p.SetState(20)
-			p.Match(PathPolicyConstraintsParserLBRACE)
-		}
-		{
-			p.SetState(21)
-			p.expression(0)
-		}
-		{
 			p.SetState(22)
-			p.Match(PathPolicyConstraintsParserQUESTIONMARK)
+			p.Match(PathPolicyConstraintsParserLBRACE)
 		}
 		{
 			p.SetState(23)
@@ -463,7 +472,7 @@ func (p *PathPolicyConstraintsParser) Query() (localctx IQueryContext) {
 		}
 		{
 			p.SetState(24)
-			p.Match(PathPolicyConstraintsParserELSE)
+			p.Match(PathPolicyConstraintsParserQUESTIONMARK)
 		}
 		{
 			p.SetState(25)
@@ -471,6 +480,14 @@ func (p *PathPolicyConstraintsParser) Query() (localctx IQueryContext) {
 		}
 		{
 			p.SetState(26)
+			p.Match(PathPolicyConstraintsParserELSE)
+		}
+		{
+			p.SetState(27)
+			p.expression(0)
+		}
+		{
+			p.SetState(28)
 			p.Match(PathPolicyConstraintsParserRBRACE)
 		}
 
@@ -478,16 +495,8 @@ func (p *PathPolicyConstraintsParser) Query() (localctx IQueryContext) {
 		localctx = NewIfContext(p, localctx)
 		p.EnterOuterAlt(localctx, 2)
 		{
-			p.SetState(28)
-			p.Match(PathPolicyConstraintsParserLBRACE)
-		}
-		{
-			p.SetState(29)
-			p.expression(0)
-		}
-		{
 			p.SetState(30)
-			p.Match(PathPolicyConstraintsParserQUESTIONMARK)
+			p.Match(PathPolicyConstraintsParserLBRACE)
 		}
 		{
 			p.SetState(31)
@@ -495,6 +504,14 @@ func (p *PathPolicyConstraintsParser) Query() (localctx IQueryContext) {
 		}
 		{
 			p.SetState(32)
+			p.Match(PathPolicyConstraintsParserQUESTIONMARK)
+		}
+		{
+			p.SetState(33)
+			p.expression(0)
+		}
+		{
+			p.SetState(34)
 			p.Match(PathPolicyConstraintsParserRBRACE)
 		}
 
@@ -783,7 +800,7 @@ func (p *PathPolicyConstraintsParser) expression(_p int) (localctx IExpressionCo
 	var _alt int
 
 	p.EnterOuterAlt(localctx, 1)
-	p.SetState(43)
+	p.SetState(45)
 	p.GetErrorHandler().Sync(p)
 
 	switch p.GetTokenStream().LA(1) {
@@ -793,15 +810,15 @@ func (p *PathPolicyConstraintsParser) expression(_p int) (localctx IExpressionCo
 		_prevctx = localctx
 
 		{
-			p.SetState(37)
+			p.SetState(39)
 			p.Match(PathPolicyConstraintsParserLPAR)
 		}
 		{
-			p.SetState(38)
+			p.SetState(40)
 			p.expression(0)
 		}
 		{
-			p.SetState(39)
+			p.SetState(41)
 			p.Match(PathPolicyConstraintsParserRPAR)
 		}
 
@@ -810,7 +827,7 @@ func (p *PathPolicyConstraintsParser) expression(_p int) (localctx IExpressionCo
 		p.SetParserRuleContext(localctx)
 		_prevctx = localctx
 		{
-			p.SetState(41)
+			p.SetState(43)
 			p.Identifier()
 		}
 
@@ -819,7 +836,7 @@ func (p *PathPolicyConstraintsParser) expression(_p int) (localctx IExpressionCo
 		p.SetParserRuleContext(localctx)
 		_prevctx = localctx
 		{
-			p.SetState(42)
+			p.SetState(44)
 			p.Query()
 		}
 
@@ -827,7 +844,7 @@ func (p *PathPolicyConstraintsParser) expression(_p int) (localctx IExpressionCo
 		panic(antlr.NewNoViableAltException(p, nil, nil, nil, nil, nil))
 	}
 	p.GetParserRuleContext().SetStop(p.GetTokenStream().LT(-1))
-	p.SetState(50)
+	p.SetState(52)
 	p.GetErrorHandler().Sync(p)
 	_alt = p.GetInterpreter().AdaptivePredict(p.GetTokenStream(), 2, p.GetParserRuleContext())
 
@@ -841,17 +858,17 @@ func (p *PathPolicyConstraintsParser) expression(_p int) (localctx IExpressionCo
 			localctx.(*ExpressionConcatContext).left = _prevctx
 
 			p.PushNewRecursionContext(localctx, _startState, PathPolicyConstraintsParserRULE_expression)
-			p.SetState(45)
+			p.SetState(47)
 
 			if !(p.Precpred(p.GetParserRuleContext(), 3)) {
 				panic(antlr.NewFailedPredicateException(p, "p.Precpred(p.GetParserRuleContext(), 3)", ""))
 			}
 			{
-				p.SetState(46)
+				p.SetState(48)
 				p.Match(PathPolicyConstraintsParserPLUS)
 			}
 			{
-				p.SetState(47)
+				p.SetState(49)
 
 				var _x = p.expression(4)
 
@@ -859,7 +876,7 @@ func (p *PathPolicyConstraintsParser) expression(_p int) (localctx IExpressionCo
 			}
 
 		}
-		p.SetState(52)
+		p.SetState(54)
 		p.GetErrorHandler().Sync(p)
 		_alt = p.GetInterpreter().AdaptivePredict(p.GetTokenStream(), 2, p.GetParserRuleContext())
 	}
@@ -1011,24 +1028,16 @@ func (p *PathPolicyConstraintsParser) Identifier() (localctx IIdentifierContext)
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(53)
+		p.SetState(55)
 		p.Isd()
 	}
 	{
-		p.SetState(54)
+		p.SetState(56)
 		p.As()
 	}
 	{
-		p.SetState(55)
-		p.Match(PathPolicyConstraintsParserHASH)
-	}
-	{
-		p.SetState(56)
-		p.Iface()
-	}
-	{
 		p.SetState(57)
-		p.Match(PathPolicyConstraintsParserT__0)
+		p.Match(PathPolicyConstraintsParserHASH)
 	}
 	{
 		p.SetState(58)
@@ -1036,10 +1045,18 @@ func (p *PathPolicyConstraintsParser) Identifier() (localctx IIdentifierContext)
 	}
 	{
 		p.SetState(59)
-		p.Match(PathPolicyConstraintsParserMONKEYTAIL)
+		p.Match(PathPolicyConstraintsParserT__0)
 	}
 	{
 		p.SetState(60)
+		p.Iface()
+	}
+	{
+		p.SetState(61)
+		p.Match(PathPolicyConstraintsParserMONKEYTAIL)
+	}
+	{
+		p.SetState(62)
 		p.Onepolicy()
 	}
 
@@ -1187,7 +1204,7 @@ func (p *PathPolicyConstraintsParser) Isd() (localctx IIsdContext) {
 		}
 	}()
 
-	p.SetState(64)
+	p.SetState(66)
 	p.GetErrorHandler().Sync(p)
 
 	switch p.GetTokenStream().LA(1) {
@@ -1195,7 +1212,7 @@ func (p *PathPolicyConstraintsParser) Isd() (localctx IIsdContext) {
 		localctx = NewWildcardISDContext(p, localctx)
 		p.EnterOuterAlt(localctx, 1)
 		{
-			p.SetState(62)
+			p.SetState(64)
 			p.Match(PathPolicyConstraintsParserZERO)
 		}
 
@@ -1203,7 +1220,7 @@ func (p *PathPolicyConstraintsParser) Isd() (localctx IIsdContext) {
 		localctx = NewISDContext(p, localctx)
 		p.EnterOuterAlt(localctx, 2)
 		{
-			p.SetState(63)
+			p.SetState(65)
 			p.Match(PathPolicyConstraintsParserNUM)
 		}
 
@@ -1389,7 +1406,7 @@ func (p *PathPolicyConstraintsParser) As() (localctx IAsContext) {
 		}
 	}()
 
-	p.SetState(69)
+	p.SetState(71)
 	p.GetErrorHandler().Sync(p)
 
 	switch p.GetTokenStream().LA(1) {
@@ -1397,7 +1414,7 @@ func (p *PathPolicyConstraintsParser) As() (localctx IAsContext) {
 		localctx = NewWildcardASContext(p, localctx)
 		p.EnterOuterAlt(localctx, 1)
 		{
-			p.SetState(66)
+			p.SetState(68)
 			p.Match(PathPolicyConstraintsParserWILDCARDAS)
 		}
 
@@ -1405,7 +1422,7 @@ func (p *PathPolicyConstraintsParser) As() (localctx IAsContext) {
 		localctx = NewLegacyASContext(p, localctx)
 		p.EnterOuterAlt(localctx, 2)
 		{
-			p.SetState(67)
+			p.SetState(69)
 			p.Match(PathPolicyConstraintsParserLEGACYAS)
 		}
 
@@ -1413,7 +1430,7 @@ func (p *PathPolicyConstraintsParser) As() (localctx IAsContext) {
 		localctx = NewASContext(p, localctx)
 		p.EnterOuterAlt(localctx, 3)
 		{
-			p.SetState(68)
+			p.SetState(70)
 			p.Match(PathPolicyConstraintsParserAS)
 		}
 
@@ -1565,7 +1582,7 @@ func (p *PathPolicyConstraintsParser) Iface() (localctx IIfaceContext) {
 		}
 	}()
 
-	p.SetState(73)
+	p.SetState(75)
 	p.GetErrorHandler().Sync(p)
 
 	switch p.GetTokenStream().LA(1) {
@@ -1573,7 +1590,7 @@ func (p *PathPolicyConstraintsParser) Iface() (localctx IIfaceContext) {
 		localctx = NewWildcardIFaceContext(p, localctx)
 		p.EnterOuterAlt(localctx, 1)
 		{
-			p.SetState(71)
+			p.SetState(73)
 			p.Match(PathPolicyConstraintsParserZERO)
 		}
 
@@ -1581,7 +1598,7 @@ func (p *PathPolicyConstraintsParser) Iface() (localctx IIfaceContext) {
 		localctx = NewIFaceContext(p, localctx)
 		p.EnterOuterAlt(localctx, 2)
 		{
-			p.SetState(72)
+			p.SetState(74)
 			p.Match(PathPolicyConstraintsParserNUM)
 		}
 
@@ -1821,7 +1838,7 @@ func (p *PathPolicyConstraintsParser) Onepolicy() (localctx IOnepolicyContext) {
 		}
 	}()
 
-	p.SetState(81)
+	p.SetState(83)
 	p.GetErrorHandler().Sync(p)
 
 	switch p.GetTokenStream().LA(1) {
@@ -1829,11 +1846,11 @@ func (p *PathPolicyConstraintsParser) Onepolicy() (localctx IOnepolicyContext) {
 		localctx = NewGlobalPolicyContext(p, localctx)
 		p.EnterOuterAlt(localctx, 1)
 		{
-			p.SetState(75)
+			p.SetState(77)
 			p.Match(PathPolicyConstraintsParserGLOBALPOLICY)
 		}
 		{
-			p.SetState(76)
+			p.SetState(78)
 			p.Policyindex()
 		}
 
@@ -1841,11 +1858,11 @@ func (p *PathPolicyConstraintsParser) Onepolicy() (localctx IOnepolicyContext) {
 		localctx = NewLocalPolicyContext(p, localctx)
 		p.EnterOuterAlt(localctx, 2)
 		{
-			p.SetState(77)
+			p.SetState(79)
 			p.Match(PathPolicyConstraintsParserLOCALPOLICY)
 		}
 		{
-			p.SetState(78)
+			p.SetState(80)
 			p.Policyindex()
 		}
 
@@ -1853,7 +1870,7 @@ func (p *PathPolicyConstraintsParser) Onepolicy() (localctx IOnepolicyContext) {
 		localctx = NewWildcardPolicyContext(p, localctx)
 		p.EnterOuterAlt(localctx, 3)
 		{
-			p.SetState(79)
+			p.SetState(81)
 			p.Match(PathPolicyConstraintsParserZERO)
 		}
 
@@ -1861,7 +1878,7 @@ func (p *PathPolicyConstraintsParser) Onepolicy() (localctx IOnepolicyContext) {
 		localctx = NewRejectContext(p, localctx)
 		p.EnterOuterAlt(localctx, 4)
 		{
-			p.SetState(80)
+			p.SetState(82)
 			p.Match(PathPolicyConstraintsParserREJECT)
 		}
 
@@ -1982,7 +1999,7 @@ func (p *PathPolicyConstraintsParser) Policyindex() (localctx IPolicyindexContex
 	localctx = NewPolicyIndexContext(p, localctx)
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(83)
+		p.SetState(85)
 		p.Match(PathPolicyConstraintsParserNUM)
 	}
 
