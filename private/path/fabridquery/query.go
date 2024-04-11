@@ -64,7 +64,7 @@ const (
 
 type Policy struct {
 	Type uint8
-	fabrid.Policy
+	*fabrid.Policy
 }
 
 func (p Policy) String() string {

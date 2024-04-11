@@ -99,27 +99,27 @@ type BatchConn interface {
 // Currently, only the following features are supported:
 //   - initializing connections; MUST be done prior to calling Run
 type DataPlane struct {
-	interfaces        map[uint16]BatchConn
-	external          map[uint16]BatchConn
-	linkTypes         map[uint16]topology.LinkType
-	neighborIAs       map[uint16]addr.IA
-	peerInterfaces    map[uint16]uint16
-	internal          BatchConn
-	internalIP        netip.Addr
-	internalNextHops  map[uint16]*net.UDPAddr
-	svc               *services
-	macFactory        func() hash.Hash
-	bfdSessions       map[uint16]bfdSession
-	localIA           addr.IA
-	mtx               sync.Mutex
-	running           bool
-	Metrics           *Metrics
-	drKeySecrets      [][2]*control.SecretValue
+	interfaces       map[uint16]BatchConn
+	external         map[uint16]BatchConn
+	linkTypes        map[uint16]topology.LinkType
+	neighborIAs      map[uint16]addr.IA
+	peerInterfaces   map[uint16]uint16
+	internal         BatchConn
+	internalIP       netip.Addr
+	internalNextHops map[uint16]*net.UDPAddr
+	svc              *services
+	macFactory       func() hash.Hash
+	bfdSessions      map[uint16]bfdSession
+	localIA          addr.IA
+	mtx              sync.Mutex
+	running          bool
+	Metrics          *Metrics
+	drKeySecrets     [][2]*control.SecretValue
 	// determines whether index 0 or index 1 should be overwritten next
 	drKeySecretNextOverwrite []uint8
 	fabridPolicyIPRangeMap   map[uint32][]*control.PolicyIPRange
 	fabridPolicyInterfaceMap map[uint64]uint32
-	forwardingMetrics map[uint16]interfaceMetrics
+	forwardingMetrics        map[uint16]interfaceMetrics
 
 	ExperimentalSCMPAuthentication bool
 
@@ -1015,8 +1015,8 @@ func (d *DataPlane) runForwarder(ifID uint16, conn BatchConn, cfg *RunConfig, c 
 	toWrite := 0
 	lastToS := uint8(0)
 	for d.running {
-		//toWrite += readUpTo(c, cfg.BatchSize-toWrite, toWrite == 0, pkts[toWrite:])
-		toWrite = 1
+		toWrite += readUpTo(c, 1-toWrite, toWrite == 0, pkts[toWrite:])
+		//toWrite = 1
 		// Turn the packets into underlay messages that WriteBatch can send.
 		for i, p := range pkts[:toWrite] {
 			msgs[i].Buffers[0] = p.rawPacket
