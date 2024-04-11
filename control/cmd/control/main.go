@@ -324,8 +324,12 @@ func realMain(ctx context.Context) error {
 	quicServer := grpc.NewServer(
 		grpc.Creds(libgrpc.PassThroughCredentials{}),
 		libgrpc.UnaryServerInterceptor(),
+		libgrpc.DefaultMaxConcurrentStreams(),
 	)
-	tcpServer := grpc.NewServer(libgrpc.UnaryServerInterceptor())
+	tcpServer := grpc.NewServer(
+		libgrpc.UnaryServerInterceptor(),
+		libgrpc.DefaultMaxConcurrentStreams(),
+	)
 
 	// Register trust material related handlers.
 	trustServer := &cstrustgrpc.MaterialServer{
@@ -800,13 +804,15 @@ func realMain(ctx context.Context) error {
 		},
 		SegmentRegister: beaconinggrpc.Registrar{Dialer: dialer},
 		BeaconStore:     beaconStore,
-		SignerGen:       signer.SignerGen,
-		Inspector:       inspector,
-		Metrics:         metrics,
-		DRKeyEngine:     drkeyEngine,
-		MACGen:          macGen,
-		NextHopper:      topo,
-		StaticInfo:      func() *beaconing.StaticInfoCfg { return staticInfo },
+		SignerGen: beaconing.SignerGenFunc(func(ctx context.Context) (beaconing.Signer, error) {
+			return signer.SignerGen.Generate(ctx)
+		}),
+		Inspector:   inspector,
+		Metrics:     metrics,
+		DRKeyEngine: drkeyEngine,
+		MACGen:      macGen,
+		NextHopper:  topo,
+		StaticInfo:  func() *beaconing.StaticInfoCfg { return staticInfo },
 
 		OriginationInterval:       globalCfg.BS.OriginationInterval.Duration,
 		PropagationInterval:       globalCfg.BS.PropagationInterval.Duration,

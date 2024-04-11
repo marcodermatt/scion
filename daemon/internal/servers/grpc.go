@@ -17,8 +17,6 @@ package servers
 import (
 	"context"
 	"fmt"
-	"github.com/scionproto/scion/pkg/experimental/fabrid"
-	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	"net"
 	"time"
 
@@ -27,6 +25,8 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
+	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	drkey_daemon "github.com/scionproto/scion/daemon/drkey"
 	"github.com/scionproto/scion/daemon/fetcher"
 	"github.com/scionproto/scion/pkg/addr"
@@ -184,6 +184,7 @@ func pathToPB(path snet.Path) *sdpb.Path {
 		Expiration:     &timestamppb.Timestamp{Seconds: meta.Expiry.Unix()},
 		Latency:        latency,
 		Bandwidth:      meta.Bandwidth,
+		CarbonIntensity: meta.CarbonIntensity,
 		Geo:            geo,
 		LinkType:       linkType,
 		InternalHops:   meta.InternalHops,
@@ -191,7 +192,6 @@ func pathToPB(path snet.Path) *sdpb.Path {
 		EpicAuths:      epicAuths,
 		FabridPolicies: fabridPolicies,
 	}
-
 }
 
 func fabridPolicyToPB(fp *fabrid.Policy) *sdpb.FabridPolicy {
@@ -387,6 +387,9 @@ func (s *DaemonServer) DRKeyASHost(
 	req *pb_daemon.DRKeyASHostRequest,
 ) (*pb_daemon.DRKeyASHostResponse, error) {
 
+	if s.DRKeyClient == nil {
+		return nil, serrors.New("DRKey is not available")
+	}
 	meta, err := requestToASHostMeta(req)
 	if err != nil {
 		return nil, serrors.WrapStr("parsing protobuf ASHostReq", err)
@@ -409,6 +412,9 @@ func (s *DaemonServer) DRKeyHostAS(
 	req *pb_daemon.DRKeyHostASRequest,
 ) (*pb_daemon.DRKeyHostASResponse, error) {
 
+	if s.DRKeyClient == nil {
+		return nil, serrors.New("DRKey is not available")
+	}
 	meta, err := requestToHostASMeta(req)
 	if err != nil {
 		return nil, serrors.WrapStr("parsing protobuf HostASReq", err)
@@ -431,6 +437,9 @@ func (s *DaemonServer) DRKeyHostHost(
 	req *pb_daemon.DRKeyHostHostRequest,
 ) (*pb_daemon.DRKeyHostHostResponse, error) {
 
+	if s.DRKeyClient == nil {
+		return nil, serrors.New("DRKey is not available")
+	}
 	meta, err := requestToHostHostMeta(req)
 	if err != nil {
 		return nil, serrors.WrapStr("parsing protobuf HostHostReq", err)

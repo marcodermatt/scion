@@ -6,7 +6,7 @@ cmd_bazel-remote() {
     mkdir -p "$HOME/.cache/bazel/remote"
     uid=$(id -u)
     gid=$(id -g)
-    USER_ID="$uid" GROUP_ID="$gid" docker compose --compatibility -f bazel-remote.yml -p bazel_remote up -d
+    USER_ID="$uid" GROUP_ID="$gid" docker compose -f bazel-remote.yml up -d
 }
 
 cmd_topo-clean() {
@@ -36,7 +36,7 @@ cmd_topodot() {
 start_scion() {
     echo "Running the network..."
     if is_docker_be; then
-        docker compose --compatibility -f gen/scion-dc.yml -p scion up -d
+        docker compose -f gen/scion-dc.yml up -d
         return 0
     else
         run_setup
@@ -113,7 +113,8 @@ stop_scion() {
     if is_docker_be; then
         ./tools/quiet ./tools/dc down
     else
-        ./tools/quiet tools/supervisor.sh shutdown
+        ./tools/quiet tools/supervisor.sh stop all # blocks until child processes are stopped
+        ./tools/quiet tools/supervisor.sh shutdown # shutdown does not block, but as children are already stopped, actual shutdown will be prompt too.
         run_teardown
     fi
 }

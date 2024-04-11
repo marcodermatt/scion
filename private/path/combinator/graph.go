@@ -333,6 +333,7 @@ func (solution *pathSolution) Path() Path {
 		var intfs []snet.PathInterface
 		var pathASEntries []seg.ASEntry // ASEntries that on the path, eventually in path order.
 		var epicSegAuths [][]byte
+
 		// Segments are in construction order, regardless of whether they're
 		// up or down segments. We traverse them FROM THE END. So, in reverse
 		// forwarding order for down segments and in forwarding order for
@@ -444,6 +445,7 @@ func (solution *pathSolution) Path() Path {
 			Expiry:         segments.ComputeExpTime(),
 			Latency:        staticInfo.Latency,
 			Bandwidth:      staticInfo.Bandwidth,
+			CarbonIntensity: staticInfo.CarbonIntensity,
 			Geo:            staticInfo.Geo,
 			LinkType:       staticInfo.LinkType,
 			InternalHops:   staticInfo.InternalHops,

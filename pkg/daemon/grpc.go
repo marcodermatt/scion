@@ -16,14 +16,13 @@ package daemon
 
 import (
 	"context"
-	"github.com/scionproto/scion/pkg/experimental/fabrid"
-	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
-	"net"
+		"net"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
-
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
+	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
 	libgrpc "github.com/scionproto/scion/pkg/grpc"
@@ -292,6 +291,7 @@ func convertPath(p *sdpb.Path, dst addr.IA) (path.Path, error) {
 			Expiry:         expiry,
 			Latency:        latency,
 			Bandwidth:      p.Bandwidth,
+			CarbonIntensity: p.CarbonIntensity,
 			Geo:            geo,
 			LinkType:       linkType,
 			InternalHops:   p.InternalHops,
