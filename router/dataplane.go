@@ -1464,6 +1464,9 @@ type scionPacketProcessor struct {
 	// IP of the next hop. Only valid for the inbound or AS transit cases
 	nextHop     *net.UDPAddr
 	transitType transitType
+	//benchmarkCount int
+	//processTime    float64
+	//start          time.Time
 }
 
 type transitType int
@@ -2013,6 +2016,16 @@ func (p *scionPacketProcessor) validatePktLen() (processResult, error) {
 	return processResult{SlowPathRequest: slowPathRequest}, slowPathRequired
 }
 
+//func (p *scionPacketProcessor) AddTiming() {
+//	p.benchmarkCount++
+//	duration := time.Now().Sub(p.start)
+//	total := p.processTime*float64(p.benchmarkCount-1) + float64(duration.Nanoseconds())
+//	p.processTime = total / float64(p.benchmarkCount)
+//	if p.benchmarkCount%1000 == 0 {
+//		log.Info("BENCHMARK", "count", p.benchmarkCount, "timing", p.processTime)
+//	}
+//}
+
 func (p *scionPacketProcessor) process() (processResult, error) {
 	if r, err := p.parsePath(); err != nil {
 		return r, err
@@ -2045,6 +2058,7 @@ func (p *scionPacketProcessor) process() (processResult, error) {
 		return r, err
 	}
 	// Inbound: pkts destined to the local IA.
+	//p.start = time.Now()
 	if p.scionLayer.DstIA == p.d.localIA {
 		a, r, err := p.resolveInbound()
 		if err != nil {
@@ -2055,6 +2069,7 @@ func (p *scionPacketProcessor) process() (processResult, error) {
 		if err := p.processHbhOptions(0); err != nil {
 			return processResult{}, err
 		}
+		//p.AddTiming()
 		return processResult{OutAddr: a, OutPkt: p.rawPkt}, nil
 	}
 
@@ -2097,6 +2112,7 @@ func (p *scionPacketProcessor) process() (processResult, error) {
 		if err := p.processEgress(); err != nil {
 			return processResult{}, err
 		}
+		//p.AddTiming()
 		return processResult{EgressID: egressID, OutPkt: p.rawPkt}, nil
 	}
 	// ASTransit: pkts leaving from another AS BR.
@@ -2106,6 +2122,7 @@ func (p *scionPacketProcessor) process() (processResult, error) {
 		if err := p.processHbhOptions(egressID); err != nil {
 			return processResult{}, err
 		}
+		//p.AddTiming()
 		return processResult{OutAddr: a, OutPkt: p.rawPkt}, nil
 	}
 	errCode := slayers.SCMPCodeUnknownHopFieldEgress

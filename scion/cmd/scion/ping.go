@@ -146,6 +146,15 @@ On other errors, ping will exit with code 2.
 				"local", localIP,
 			)
 
+			if localIP == nil {
+				target := remote.Host.IP
+				if remote.NextHop != nil {
+					target = remote.NextHop.IP
+				}
+				if localIP, err = addrutil.ResolveLocal(target); err != nil {
+					return serrors.WrapStr("resolving local address", err)
+				}
+			}
 			span, traceCtx := tracing.CtxWith(context.Background(), "run")
 			span.SetTag("dst.isd_as", remote.IA)
 			span.SetTag("dst.host", remote.Host.IP)
@@ -546,6 +555,7 @@ On other errors, ping will exit with code 2.
 						update.Size, update.Source.IA, update.Source.Host, update.Sequence,
 						durationMillis(update.RTT), additional)
 				},
+				Hops: len(pingPath.Metadata().Interfaces) / 2,
 			})
 			if err != nil {
 				return err
@@ -613,7 +623,7 @@ SCMP echo header and payload are equal to the MTU of the path. This flag overrid
 	cmd.Flags().BoolVar(&flags.epic, "epic", false, "Enable EPIC for path probing.")
 	cmd.Flags().StringVar(&flags.format, "format", "human",
 		"Specify the output format (human|json|yaml)")
-	cmd.Flags().BoolVar(&flags.fabrid, "fabrid", true, "Enable FABRID")
+	cmd.Flags().BoolVar(&flags.fabrid, "fabrid", false, "Enable FABRID")
 	return cmd
 }
 

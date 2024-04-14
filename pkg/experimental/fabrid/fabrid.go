@@ -32,8 +32,8 @@ import (
 )
 
 // Testing options for failing validation
-const CLIENT_FLAKINESS = 64
-const SERVER_FLAKINESS = 64
+const CLIENT_FLAKINESS = 0
+const SERVER_FLAKINESS = 0
 
 type SimpleFabridConfig struct {
 	DestinationIA     addr.IA
@@ -107,7 +107,7 @@ func NewFabridClient(remote snet.UDPAddr, config SimpleFabridConfig, grpcConn *g
 func (c *Client) NewFabridPathState(fingerprint snet.PathFingerprint) *PathState {
 	state := &PathState{
 		ValidationRatio:      c.validationRatio,
-		UpdateValRatio:       true,
+		UpdateValRatio:       false,
 		RequestStatistics:    false,
 		expectedValResponses: make(map[validationIdentifier]uint32),
 	}

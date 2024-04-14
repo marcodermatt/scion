@@ -18,10 +18,11 @@ package ping
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"github.com/scionproto/scion/pkg/slayers"
+	"github.com/scionproto/scion/private/topology/underlay"
 	"math/rand"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/scionproto/scion/pkg/addr"
@@ -30,7 +31,6 @@ import (
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/snet"
 	"github.com/scionproto/scion/pkg/sock/reliable"
-	"github.com/scionproto/scion/private/topology/underlay"
 )
 
 // Stats contains the statistics of a ping run.
@@ -96,6 +96,7 @@ type Config struct {
 	// Update handler is invoked for every ping reply. Execution time must be
 	// small, as it is run synchronously.
 	UpdateHandler func(Update)
+	Hops          int
 }
 
 // Run ping with the configuration. This blocks until the configured number
@@ -141,6 +142,7 @@ func Run(ctx context.Context, cfg Config) (Stats, error) {
 		errHandler:    cfg.ErrHandler,
 		updateHandler: cfg.UpdateHandler,
 		hbh:           cfg.HBH,
+		hops:          cfg.Hops,
 	}
 	return p.Ping(ctx, cfg.Remote)
 }
@@ -166,7 +168,8 @@ type pinger struct {
 	receivedSequence int
 	stats            Stats
 
-	hbh *slayers.HopByHopExtn
+	hops int
+	hbh  *slayers.HopByHopExtn
 }
 
 func (p *pinger) Ping(ctx context.Context, remote *snet.UDPAddr) (Stats, error) {
@@ -177,50 +180,56 @@ func (p *pinger) Ping(ctx context.Context, remote *snet.UDPAddr) (Stats, error) 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	errSend := make(chan error, 1)
+	//errSend := make(chan error, 1)
 
-	go func() {
-		defer log.HandlePanic()
-		p.drain(ctx)
-	}()
+	//go func() {
+	//	defer log.HandlePanic()
+	//	p.drain(ctx)
+	//}()
 
-	var wg sync.WaitGroup
-	wg.Add(1)
+	//var wg sync.WaitGroup
+	//wg.Add(1)
 
-	go func() {
-		defer log.HandlePanic()
-		defer wg.Done()
-		for i := uint16(0); i < p.attempts; i++ {
-			if err := p.send(remote); err != nil {
-				errSend <- serrors.WrapStr("sending", err)
-				return
-			}
-			select {
-			case <-send.C:
-			case <-ctx.Done():
-				return
-			}
+	defer log.HandlePanic()
+	//defer wg.Done()
+	start := time.Now()
+	for i := 0; i < 1000*int(p.attempts); i++ {
+		if err := p.send(remote); err != nil {
+			fmt.Println(serrors.WrapStr("sending", err))
+			break
 		}
-		time.AfterFunc(p.timeout, cancel)
-	}()
-
-	for i := uint16(0); i < p.attempts; i++ {
-		select {
-		case <-ctx.Done():
-			return p.stats, nil
-		case err := <-errSend:
-			return p.stats, err
-		case reply := <-p.replies:
-			if reply.Error != nil {
-				if p.errHandler != nil {
-					p.errHandler(reply.Error)
-				}
-				continue
-			}
-			p.receive(reply)
-		}
+		//select {
+		//case <-send.C:
+		//case <-ctx.Done():
+		//	return
+		//}
 	}
-	wg.Wait()
+	end := time.Now()
+	duration := end.Sub(start)
+	fabrid := false
+	if p.hbh != nil {
+		fabrid = true
+	}
+	fmt.Printf("BENCHMARK:%d\t%.2f\t%t\n", p.hops+1, float64(p.sentSequence)/float64(duration.Seconds()), fabrid)
+	//time.AfterFunc(p.timeout, cancel)
+
+	//for i := uint16(0); i < p.attempts; i++ {
+	//	select {
+	//	case <-ctx.Done():
+	//		return p.stats, nil
+	//	case err := <-errSend:
+	//		return p.stats, err
+	//	case reply := <-p.replies:
+	//		if reply.Error != nil {
+	//			if p.errHandler != nil {
+	//				p.errHandler(reply.Error)
+	//			}
+	//			continue
+	//		}
+	//		p.receive(reply)
+	//	}
+	//}
+	//wg.Wait()
 	return p.stats, nil
 }
 

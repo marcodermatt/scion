@@ -130,12 +130,12 @@ func (c *SCIONPacketConn) WriteTo(pkt *Packet, ov *net.UDPAddr) error {
 	}
 
 	// Send message
-	n, err := c.Conn.WriteTo(pkt.Bytes, ov)
-	if err != nil {
-		return serrors.WrapStr("Reliable socket write error", err)
-	}
-	metrics.CounterAdd(c.Metrics.WriteBytes, float64(n))
-	metrics.CounterInc(c.Metrics.WritePackets)
+	//n, err := c.Conn.WriteTo(pkt.Bytes, ov)
+	//if err != nil {
+	//	return serrors.WrapStr("Reliable socket write error", err)
+	//}
+	//metrics.CounterAdd(c.Metrics.WriteBytes, float64(n))
+	//metrics.CounterInc(c.Metrics.WritePackets)
 	return nil
 }
 
