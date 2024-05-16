@@ -22,6 +22,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
 	"net"
 	"net/netip"
 	"os"
@@ -254,7 +255,7 @@ func (s *server) handlePing(conn snet.PacketConn) error {
 		}
 
 		tmpBuffer := make([]byte, (len(fabridOption.HopfieldMetadata)*3+15)&^15+16)
-		_, err = fabrid.VerifyPathValidator(fabridOption, tmpBuffer, hostHostKey[:])
+		_, err = crypto.VerifyPathValidator(fabridOption, tmpBuffer, hostHostKey[:])
 		if err != nil {
 			return err
 		}
@@ -436,8 +437,13 @@ func (c *client) attemptRequest(n int) bool {
 				DestinationIA:   remote.IA,
 				DestinationAddr: remote.Host.IP.String(),
 			}
-			var policies []fabrid.PolicyID
-			fabridPath, err := snetpath.NewFABRIDDataplanePath(s, path.Metadata().Interfaces,
+			hops := path.Metadata().Hops()
+			policies := make([]*fabrid.PolicyID, len(hops))
+			zeroPol := fabrid.PolicyID(0)
+			for i := 0; i < len(hops); i++ {
+				policies[i] = &zeroPol
+			}
+			fabridPath, err := snetpath.NewFABRIDDataplanePath(s, hops,
 				policies, fabridConfig)
 			if err != nil {
 				logger.Error("Error creating FABRID path", "err", err)

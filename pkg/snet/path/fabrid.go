@@ -17,6 +17,7 @@ package path
 import (
 	"context"
 	"fmt"
+	"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
 	"time"
 
 	"github.com/scionproto/scion/pkg/addr"
@@ -34,14 +35,11 @@ type FabridConfig struct {
 	LocalAddr       string
 	DestinationIA   addr.IA
 	DestinationAddr string
-	Query           string
 }
 
 type FABRID struct {
 	Raw              []byte
-	keys             map[addr.IA]drkey.ASHostKey
-	ingresses        []uint16
-	egresses         []uint16
+	keys             map[addr.IA]*drkey.ASHostKey
 	pathKey          drkey.HostHostKey
 	drkeyFn          func(context.Context, drkey.ASHostMeta) (drkey.ASHostKey, error)
 	drkeyPathFn      func(context.Context, drkey.HostHostMeta) (drkey.HostHostKey, error)
@@ -51,76 +49,46 @@ type FABRID struct {
 	tmpBuffer        []byte
 	identifierBuffer []byte
 	fabridBuffer     []byte
+	policyIDs        []*fabrid.PolicyID
 	numHops          int
-	policyIDs        []fabrid.PolicyID
-	ias              []addr.IA
-	support          map[addr.IA]bool
+	hops             []snet.HopInterface
 }
 
-func NewFABRIDDataplanePath(p SCION, interfaces []snet.PathInterface, policyIDs []fabrid.PolicyID, conf *FabridConfig) (*FABRID, error) {
-
+func NewFABRIDDataplanePath(p SCION, hops []snet.HopInterface, policyIDs []*fabrid.PolicyID, conf *FabridConfig) (*FABRID, error) {
+	numHops := len(hops)
 	var decoded scion.Decoded
 	if err := decoded.DecodeFromBytes(p.Raw); err != nil {
 		return nil, serrors.WrapStr("decoding path", err)
 	}
-	numSegs := len(decoded.InfoFields)
-	var numHops int
-	if isPeering(decoded) {
-		numHops = len(decoded.HopFields)
-	} else {
-		numHops = len(decoded.HopFields) - numSegs + 1 // Remove hops introduced by crossovers
-	}
-	keys := make(map[addr.IA]drkey.ASHostKey, len(policyIDs))
-	ias := make([]addr.IA, numHops)
-
-	if len(policyIDs) == 0 {
-		// If no policies are provided, use zero policy for all hops
-		policyIDs = make([]fabrid.PolicyID, numHops)
-		for i := 0; i < numHops; i++ {
-			policyIDs[i] = 0
-		}
+	//TODO(jvanbommel) How was this remove hops introduced by crossovers even supposed to work? Decreasing the numHops
+	// would still add the hops to ingresses and egresses of crossovers in the middle of the path, and even cut out the
+	// end of the path. What did I miss?
+	keys := make(map[addr.IA]*drkey.ASHostKey, numHops)
+	if len(policyIDs) == 0 { // If no policies are provided, use empty policy for all hops
+		policyIDs = make([]*fabrid.PolicyID, numHops)
+	} else if len(policyIDs) != numHops {
+		return nil, serrors.New("Amount of policy ids does not match the amount of hops in the path.")
 	}
 	f := &FABRID{
+		hops:             hops,
 		numHops:          numHops,
 		conf:             conf,
 		keys:             keys,
-		ias:              ias,
-		ingresses:        make([]uint16, numHops),
-		egresses:         make([]uint16, numHops),
 		tmpBuffer:        make([]byte, 64),
 		identifierBuffer: make([]byte, 8),
 		fabridBuffer:     make([]byte, 8+4*numHops),
-		support:          make(map[addr.IA]bool),
 		Raw:              append([]byte(nil), p.Raw...),
 		policyIDs:        policyIDs,
 	}
-	//TODO(jvanbommel): ask others, can we not just use the snet.path.hops() for this?
 
 	// Get ingress/egress IFs and IAs from path interfaces
-	f.ingresses[0] = 0
-	f.egresses[0] = uint16(interfaces[0].ID)
-	f.ias[0] = interfaces[0].IA
-	f.keys[f.ias[0]] = drkey.ASHostKey{}
-	for i := 1; i < numHops-1; i++ {
-		f.ingresses[i] = uint16(interfaces[2*i-1].ID)
-		f.egresses[i] = uint16(interfaces[2*i].ID)
-		f.ias[i] = interfaces[2*i-1].IA
-		f.keys[f.ias[i]] = drkey.ASHostKey{}
-	}
-	f.ingresses[numHops-1] = uint16(interfaces[(numHops-1)*2-1].ID)
-	f.egresses[numHops-1] = 0
-	f.ias[numHops-1] = interfaces[(numHops-1)*2-1].IA
-	f.keys[f.ias[numHops-1]] = drkey.ASHostKey{}
-	for _, ia := range ias {
-		f.support[ia] = true
+	for i, hop := range hops {
+		if policyIDs[i] != nil {
+			f.keys[hop.IA] = &drkey.ASHostKey{}
+		}
 	}
 	f.baseTimestamp = decoded.InfoFields[0].Timestamp
 	return f, nil
-}
-
-func isPeering(path scion.Decoded) bool {
-	// Explicit check for assumption that peering paths can only have 2 segments
-	return path.NumINF == 2 && path.InfoFields[0].Peer && path.InfoFields[1].Peer
 }
 
 func (f *FABRID) RegisterDRKeyFetcher(fn func(context.Context, drkey.ASHostMeta) (drkey.ASHostKey, error),
@@ -163,11 +131,10 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 	}
 	for i := 0; i < f.numHops; i++ {
 		meta := &extension.FabridHopfieldMetadata{}
-		if f.support[f.ias[i]] {
+		if f.policyIDs[i] != nil && f.keys[f.hops[i].IA] != nil {
 			meta.FabridEnabled = true
-
-			key := f.keys[f.ias[i]].Key
-			encPolicyID, err := fabrid.EncryptPolicyID(f.policyIDs[i], identifierOption, key[:])
+			key := f.keys[f.hops[i].IA].Key
+			encPolicyID, err := crypto.EncryptPolicyID(*f.policyIDs[i], identifierOption, key[:])
 			if err != nil {
 				return serrors.WrapStr("encrypting policy ID", err)
 			}
@@ -175,7 +142,7 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 		}
 		fabridOption.HopfieldMetadata[i] = meta
 	}
-	err = fabrid.InitValidators(fabridOption, identifierOption, s, f.tmpBuffer, f.pathKey.Key[:], f.keys, nil, f.ias, f.ingresses, f.egresses)
+	err = crypto.InitValidators(fabridOption, identifierOption, s, f.tmpBuffer, f.pathKey.Key[:], f.keys, nil, f.hops)
 	if err != nil {
 		return serrors.WrapStr("initializing validators failed", err)
 	}
@@ -207,19 +174,18 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 
 func (f *FABRID) renewExpiredKeys(t time.Time) error {
 	for ia, key := range f.keys {
-		if f.support[ia] {
-			if key.Epoch.NotAfter.Before(t) {
-				// key is expired, renew it
-				newKey, err := f.fetchKey(t, ia)
-				if err != nil {
-					f.support[ia] = false
-					fmt.Println("Error while fetching drkey for AS", ia)
-					continue
-				}
-				fmt.Println("Successfully fetched drkey for AS", ia)
-				f.keys[ia] = newKey
+		if key.Epoch.NotAfter.Before(t) {
+			// key is expired, renew it
+			newKey, err := f.fetchKey(t, ia)
+			if err != nil {
+				f.keys[ia] = nil
+				fmt.Println("Error while fetching drkey for AS", ia)
+				continue
 			}
+			fmt.Println("Successfully fetched drkey for AS", ia)
+			f.keys[ia] = &newKey
 		}
+
 	}
 	if f.pathKey.Epoch.NotAfter.Before(t) {
 		// key is expired, renew it

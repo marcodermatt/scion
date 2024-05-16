@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package fabrid_test
+package crypto_test
 
 import (
 	crand "crypto/rand"
+	"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
 	"math/rand"
 	"testing"
 	"time"
@@ -40,13 +41,13 @@ func TestEncryptPolicyID(t *testing.T) {
 	for i := 0; i < 64; i++ {
 		policyID := fabrid.PolicyID(rand.Uint32())
 		key := generateRandomBytes(16)
-		encPolicyID, err := fabrid.EncryptPolicyID(policyID, id, key)
+		encPolicyID, err := crypto.EncryptPolicyID(policyID, id, key)
 		assert.NoError(t, err)
 		meta := &extension.FabridHopfieldMetadata{
 			EncryptedPolicyID:  encPolicyID,
 			HopValidationField: [3]byte{},
 		}
-		computedPolicyID, err := fabrid.ComputePolicyID(meta, id, key)
+		computedPolicyID, err := crypto.ComputePolicyID(meta, id, key)
 		assert.NoError(t, err)
 		assert.Equal(t, policyID, computedPolicyID)
 	}
@@ -140,7 +141,7 @@ func TestSuccessfullValidators(t *testing.T) {
 						}
 					}
 
-					err := fabrid.InitValidators(f, id, s, tmpBuffer, pathKey, asHostKeys, asAsKeys, ases, ingresses, egresses)
+					err := crypto.InitValidators(f, id, s, tmpBuffer, pathKey, asHostKeys, asAsKeys, ases, ingresses, egresses)
 					assert.NoError(t, err)
 
 					for i, meta := range f.HopfieldMetadata {
@@ -148,16 +149,16 @@ func TestSuccessfullValidators(t *testing.T) {
 
 							if meta.ASLevelKey {
 								key := asAsKeys[ases[i]]
-								err = fabrid.VerifyAndUpdate(meta, id, s, tmpBuffer, key.Key[:], ingresses[i], egresses[i])
+								err = crypto.VerifyAndUpdate(meta, id, s, tmpBuffer, key.Key[:], ingresses[i], egresses[i])
 							} else {
 								key := asHostKeys[ases[i]]
-								err = fabrid.VerifyAndUpdate(meta, id, s, tmpBuffer, key.Key[:], ingresses[i], egresses[i])
+								err = crypto.VerifyAndUpdate(meta, id, s, tmpBuffer, key.Key[:], ingresses[i], egresses[i])
 							}
 
 							assert.NoError(t, err)
 						}
 					}
-					_, err = fabrid.VerifyPathValidator(f, tmpBuffer, pathKey)
+					_, err = crypto.VerifyPathValidator(f, tmpBuffer, pathKey)
 					assert.NoError(t, err)
 				}
 			})

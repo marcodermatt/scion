@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package fabrid
+package crypto
 
 import (
 	"bytes"
@@ -20,6 +20,8 @@ import (
 	"crypto/cipher"
 	"encoding/base64"
 	"encoding/binary"
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
+	"github.com/scionproto/scion/pkg/snet"
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
@@ -114,7 +116,7 @@ func VerifyAndUpdate(f *ext.FabridHopfieldMetadata, id *ext.IdentifierOption,
 }
 
 func ComputePolicyID(f *ext.FabridHopfieldMetadata, id *ext.IdentifierOption,
-	key []byte) (PolicyID, error) {
+	key []byte) (fabrid.PolicyID, error) {
 
 	cipher, err := aes.NewCipher(key)
 	if err != nil {
@@ -125,10 +127,10 @@ func ComputePolicyID(f *ext.FabridHopfieldMetadata, id *ext.IdentifierOption,
 		return 0, err
 	}
 	cipher.Encrypt(buf, buf)
-	return PolicyID(f.EncryptedPolicyID ^ buf[0]), nil
+	return fabrid.PolicyID(f.EncryptedPolicyID ^ buf[0]), nil
 }
 
-func EncryptPolicyID(f PolicyID, id *ext.IdentifierOption,
+func EncryptPolicyID(f fabrid.PolicyID, id *ext.IdentifierOption,
 	key []byte) (uint8, error) {
 
 	cipher, err := aes.NewCipher(key)
@@ -169,7 +171,7 @@ func VerifyPathValidator(f *ext.FabridOption, tmpBuffer []byte, pathKey []byte) 
 // InitValidators sets all HVFs of the FABRID option and computes the
 // path validator.
 func InitValidators(f *ext.FabridOption, id *ext.IdentifierOption, s *slayers.SCION, tmpBuffer []byte, pathKey []byte,
-	asHostKeys map[addr.IA]drkey.ASHostKey, asAsKeys map[addr.IA]drkey.Level1Key, ias []addr.IA, ingresses []uint16, egresses []uint16) error {
+	asHostKeys map[addr.IA]*drkey.ASHostKey, asAsKeys map[addr.IA]drkey.Level1Key, hops []snet.HopInterface) error {
 
 	outBuffer := make([]byte, 16)
 	pathValInputLength := 3 * len(f.HopfieldMetadata)
@@ -178,20 +180,20 @@ func InitValidators(f *ext.FabridOption, id *ext.IdentifierOption, s *slayers.SC
 		if meta.FabridEnabled {
 			var key drkey.Key
 			if meta.ASLevelKey {
-				asAsKey, found := asAsKeys[ias[i]]
+				asAsKey, found := asAsKeys[hops[i].IA]
 				if !found {
-					return serrors.New("InitValidators expected AS to AS key but was not in dictionary", "AS", ias[i])
+					return serrors.New("InitValidators expected AS to AS key but was not in dictionary", "AS", hops[i].IA)
 				}
 				key = asAsKey.Key
 			} else {
-				asHostKey, found := asHostKeys[ias[i]]
+				asHostKey, found := asHostKeys[hops[i].IA]
 				if !found {
-					return serrors.New("InitValidators expected AS to AS key but was not in dictionary", "AS", ias[i])
+					return serrors.New("InitValidators expected AS to AS key but was not in dictionary", "AS", hops[i].IA)
 				}
 				key = asHostKey.Key
 			}
 
-			err := computeFabridHVF(meta, id, s, tmpBuffer, outBuffer, key[:], ingresses[i], egresses[i])
+			err := computeFabridHVF(meta, id, s, tmpBuffer, outBuffer, key[:], uint16(hops[i].IgIf), uint16(hops[i].EgIf))
 			if err != nil {
 				return err
 			}

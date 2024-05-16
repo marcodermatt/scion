@@ -39,7 +39,7 @@ import (
 	"github.com/scionproto/scion/pkg/drkey"
 	"github.com/scionproto/scion/pkg/drkey/specific"
 	libepic "github.com/scionproto/scion/pkg/experimental/epic"
-	"github.com/scionproto/scion/pkg/experimental/fabrid"
+	"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/processmetrics"
 	"github.com/scionproto/scion/pkg/private/serrors"
@@ -1015,8 +1015,7 @@ func (d *DataPlane) runForwarder(ifID uint16, conn BatchConn, cfg *RunConfig, c 
 	toWrite := 0
 	lastToS := uint8(0)
 	for d.running {
-		toWrite += readUpTo(c, 1-toWrite, toWrite == 0, pkts[toWrite:])
-		//toWrite = 1
+		toWrite += readUpTo(c, toWrite, toWrite == 0, pkts[toWrite:])
 		// Turn the packets into underlay messages that WriteBatch can send.
 		for i, p := range pkts[:toWrite] {
 			msgs[i].Buffers[0] = p.rawPacket
@@ -1091,7 +1090,7 @@ func newPacketProcessor(d *DataPlane) *scionPacketProcessor {
 		buffer:            gopacket.NewSerializeBuffer(),
 		mac:               d.macFactory(),
 		macInputBuffer:    make([]byte, max(path.MACBufferSize, libepic.MACBufferSize)),
-		fabridInputBuffer: make([]byte, fabrid.FabridMacInputSize),
+		fabridInputBuffer: make([]byte, crypto.FabridMacInputSize),
 	}
 	p.scionLayer.RecyclePaths()
 	return p
@@ -1169,11 +1168,11 @@ func (p *scionPacketProcessor) processFabrid(egressIF uint16) error {
 	if err != nil {
 		return err
 	}
-	policyID, err := fabrid.ComputePolicyID(meta, p.identifier, key[:])
+	policyID, err := crypto.ComputePolicyID(meta, p.identifier, key[:])
 	if err != nil {
 		return err
 	}
-	err = fabrid.VerifyAndUpdate(meta, p.identifier, &p.scionLayer, p.fabridInputBuffer, key[:], p.ingressID, egressIF)
+	err = crypto.VerifyAndUpdate(meta, p.identifier, &p.scionLayer, p.fabridInputBuffer, key[:], p.ingressID, egressIF)
 	if err != nil {
 		return err
 	}
@@ -1186,6 +1185,9 @@ func (p *scionPacketProcessor) processFabrid(egressIF uint16) error {
 			mplsLabel, err = p.d.getFabridMplsLabelForInterface(uint32(p.ingressID), uint32(policyID), uint32(egressIF))
 		case internalTraffic:
 			mplsLabel, err = p.d.getFabridMplsLabel(uint32(p.ingressID), uint32(policyID), p.nextHop.IP)
+			if err != nil {
+				mplsLabel, err = p.d.getFabridMplsLabelForInterface(uint32(p.ingressID), uint32(policyID), 0)
+			}
 		case ingressEgressSameRouter:
 			return nil
 		}

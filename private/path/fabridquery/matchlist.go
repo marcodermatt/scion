@@ -33,15 +33,18 @@ func (ml MatchList) Accepted() bool {
 	return true
 }
 
-func (ml MatchList) Policies() (pols []fabrid.PolicyID) {
-	pols = make([]fabrid.PolicyID, len(ml.SelectedPolicies))
+func (ml MatchList) Policies() (pols []*fabrid.PolicyID) {
+	pols = make([]*fabrid.PolicyID, len(ml.SelectedPolicies))
 	for i, selected := range ml.SelectedPolicies {
-		if selected == nil || selected.Type == WILDCARD_POLICY_TYPE ||
-			selected.Type == REJECT_POLICY_TYPE {
-			pols[i] = fabrid.PolicyID(0)
+		if selected == nil {
+			pols[i] = nil
 			fmt.Println(i, " is not using a policy")
+		} else if selected.Type == WILDCARD_POLICY_TYPE || selected.Type == REJECT_POLICY_TYPE {
+			zeroPol := fabrid.PolicyID(0)
+			pols[i] = &zeroPol
+			fmt.Println(i, " is using zero policy")
 		} else {
-			pols[i] = selected.Policy.Index
+			pols[i] = &selected.Policy.Index
 			fmt.Println(i, " is using policy ", selected.String(), " index: ", selected.Policy.Index)
 		}
 	}
@@ -78,7 +81,9 @@ func (e Identifier) Evaluate(pi []snet.HopInterface, ml *MatchList) (bool, *Matc
 		// If so and the query sets a wildcard or reject policy, assign this and continue evaluating
 		// the query
 		if e.Policy.Type == WILDCARD_POLICY_TYPE || e.Policy.Type == REJECT_POLICY_TYPE {
-			ml.StorePolicy(i, &e.Policy)
+			if e.Policy.Type == WILDCARD_POLICY_TYPE && len(p.Policies) > 0 {
+				ml.StorePolicy(i, &e.Policy)
+			}
 			matched = true
 			continue
 		}

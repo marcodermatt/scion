@@ -121,7 +121,7 @@ func Choose(
 			if !pols.Accepted() {
 				continue
 			}
-			fabridPath, err := snetpath.NewFABRIDDataplanePath(scionPath, p.Metadata().Interfaces,
+			fabridPath, err := snetpath.NewFABRIDDataplanePath(scionPath, p.Metadata().Hops(),
 				pols.Policies(), &o.fabrid.FabridConfig)
 			if err != nil {
 				return nil, serrors.WrapStr("creating fabrid path from scion path", err)
