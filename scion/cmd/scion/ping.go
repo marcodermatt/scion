@@ -185,8 +185,8 @@ On other errors, ping will exit with code 2.
 					DestinationIA:   remote.IA,
 					DestinationAddr: remote.Host.IP.String(),
 				}
-				//TODO(jvanbommel): @rohrerj I get why we have this, but would be nice if we didn't need to hard specify our IP
-				// and drkey would just take it from our request. Or?
+				//TODO(jvanbommel): @rohrerj I get why we have this, but would be nice if we didn't
+				//need to hard specify our IP and drkey would just take it from our request. Or?
 				if localIP == nil {
 					target := remote.Host.IP
 					if remote.NextHop != nil {
@@ -255,7 +255,8 @@ On other errors, ping will exit with code 2.
 					}
 					defer grpcconn.Close()
 					client := drpb.NewDRKeyIntraServiceClient(grpcconn)
-					s.RegisterDRKeyFetcher(func(ctx context.Context, meta drkey.ASHostMeta) (drkey.ASHostKey, error) {
+					s.RegisterDRKeyFetcher(func(ctx context.Context,
+						meta drkey.ASHostMeta) (drkey.ASHostKey, error) {
 						rep, err := client.DRKeyASHost(ctx, drhelper.AsHostMetaToProtoRequest(meta))
 						if err != nil {
 							return drkey.ASHostKey{}, err
@@ -265,8 +266,10 @@ On other errors, ping will exit with code 2.
 							return drkey.ASHostKey{}, err
 						}
 						return key, nil
-					}, func(ctx context.Context, meta drkey.HostHostMeta) (drkey.HostHostKey, error) {
-						rep, err := client.DRKeyHostHost(ctx, drhelper.HostHostMetaToProtoRequest(meta))
+					}, func(ctx context.Context, meta drkey.HostHostMeta) (drkey.HostHostKey,
+						error) {
+						rep, err := client.DRKeyHostHost(ctx,
+							drhelper.HostHostMetaToProtoRequest(meta))
 						if err != nil {
 							return drkey.HostHostKey{}, err
 						}

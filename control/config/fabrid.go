@@ -15,11 +15,11 @@
 package config
 
 import (
-	"github.com/scionproto/scion/pkg/segment/extensions/fabrid"
 	"io"
 	"strings"
 
 	"github.com/scionproto/scion/pkg/private/serrors"
+	"github.com/scionproto/scion/pkg/segment/extensions/fabrid"
 	"github.com/scionproto/scion/private/config"
 )
 
@@ -61,14 +61,16 @@ type FABRIDConnectionPoints struct {
 // Validate validates that all values are parsable.
 func (cfg *FABRIDConnectionPoints) Validate() error {
 	if cfg.Ingress.Type != fabrid.Interface && cfg.Ingress.Type != fabrid.Wildcard {
-		return serrors.New("FABRID policies are only supported from an interface to an IP range or other interface.")
+		return serrors.New("FABRID policies are only supported from an interface to an IP" +
+			" range or other interface.")
 	}
-	//TODO(jvanbommel): do we also block the case where someone configures external interface on the same BR as internal?
+	//TODO(jvanbommel): do we also block the case where someone configures external interface on
+	//the same BR as internal?
 	return config.ValidateAll(&cfg.Ingress, &cfg.Egress)
 }
 
-// A connection point describes a specific interface, or an IP range. A FABRID policy can be valid for a pair of
-// connection points.
+// A connection point describes a specific interface, or an IP range. A FABRID policy can be valid
+// for a pair of connection points.
 type FABRIDConnectionPoint struct {
 	Type      fabrid.ConnectionPointType `yaml:"type,omitempty"`
 	IPAddress string                     `yaml:"ip,omitempty"`

@@ -20,15 +20,14 @@ import (
 	"crypto/cipher"
 	"encoding/base64"
 	"encoding/binary"
-	"github.com/scionproto/scion/pkg/experimental/fabrid"
-	"github.com/scionproto/scion/pkg/snet"
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
-
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/slayers"
 	ext "github.com/scionproto/scion/pkg/slayers/extension"
+	"github.com/scionproto/scion/pkg/snet"
 )
 
 const FabridMacInputSize int = 46
@@ -61,8 +60,9 @@ func computeFabridHVF(f *ext.FabridHopfieldMetadata, id *ext.IdentifierOption,
 			16, "actual", len(resultBuffer))
 	}
 
-	id.Serialize(tmpBuffer[0:8])
-
+	if err := id.Serialize(tmpBuffer[0:8]); err != nil {
+		return err
+	}
 	srcAddr := s.RawSrcAddr
 	requiredLen := 14 + len(srcAddr)
 	binary.BigEndian.PutUint16(tmpBuffer[8:10], ingress)
@@ -71,7 +71,10 @@ func computeFabridHVF(f *ext.FabridHopfieldMetadata, id *ext.IdentifierOption,
 	tmpBuffer[13] = byte(s.SrcAddrType.Length())
 	copy(tmpBuffer[14:requiredLen], srcAddr)
 
-	macBlock(key, tmpBuffer[30:46], tmpBuffer[:requiredLen], resultBuffer[:])
+	if err := macBlock(key, tmpBuffer[30:46], tmpBuffer[:requiredLen],
+		resultBuffer[:]); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -152,7 +155,9 @@ func VerifyPathValidator(f *ext.FabridOption, tmpBuffer []byte, pathKey []byte) 
 	inputLength := 3 * len(f.HopfieldMetadata)
 	requiredBufferLength := 16 + (inputLength+15)&^15
 	if len(tmpBuffer) < requiredBufferLength {
-		return 0, serrors.New("tmpBuffer length is invalid", "expected", requiredBufferLength, "actual", len(tmpBuffer))
+		return 0, serrors.New("tmpBuffer length is invalid", "expected",
+			requiredBufferLength,
+			"actual", len(tmpBuffer))
 	}
 	for i, meta := range f.HopfieldMetadata {
 		copy(tmpBuffer[16+i*3:16+(i+1)*3], meta.HopValidationField[:3])
@@ -163,15 +168,18 @@ func VerifyPathValidator(f *ext.FabridOption, tmpBuffer []byte, pathKey []byte) 
 	}
 	validationNumber := tmpBuffer[20]
 	if !bytes.Equal(tmpBuffer[16:20], f.PathValidator[:]) {
-		return validationNumber, serrors.New("Path validator is not valid", "validator", base64.StdEncoding.EncodeToString(f.PathValidator[:]), "computed", base64.StdEncoding.EncodeToString(tmpBuffer[16:20]))
+		return validationNumber, serrors.New("Path validator is not valid",
+			"validator", base64.StdEncoding.EncodeToString(f.PathValidator[:]),
+			"computed", base64.StdEncoding.EncodeToString(tmpBuffer[16:20]))
 	}
 	return validationNumber, nil
 }
 
 // InitValidators sets all HVFs of the FABRID option and computes the
 // path validator.
-func InitValidators(f *ext.FabridOption, id *ext.IdentifierOption, s *slayers.SCION, tmpBuffer []byte, pathKey []byte,
-	asHostKeys map[addr.IA]*drkey.ASHostKey, asAsKeys map[addr.IA]drkey.Level1Key, hops []snet.HopInterface) error {
+func InitValidators(f *ext.FabridOption, id *ext.IdentifierOption, s *slayers.SCION,
+	tmpBuffer []byte, pathKey []byte, asHostKeys map[addr.IA]*drkey.ASHostKey,
+	asAsKeys map[addr.IA]drkey.Level1Key, hops []snet.HopInterface) error {
 
 	outBuffer := make([]byte, 16)
 	pathValInputLength := 3 * len(f.HopfieldMetadata)
@@ -182,18 +190,21 @@ func InitValidators(f *ext.FabridOption, id *ext.IdentifierOption, s *slayers.SC
 			if meta.ASLevelKey {
 				asAsKey, found := asAsKeys[hops[i].IA]
 				if !found {
-					return serrors.New("InitValidators expected AS to AS key but was not in dictionary", "AS", hops[i].IA)
+					return serrors.New("InitValidators expected AS to AS key but was not in"+
+						" dictionary", "AS", hops[i].IA)
 				}
 				key = asAsKey.Key
 			} else {
 				asHostKey, found := asHostKeys[hops[i].IA]
 				if !found {
-					return serrors.New("InitValidators expected AS to AS key but was not in dictionary", "AS", hops[i].IA)
+					return serrors.New("InitValidators expected AS to AS key but was not in"+
+						" dictionary", "AS", hops[i].IA)
 				}
 				key = asHostKey.Key
 			}
 
-			err := computeFabridHVF(meta, id, s, tmpBuffer, outBuffer, key[:], uint16(hops[i].IgIf), uint16(hops[i].EgIf))
+			err := computeFabridHVF(meta, id, s, tmpBuffer, outBuffer, key[:],
+				uint16(hops[i].IgIf), uint16(hops[i].EgIf))
 			if err != nil {
 				return err
 			}

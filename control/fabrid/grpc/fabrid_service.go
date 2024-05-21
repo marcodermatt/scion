@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//	http://www.apache.org/licenses/LICENSE-2.0
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,11 +17,12 @@ package grpc
 import (
 	"bytes"
 	"context"
+	"time"
+
 	"github.com/scionproto/scion/control/fabrid"
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	fabridext "github.com/scionproto/scion/pkg/segment/extensions/fabrid"
-	"time"
 )
 
 type Server struct {
@@ -46,7 +47,8 @@ func (s Server) mplsIPMapToPB() map[uint32]*experimental.MPLSIPArray {
 	return mplsIpMap
 }
 
-func (s Server) GetMPLSMapIfNecessary(ctx context.Context, request *experimental.MPLSMapRequest) (*experimental.MPLSMapResponse, error) {
+func (s Server) MPLSMap(ctx context.Context, request *experimental.MPLSMapRequest) (*experimental.
+	MPLSMapResponse, error) {
 	if bytes.Equal(request.Hash, s.FabridManager.MPLSMap.CurrentHash) {
 		return &experimental.MPLSMapResponse{Update: false}, nil
 	}
@@ -55,41 +57,58 @@ func (s Server) GetMPLSMapIfNecessary(ctx context.Context, request *experimental
 		Update:                   true,
 		Hash:                     s.FabridManager.MPLSMap.CurrentHash,
 		MplsInterfacePoliciesMap: s.FabridManager.MPLSMap.InterfacePoliciesMap,
-		MplsIPMap:                s.mplsIPMapToPB(),
+		MplsIpMap:                s.mplsIPMapToPB(),
 	}, nil
 }
 
-func (s Server) GetRemotePolicyDescription(ctx context.Context, request *experimental.RemotePolicyDescriptionRequest) (*experimental.PolicyDescriptionResponse, error) {
+func (s Server) RemotePolicyDescription(ctx context.Context,
+	request *experimental.RemotePolicyDescriptionRequest) (
+	*experimental.RemotePolicyDescriptionResponse, error) {
 	//TODO(jvanbommel): signature / hash?
-	identifier := fabrid.RemotePolicyIdentifier{ISDAS: request.IsdAs, Identifier: request.PolicyIdentifier}
-	if val, ok := s.FabridManager.RemotePolicyCache[identifier]; ok && val.Expires.UnixNano() > time.Now().UnixNano() {
-		return &experimental.PolicyDescriptionResponse{Description: val.Description}, nil
+	identifier := fabrid.RemotePolicyIdentifier{
+		ISDAS:      request.IsdAs,
+		Identifier: request.PolicyIdentifier,
+	}
+	if val, ok := s.FabridManager.RemotePolicyCache[identifier]; ok && val.Expires.After(
+		time.Now()) {
+		return &experimental.RemotePolicyDescriptionResponse{Description: val.Description}, nil
 	}
 
 	policy, err := s.Fetcher.GetRemotePolicy(ctx, addr.IA(request.IsdAs), request.PolicyIdentifier)
 	if err != nil {
-		return &experimental.PolicyDescriptionResponse{}, err
+		return &experimental.RemotePolicyDescriptionResponse{}, err
 	}
 
-	s.FabridManager.RemotePolicyCache[identifier] = fabrid.RemotePolicyDescription{Description: policy.Description, Expires: time.Now().Add(time.Hour * 3)}
+	s.FabridManager.RemotePolicyCache[identifier] = fabrid.RemotePolicyDescription{
+		Description: policy.Description,
+		Expires:     time.Now().Add(time.Hour * 3),
+	}
 
-	return &experimental.PolicyDescriptionResponse{Description: policy.Description}, nil
+	return &experimental.RemotePolicyDescriptionResponse{Description: policy.Description}, nil
 }
 
-func (s Server) GetSupportedIndicesMap(_ context.Context, _ *experimental.SupportedIndicesRequest) (*experimental.SupportedIndicesResponse, error) {
-	return &experimental.SupportedIndicesResponse{
-		SupportedIndicesMap: fabridext.SupportedIndicesMapToPB(s.FabridManager.SupportedIndicesMap)}, nil
+func (s Server) SupportedIndicesMap(_ context.Context,
+	_ *experimental.SupportedIndicesMapRequest) (*experimental.SupportedIndicesMapResponse, error) {
+	return &experimental.SupportedIndicesMapResponse{
+		SupportedIndicesMap: fabridext.SupportedIndicesMapToPB(s.FabridManager.SupportedIndicesMap),
+	}, nil
 }
 
-func (s Server) GetIndexIdentifierMap(_ context.Context, _ *experimental.IndexIdentifierMapRequest) (*experimental.IndexIdentifierMapResponse, error) {
+func (s Server) IndexIdentifierMap(_ context.Context, _ *experimental.IndexIdentifierMapRequest) (
+	*experimental.IndexIdentifierMapResponse, error) {
+
 	return &experimental.IndexIdentifierMapResponse{
-		IndexIdentifierMap: fabridext.IndexIdentifierMapToPB(s.FabridManager.IndexIdentifierMap)}, nil
+		IndexIdentifierMap: fabridext.IndexIdentifierMapToPB(s.FabridManager.IndexIdentifierMap),
+	}, nil
 }
 
-func (s Server) GetLocalPolicyDescription(_ context.Context, request *experimental.PolicyDescriptionRequest) (*experimental.PolicyDescriptionResponse, error) {
+func (s Server) LocalPolicyDescription(_ context.Context,
+	request *experimental.LocalPolicyDescriptionRequest) (
+	*experimental.LocalPolicyDescriptionResponse, error) {
+
 	if descr, ok := s.FabridManager.IdentifierDescriptionMap[request.PolicyIdentifier]; ok {
-		return &experimental.PolicyDescriptionResponse{
+		return &experimental.LocalPolicyDescriptionResponse{
 			Description: descr}, nil
 	}
-	return &experimental.PolicyDescriptionResponse{}, errNotFound
+	return &experimental.LocalPolicyDescriptionResponse{}, errNotFound
 }

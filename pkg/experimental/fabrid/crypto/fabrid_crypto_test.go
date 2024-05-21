@@ -16,17 +16,20 @@ package crypto_test
 
 import (
 	crand "crypto/rand"
-	"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
 	"math/rand"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
 	"github.com/scionproto/scion/pkg/experimental/fabrid"
+	"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
+	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/slayers/extension"
-	"github.com/stretchr/testify/assert"
+	"github.com/scionproto/scion/pkg/snet"
 )
 
 func TestEncryptPolicyID(t *testing.T) {
@@ -55,7 +58,7 @@ func TestEncryptPolicyID(t *testing.T) {
 
 func generateRandomBytes(len int) []byte {
 	b := make([]byte, len)
-	crand.Read(b)
+	_, _ = crand.Read(b)
 	return b
 }
 
@@ -109,50 +112,55 @@ func TestSuccessfullValidators(t *testing.T) {
 				}
 				f := &extension.FabridOption{}
 				for j := uint8(1); j <= extension.MaxSupportedFabridHops; j++ {
-					f.HopfieldMetadata = append(f.HopfieldMetadata, &extension.FabridHopfieldMetadata{
-						EncryptedPolicyID: uint8(rand.Uint32()),
-						FabridEnabled:     rand.Intn(2) == 0,
-						ASLevelKey:        rand.Intn(2) == 0,
-					})
-					ases := []addr.IA{}
+					f.HopfieldMetadata = append(f.HopfieldMetadata,
+						&extension.FabridHopfieldMetadata{
+							EncryptedPolicyID: uint8(rand.Uint32()),
+							FabridEnabled:     rand.Intn(2) == 0,
+							ASLevelKey:        rand.Intn(2) == 0,
+						})
 					pathKey := generateRandomBytes(16)
-					asHostKeys := make(map[addr.IA]drkey.ASHostKey)
+					asHostKeys := make(map[addr.IA]*drkey.ASHostKey)
 					asAsKeys := make(map[addr.IA]drkey.Level1Key)
-					ingresses := []uint16{}
-					egresses := []uint16{}
+					hops := make([]snet.HopInterface, len(f.HopfieldMetadata))
+					//ingresses := []uint16{}
+					//egresses := []uint16{}
 
 					for i := 0; i < len(f.HopfieldMetadata); i++ {
-						ingresses = append(ingresses, uint16(rand.Int()))
-						egresses = append(egresses, uint16(rand.Int()))
-						var ia addr.IA
-						if i == 0 {
-							ia = tc.srcIA
-
-						} else {
-							ia = addr.IA(rand.Int())
+						hops[i] = snet.HopInterface{
+							IgIf:     common.IFIDType(rand.Int()),
+							EgIf:     common.IFIDType(rand.Int()),
+							Policies: nil,
 						}
-						ases = append(ases, ia)
+						if i == 0 {
+							hops[i].IA = tc.srcIA
+						} else {
+							hops[i].IA = addr.IA(rand.Int())
+						}
 						keyBytes := drkey.Key{}
 						copy(keyBytes[:], generateRandomBytes(16))
 						if f.HopfieldMetadata[i].ASLevelKey {
-							asAsKeys[ia] = drkey.Level1Key{Key: drkey.Key(keyBytes)}
+							asAsKeys[hops[i].IA] = drkey.Level1Key{Key: keyBytes}
 						} else {
-							asHostKeys[ia] = drkey.ASHostKey{Key: drkey.Key(keyBytes)}
+							asHostKeys[hops[i].IA] = &drkey.ASHostKey{Key: keyBytes}
 						}
 					}
 
-					err := crypto.InitValidators(f, id, s, tmpBuffer, pathKey, asHostKeys, asAsKeys, ases, ingresses, egresses)
+					err := crypto.InitValidators(f, id, s, tmpBuffer, pathKey, asHostKeys,
+						asAsKeys, hops)
 					assert.NoError(t, err)
 
 					for i, meta := range f.HopfieldMetadata {
 						if meta.FabridEnabled {
 
 							if meta.ASLevelKey {
-								key := asAsKeys[ases[i]]
-								err = crypto.VerifyAndUpdate(meta, id, s, tmpBuffer, key.Key[:], ingresses[i], egresses[i])
+								key := asAsKeys[hops[i].IA]
+								err = crypto.VerifyAndUpdate(meta, id, s, tmpBuffer, key.Key[:],
+									uint16(hops[i].IgIf), uint16(hops[i].EgIf))
 							} else {
-								key := asHostKeys[ases[i]]
-								err = crypto.VerifyAndUpdate(meta, id, s, tmpBuffer, key.Key[:], ingresses[i], egresses[i])
+								key := asHostKeys[hops[i].IA]
+								err = crypto.VerifyAndUpdate(meta, id, s, tmpBuffer, key.Key[:],
+									uint16(hops[i].IgIf), uint16(hops[i].EgIf),
+								)
 							}
 
 							assert.NoError(t, err)

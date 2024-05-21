@@ -211,7 +211,8 @@ func (d *DataPlane) AddDRKeySecret(protocolID int32, sv control.SecretValue) err
 	}
 	nextOverwrite := d.drKeySecretNextOverwrite[protocolID]
 	d.drKeySecrets[protocolID][nextOverwrite] = &sv
-	log.Debug("Registered new DRKey", "protocol", protocolID, "from", sv.EpochBegin, "to", sv.EpochEnd)
+	log.Debug("Registered new DRKey", "protocol", protocolID, "from", sv.EpochBegin,
+		"to", sv.EpochEnd)
 	// switch nextOverwrite from 0 to 1 or from 1 to 0
 	d.drKeySecretNextOverwrite[protocolID] = 1 - nextOverwrite
 	return nil
@@ -1124,7 +1125,9 @@ func (p *scionPacketProcessor) reset() error {
 
 var nullByte = [16]byte{}
 
-func (dp *DataPlane) deriveASToASKey(protocolID int32, t time.Time, srcAS addr.IA) ([16]byte, error) {
+func (dp *DataPlane) deriveASToASKey(protocolID int32, t time.Time, srcAS addr.IA) ([16]byte,
+	error) {
+
 	d := specific.Deriver{}
 	secret, err := dp.getDRKeySecret(protocolID, t)
 	if err != nil {
@@ -1137,7 +1140,9 @@ func (dp *DataPlane) deriveASToASKey(protocolID int32, t time.Time, srcAS addr.I
 	return asToAsKey, nil
 }
 
-func (dp *DataPlane) deriveASToHostKey(protocolID int32, t time.Time, srcAS addr.IA, src string) ([16]byte, error) {
+func (dp *DataPlane) deriveASToHostKey(protocolID int32, t time.Time, srcAS addr.IA, src string) (
+	[16]byte, error) {
+
 	d := specific.Deriver{}
 	asToAsKey, err := dp.deriveASToASKey(protocolID, t, srcAS)
 	if err != nil {
@@ -1172,7 +1177,8 @@ func (p *scionPacketProcessor) processFabrid(egressIF uint16) error {
 	if err != nil {
 		return err
 	}
-	err = crypto.VerifyAndUpdate(meta, p.identifier, &p.scionLayer, p.fabridInputBuffer, key[:], p.ingressID, egressIF)
+	err = crypto.VerifyAndUpdate(meta, p.identifier, &p.scionLayer, p.fabridInputBuffer, key[:],
+		p.ingressID, egressIF)
 	if err != nil {
 		return err
 	}
@@ -1182,11 +1188,14 @@ func (p *scionPacketProcessor) processFabrid(egressIF uint16) error {
 		var mplsLabel uint32
 		switch p.transitType {
 		case ingressEgressDifferentRouter:
-			mplsLabel, err = p.d.getFabridMplsLabelForInterface(uint32(p.ingressID), uint32(policyID), uint32(egressIF))
+			mplsLabel, err = p.d.getFabridMplsLabelForInterface(uint32(p.ingressID),
+				uint32(policyID), uint32(egressIF))
 		case internalTraffic:
-			mplsLabel, err = p.d.getFabridMplsLabel(uint32(p.ingressID), uint32(policyID), p.nextHop.IP)
+			mplsLabel, err = p.d.getFabridMplsLabel(uint32(p.ingressID), uint32(policyID),
+				p.nextHop.IP)
 			if err != nil {
-				mplsLabel, err = p.d.getFabridMplsLabelForInterface(uint32(p.ingressID), uint32(policyID), 0)
+				mplsLabel, err = p.d.getFabridMplsLabelForInterface(uint32(p.ingressID),
+					uint32(policyID), 0)
 			}
 		case ingressEgressSameRouter:
 			return nil
@@ -1199,29 +1208,35 @@ func (p *scionPacketProcessor) processFabrid(egressIF uint16) error {
 	return nil
 }
 
-func (d *DataPlane) getFabridMplsLabelForInterface(ingressID uint32, policyIndex uint32, egressID uint32) (uint32, error) {
+func (d *DataPlane) getFabridMplsLabelForInterface(ingressID uint32, policyIndex uint32,
+	egressID uint32) (uint32, error) {
+
 	policyMapKey := uint64(ingressID)<<24 + uint64(egressID)<<8 + uint64(policyIndex)
 	mplsLabel, found := d.fabridPolicyInterfaceMap[policyMapKey]
 	if !found {
-		//lookup default (instead of using the ingressID as part of the key, use a 1 bit as most significant bit):
+		//lookup default (instead of using the ingressID as part of the key, use a 1 bit as MSB):
 		policyMapKey = 1<<63 + uint64(egressID)<<8 + uint64(policyIndex)
 		mplsLabel, found = d.fabridPolicyInterfaceMap[policyMapKey]
 		if !found {
-			return 0, serrors.New("Provided policyID is invalid", "ingress", ingressID, "index", policyIndex, "egress", egressID)
+			return 0, serrors.New("Provided policyID is invalid",
+				"ingress", ingressID, "index", policyIndex, "egress", egressID)
 		}
 	}
 	return mplsLabel, nil
 }
 
-func (d *DataPlane) getFabridMplsLabel(ingressID uint32, policyIndex uint32, nextHopIP net.IP) (uint32, error) {
+func (d *DataPlane) getFabridMplsLabel(ingressID uint32, policyIndex uint32,
+	nextHopIP net.IP) (uint32, error) {
+
 	policyMapKey := ingressID<<8 + policyIndex
 	ipRanges, found := d.fabridPolicyIPRangeMap[policyMapKey]
 	if !found {
-		//lookup default (instead of using the ingressID as part of the key, use a 1 bit as most significant bit):
+		//lookup default (instead of using the ingressID as part of the key, use a 1 bit as MSB):
 		policyMapKey = 1<<31 + policyIndex
 		ipRanges, found = d.fabridPolicyIPRangeMap[policyMapKey]
 		if !found {
-			return 0, serrors.New("Provided policyID is invalid", "ingress", ingressID, "index", policyIndex)
+			return 0, serrors.New("Provided policyID is invalid",
+				"ingress", ingressID, "index", policyIndex)
 		}
 	}
 	var bestRange *control.PolicyIPRange
@@ -1239,7 +1254,8 @@ func (d *DataPlane) getFabridMplsLabel(ingressID uint32, policyIndex uint32, nex
 		}
 	}
 	if bestRange == nil {
-		return 0, serrors.New("Provided policy index is not valid for nexthop.", "index", policyIndex, "next hop IP", nextHopIP)
+		return 0, serrors.New("Provided policy index is not valid for nexthop.",
+			"index", policyIndex, "next hop IP", nextHopIP)
 	}
 	return bestRange.MPLSLabel, nil
 }
@@ -1289,7 +1305,10 @@ func (p *scionPacketProcessor) processHbhOptions(egressIF uint16) error {
 				if err = p.processFabrid(egressIF); err != nil {
 					return err
 				}
-				fabrid.HopfieldMetadata[0].SerializeTo(opt.OptData[currHop*4:])
+				if err = fabrid.HopfieldMetadata[0].SerializeTo(opt.
+					OptData[currHop*4:]); err != nil {
+					return err
+				}
 			}
 		default:
 		}

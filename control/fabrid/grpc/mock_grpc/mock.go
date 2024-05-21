@@ -37,10 +37,11 @@ func (m *MockPolicyFetcher) EXPECT() *MockPolicyFetcherMockRecorder {
 }
 
 // GetRemotePolicy mocks base method.
-func (m *MockPolicyFetcher) GetRemotePolicy(arg0 context.Context, arg1 addr.IA, arg2 uint32) (*experimental.PolicyDescriptionResponse, error) {
+func (m *MockPolicyFetcher) GetRemotePolicy(arg0 context.Context, arg1 addr.IA,
+	arg2 uint32) (*experimental.RemotePolicyDescriptionResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetRemotePolicy", arg0, arg1, arg2)
-	ret0, _ := ret[0].(*experimental.PolicyDescriptionResponse)
+	ret0, _ := ret[0].(*experimental.RemotePolicyDescriptionResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

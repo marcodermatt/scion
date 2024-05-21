@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//	http://www.apache.org/licenses/LICENSE-2.0
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,15 +15,17 @@
 package fabrid
 
 import (
+	"os"
+	"path/filepath"
+	"time"
+
+	"gopkg.in/yaml.v2"
+
 	"github.com/scionproto/scion/control/config"
 	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	fabrid_ext "github.com/scionproto/scion/pkg/segment/extensions/fabrid"
-	"gopkg.in/yaml.v2"
-	"os"
-	"path/filepath"
-	"time"
 )
 
 const MaxFabridPolicies = 255
@@ -72,7 +74,8 @@ func (f *FabridManager) Reload() error {
 
 func (f *FabridManager) Load() error {
 	if err := filepath.Walk(f.PoliciesPath, f.parseAndAdd); err != nil {
-		return serrors.WrapStr("Unable to read the fabrid policies in folder", err, "path", f.PoliciesPath)
+		return serrors.WrapStr("Unable to read the fabrid policies in folder", err,
+			"path", f.PoliciesPath)
 	}
 	f.MPLSMap.UpdateHash()
 	return nil
@@ -144,8 +147,10 @@ func createConnectionPoint(connection config.FABRIDConnectionPoint) fabrid_ext.C
 			InterfaceId: connection.Interface,
 		}
 	} else if connection.Type == fabrid_ext.IPv4Range || connection.Type == fabrid_ext.IPv6Range {
-		return fabrid_ext.IPConnectionPointFromString(connection.IPAddress, uint32(connection.Prefix), connection.Type)
-	} else if connection.Type == fabrid_ext.Wildcard { //TODO(jvanbommel): explicit wildcard or intf 0 = wildcard?
+		return fabrid_ext.IPConnectionPointFromString(connection.IPAddress,
+			uint32(connection.Prefix), connection.Type)
+	} else if connection.Type == fabrid_ext.Wildcard {
+		//TODO(jvanbommel): explicit wildcard or intf 0 = wildcard?
 		return fabrid_ext.ConnectionPoint{
 			Type: fabrid_ext.Wildcard,
 		}

@@ -1,13 +1,29 @@
+// Copyright 2023 ETH Zurich
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package fabridquery
 
 import (
 	"fmt"
+	"strconv"
+
 	"github.com/antlr/antlr4/runtime/Go/antlr"
+
 	"github.com/scionproto/scion/antlr/pathpolicyconstraints"
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	"github.com/scionproto/scion/pkg/private/serrors"
-	"strconv"
 )
 
 type errorListener struct {
@@ -71,7 +87,9 @@ func (l *pathpolicyConstraintsListener) ExitIfElse(c *pathpolicyconstraints.IfEl
 
 }
 
-func (l *pathpolicyConstraintsListener) ExitExpressionQuery(c *pathpolicyconstraints.ExpressionQueryContext) {
+func (l *pathpolicyConstraintsListener) ExitExpressionQuery(c *pathpolicyconstraints.
+	ExpressionQueryContext) {
+
 	id, ok := l.pop().(Query)
 	if !ok {
 		return
@@ -79,7 +97,9 @@ func (l *pathpolicyConstraintsListener) ExitExpressionQuery(c *pathpolicyconstra
 	l.push(Expression{id})
 }
 
-func (l *pathpolicyConstraintsListener) ExitExpressionIdentifier(c *pathpolicyconstraints.ExpressionIdentifierContext) {
+func (l *pathpolicyConstraintsListener) ExitExpressionIdentifier(c *pathpolicyconstraints.
+	ExpressionIdentifierContext) {
+
 	id, ok := l.pop().(Identifier)
 	if !ok {
 		return
@@ -88,18 +108,23 @@ func (l *pathpolicyConstraintsListener) ExitExpressionIdentifier(c *pathpolicyco
 }
 
 // TODO(jvanbommel): --fabridquery "{0-0#0,0@G1101 ? (0-0#0,0@G1111  : 0-0#0,0@G1101} + 0-0#0,0@0"
-func (l *pathpolicyConstraintsListener) ExitExpressionConcat(c *pathpolicyconstraints.ExpressionConcatContext) {
+func (l *pathpolicyConstraintsListener) ExitExpressionConcat(c *pathpolicyconstraints.
+	ExpressionConcatContext) {
+
 	right := l.pop().(Expressions)
 	left := l.pop().(Expressions)
 	l.push(ConcatExpression{left, right})
 }
 
 func (l *pathpolicyConstraintsListener) ExitParens(c *pathpolicyconstraints.ParensContext) {
-	//l.push(Expression{l.pop().(Expressions)}) //TODO(jvanbommel) this is unneccessary, only keep for debugging
+	//l.push(Expression{l.pop().(Expressions)})
+	//TODO(jvanbommel) this is unnecessary, only keep for debugging
 }
 
 // ExitIdentifier is called when exiting the identifier production.
-func (l *pathpolicyConstraintsListener) ExitIdentifier(c *pathpolicyconstraints.IdentifierContext) {
+func (l *pathpolicyConstraintsListener) ExitIdentifier(c *pathpolicyconstraints.
+	IdentifierContext) {
+
 	policy, ok := l.pop().(Policy)
 	if !ok {
 		return
@@ -130,9 +155,10 @@ func (l *pathpolicyConstraintsListener) ExitIdentifier(c *pathpolicyconstraints.
 }
 
 // ExitWildcardISD is called when exiting the WildcardISD production.
-func (l *pathpolicyConstraintsListener) ExitWildcardISD(c *pathpolicyconstraints.WildcardISDContext) {
-	l.push(ISD{Wildcard: true})
+func (l *pathpolicyConstraintsListener) ExitWildcardISD(c *pathpolicyconstraints.
+	WildcardISDContext) {
 
+	l.push(ISD{Wildcard: true})
 }
 
 // ExitISD is called when exiting the ISD production.
@@ -146,7 +172,8 @@ func (l *pathpolicyConstraintsListener) ExitISD(c *pathpolicyconstraints.ISDCont
 }
 
 // ExitWildcardAS is called when exiting the WildcardAS production.
-func (l *pathpolicyConstraintsListener) ExitWildcardAS(c *pathpolicyconstraints.WildcardASContext) {
+func (l *pathpolicyConstraintsListener) ExitWildcardAS(c *pathpolicyconstraints.
+	WildcardASContext) {
 	l.push(AS{Wildcard: true})
 
 }
@@ -171,7 +198,9 @@ func (l *pathpolicyConstraintsListener) ExitAS(c *pathpolicyconstraints.ASContex
 }
 
 // ExitWildcardIFace is called when exiting the WildcardIFace production.
-func (l *pathpolicyConstraintsListener) ExitWildcardIFace(c *pathpolicyconstraints.WildcardIFaceContext) {
+func (l *pathpolicyConstraintsListener) ExitWildcardIFace(c *pathpolicyconstraints.
+	WildcardIFaceContext) {
+
 	l.push(Interface{Wildcard: true})
 }
 
@@ -186,7 +215,9 @@ func (l *pathpolicyConstraintsListener) ExitIFace(c *pathpolicyconstraints.IFace
 }
 
 // ExitGlobalPolicy is called when exiting the GlobalPolicy production.
-func (l *pathpolicyConstraintsListener) ExitGlobalPolicy(c *pathpolicyconstraints.GlobalPolicyContext) {
+func (l *pathpolicyConstraintsListener) ExitGlobalPolicy(c *pathpolicyconstraints.
+	GlobalPolicyContext) {
+
 	n, err := strconv.Atoi(c.GetText()[1:])
 	if err != nil {
 		l.push(Policy{Type: WILDCARD_POLICY_TYPE})
@@ -202,7 +233,9 @@ func (l *pathpolicyConstraintsListener) ExitGlobalPolicy(c *pathpolicyconstraint
 }
 
 // ExitLocalPolicy is called when exiting the LocalPolicy production.
-func (l *pathpolicyConstraintsListener) ExitLocalPolicy(c *pathpolicyconstraints.LocalPolicyContext) {
+func (l *pathpolicyConstraintsListener) ExitLocalPolicy(c *pathpolicyconstraints.
+	LocalPolicyContext) {
+
 	n, err := strconv.Atoi(c.GetText()[1:])
 	if err != nil {
 		l.push(Policy{Type: WILDCARD_POLICY_TYPE})
@@ -218,7 +251,8 @@ func (l *pathpolicyConstraintsListener) ExitLocalPolicy(c *pathpolicyconstraints
 }
 
 // ExitWildcardPolicy is called when exiting the WildcardPolicy production.
-func (l *pathpolicyConstraintsListener) ExitWildcardPolicy(c *pathpolicyconstraints.WildcardPolicyContext) {
+func (l *pathpolicyConstraintsListener) ExitWildcardPolicy(c *pathpolicyconstraints.
+	WildcardPolicyContext) {
 
 	l.push(Policy{Type: WILDCARD_POLICY_TYPE})
 }
@@ -230,7 +264,8 @@ func (l *pathpolicyConstraintsListener) ExitReject(c *pathpolicyconstraints.Reje
 }
 
 // ExitPolicyIndex is called when exiting the PolicyIndex production.
-func (l *pathpolicyConstraintsListener) ExitPolicyIndex(c *pathpolicyconstraints.PolicyIndexContext) {
+func (l *pathpolicyConstraintsListener) ExitPolicyIndex(c *pathpolicyconstraints.
+	PolicyIndexContext) {
 	// UNUSED
 }
 

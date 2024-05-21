@@ -17,6 +17,7 @@ go_test(
     srcs = ["fabrid_test.go"],
     embed = [":go_default_library"],
     deps = [
+        "//pkg/experimental/fabrid:go_default_library",
         "//pkg/proto/control_plane/experimental:go_default_library",
         "@com_github_stretchr_testify//assert:go_default_library",
     ],

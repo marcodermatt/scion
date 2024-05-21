@@ -18,18 +18,18 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/scionproto/scion/pkg/experimental/fabrid"
-	fabrid_ext "github.com/scionproto/scion/pkg/segment/extensions/fabrid"
 	"math"
 	"sort"
 	"time"
 
 	"github.com/scionproto/scion/pkg/addr"
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/ctrl/path_mgmt/proto"
 	"github.com/scionproto/scion/pkg/private/util"
 	seg "github.com/scionproto/scion/pkg/segment"
+	fabrid_ext "github.com/scionproto/scion/pkg/segment/extensions/fabrid"
 	"github.com/scionproto/scion/pkg/slayers/path"
 	"github.com/scionproto/scion/pkg/slayers/path/scion"
 	"github.com/scionproto/scion/pkg/snet"
@@ -316,8 +316,8 @@ type pathSolution struct {
 
 // We go through the list of ASEntries and store for each IA a pointer to the FABRID
 // Map found in the ASEntries' extensions.  If there is already a map stored, check the info time,
-// and replace with the newer FABRID maps. This results in a map[IA]fabridMapEntry, which can be used
-// to find the policies that are available for each of the interface pairs on the path.
+// and replace with the newer FABRID maps. This results in a map[IA]fabridMapEntry, which can be
+// used to find the policies that are available for each of the interface pairs on the path.
 type fabridMapEntry struct {
 	Map *fabrid_ext.Detached
 	Ts  time.Time
@@ -394,12 +394,15 @@ func (solution *pathSolution) Path() Path {
 			epicSegAuths = append(epicSegAuths, epicAuth)
 
 			fabridMap, exists := fabridMaps[asEntry.Local]
-			if (!exists || fabridMap.Map == nil) && asEntry.UnsignedExtensions.FabridDetached != nil ||
-				fabridMap.Ts.Before(solEdge.segment.Info.Timestamp) {
+			if (!exists || fabridMap.Map == nil) && asEntry.UnsignedExtensions.
+				FabridDetached != nil || fabridMap.Ts.Before(solEdge.segment.Info.Timestamp) {
 				fabridMaps[asEntry.Local] = struct {
 					Map *fabrid_ext.Detached
 					Ts  time.Time
-				}{Map: asEntry.UnsignedExtensions.FabridDetached, Ts: solEdge.segment.Info.Timestamp}
+				}{
+					Map: asEntry.UnsignedExtensions.FabridDetached,
+					Ts:  solEdge.segment.Info.Timestamp,
+				}
 			}
 
 			mtu = minUint16(mtu, uint16(asEntry.MTU))
@@ -465,7 +468,9 @@ func (solution *pathSolution) Path() Path {
 	return path
 }
 
-func collectFabridPolicies(ifaces []snet.PathInterface, maps map[addr.IA]fabridMapEntry) [][]*fabrid.Policy {
+func collectFabridPolicies(ifaces []snet.PathInterface,
+	maps map[addr.IA]fabridMapEntry) [][]*fabrid.Policy {
+
 	switch {
 	case len(ifaces)%2 != 0:
 		return nil
@@ -474,17 +479,20 @@ func collectFabridPolicies(ifaces []snet.PathInterface, maps map[addr.IA]fabridM
 	default:
 		hops := make([][]*fabrid.Policy, 0, len(ifaces)/2+1)
 
-		hops = append(hops, getPoliciesForIntfs(ifaces[0].IA, 0, uint16(ifaces[0].ID), maps, false))
-
+		hops = append(hops, getPoliciesForIntfs(ifaces[0].IA, 0, uint16(ifaces[0].ID), maps,
+			false))
 		for i := 1; i < len(ifaces)-1; i += 2 {
-			hops = append(hops, getPoliciesForIntfs(ifaces[i].IA, uint16(ifaces[i].ID), uint16(ifaces[i+1].ID), maps, false))
+			hops = append(hops, getPoliciesForIntfs(ifaces[i].IA, uint16(ifaces[i].ID),
+				uint16(ifaces[i+1].ID), maps, false))
 		}
-		hops = append(hops, getPoliciesForIntfs(ifaces[len(ifaces)-1].IA, uint16(ifaces[len(ifaces)-1].ID), 0, maps, true))
+		hops = append(hops, getPoliciesForIntfs(ifaces[len(ifaces)-1].IA,
+			uint16(ifaces[len(ifaces)-1].ID), 0, maps, true))
 		return hops
 	}
 }
 
-func getPoliciesForIntfs(ia addr.IA, ig, eg uint16, maps map[addr.IA]fabridMapEntry, allowIpPolicies bool) []*fabrid.Policy {
+func getPoliciesForIntfs(ia addr.IA, ig, eg uint16, maps map[addr.IA]fabridMapEntry,
+	allowIpPolicies bool) []*fabrid.Policy {
 	policies := make([]*fabrid.Policy, 0)
 	fabridMap, exist := maps[ia]
 	if !exist || fabridMap.Map == nil {

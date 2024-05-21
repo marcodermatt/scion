@@ -18,9 +18,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/slayers/extension"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestIdentifierDecode(t *testing.T) {

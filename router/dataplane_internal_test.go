@@ -337,9 +337,11 @@ func TestFabridPolicies(t *testing.T) {
 			assert.NoError(t, err)
 			var mplsLabel uint32
 			if tc.useIPRange {
-				mplsLabel, err = dp.getFabridMplsLabel(tc.packetIngress, tc.packetPolicyIndex, tc.nextHopIP)
+				mplsLabel, err = dp.getFabridMplsLabel(tc.packetIngress, tc.packetPolicyIndex,
+					tc.nextHopIP)
 			} else {
-				mplsLabel, err = dp.getFabridMplsLabelForInterface(tc.packetIngress, tc.packetPolicyIndex, tc.packetEgress)
+				mplsLabel, err = dp.getFabridMplsLabelForInterface(tc.packetIngress,
+					tc.packetPolicyIndex, tc.packetEgress)
 			}
 			if tc.expectsError {
 				assert.Error(t, err)

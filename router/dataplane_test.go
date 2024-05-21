@@ -36,6 +36,7 @@ import (
 	"github.com/scionproto/scion/pkg/drkey"
 	libepic "github.com/scionproto/scion/pkg/experimental/epic"
 	"github.com/scionproto/scion/pkg/experimental/fabrid"
+	"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
 	"github.com/scionproto/scion/pkg/private/util"
 	"github.com/scionproto/scion/pkg/private/xtest"
 	"github.com/scionproto/scion/pkg/scrypto"
@@ -226,11 +227,9 @@ func TestDataPlaneRun(t *testing.T) {
 					BaseTimestamp: uint32(now.Unix()),
 				}
 
-				policyID := fabrid.FabridPolicyID{
-					ID: 0x0f,
-				}
+				policyID := fabrid.PolicyID(0x0f)
 				_, ipPrefix, _ := net.ParseCIDR("0.0.0.0/0")
-				ret.UpdateFabridPolicies(map[uint32][]*control.PolicyIPRange{
+				err := ret.UpdateFabridPolicies(map[uint32][]*control.PolicyIPRange{
 					// ingress 3 with policy index 0x0f
 					(3<<8 + 0x0f): {
 						{
@@ -239,20 +238,22 @@ func TestDataPlaneRun(t *testing.T) {
 						},
 					},
 				}, nil)
+				assert.NoError(t, err)
 
 				asToHostKey, err := ret.DeriveASToHostKey(int32(drkey.FABRID), now,
 					srcIA, srcAddr.String())
 				assert.NoError(t, err)
-				encPolicyID, err := fabrid.EncryptPolicyID(&policyID, &identifier, asToHostKey[:])
+				encPolicyID, err := crypto.EncryptPolicyID(policyID, &identifier, asToHostKey[:])
 				assert.NoError(t, err)
 
 				mExternal := mock_router.NewMockBatchConn(ctrl)
-				infoField := path.InfoField{SegID: 0x111, ConsDir: true, Timestamp: util.TimeToSecs(now)}
+				infoField := path.InfoField{SegID: 0x111, ConsDir: true,
+					Timestamp: util.TimeToSecs(now)}
 
 				mExternal.EXPECT().ReadBatch(gomock.Any()).DoAndReturn(
 					func(m underlayconn.Messages) (int, error) {
 						buf := gopacket.NewSerializeBuffer()
-						path := &scion.Decoded{
+						p := &scion.Decoded{
 							Base: scion.Base{
 								PathMeta: scion.MetaHdr{
 									CurrHF: 1,
@@ -270,7 +271,8 @@ func TestDataPlaneRun(t *testing.T) {
 								{ConsIngress: 5, ConsEgress: 6},
 							},
 						}
-						path.HopFields[1].Mac = computeMAC(t, key, path.InfoFields[0], path.HopFields[1])
+						p.HopFields[1].Mac = computeMAC(t, key, p.InfoFields[0],
+							p.HopFields[1])
 						rawDstAddr := dstAddr.IP().As4()
 						rawSrcAddr := srcAddr.IP().As4()
 						s := slayers.SCION{
@@ -282,21 +284,23 @@ func TestDataPlaneRun(t *testing.T) {
 							DstAddrType: slayers.T4Ip,
 							RawSrcAddr:  rawSrcAddr[:],
 							RawDstAddr:  rawDstAddr[:],
-							Path:        path,
+							Path:        p,
 						}
 
 						identifierData := make([]byte, 8)
-						identifier.Serialize(identifierData)
+						err = identifier.Serialize(identifierData)
+						assert.NoError(t, err)
 
 						meta := &extension.FabridHopfieldMetadata{
 							EncryptedPolicyID: encPolicyID,
 							FabridEnabled:     true,
 						}
 						tmp := make([]byte, 100)
-						err = fabrid.ComputeBaseHVF(meta, &identifier, &s, tmp, asToHostKey[:], 3, 4)
+						err = crypto.ComputeBaseHVF(meta, &identifier, &s, tmp, asToHostKey[:],
+							3, 4)
 						assert.NoError(t, err)
 
-						fabrid := extension.FabridOption{
+						fopt := extension.FabridOption{
 							HopfieldMetadata: []*extension.FabridHopfieldMetadata{
 								{},
 								meta,
@@ -304,7 +308,9 @@ func TestDataPlaneRun(t *testing.T) {
 							},
 						}
 						fabridData := make([]byte, 16)
-						fabrid.SerializeTo(fabridData)
+						err = fopt.SerializeTo(fabridData)
+						assert.NoError(t, err)
+
 						hbh := slayers.HopByHopExtn{
 							Options: []*slayers.HopByHopOption{
 								{
@@ -319,7 +325,8 @@ func TestDataPlaneRun(t *testing.T) {
 								},
 							},
 						}
-						err = gopacket.SerializeLayers(buf, gopacket.SerializeOptions{FixLengths: true}, &s, &hbh)
+						err = gopacket.SerializeLayers(buf,
+							gopacket.SerializeOptions{FixLengths: true}, &s, &hbh)
 						assert.NoError(t, err)
 						raw := buf.Bytes()
 						copy(m[0].Buffers[0], raw)
@@ -330,7 +337,8 @@ func TestDataPlaneRun(t *testing.T) {
 					},
 				).Times(1)
 				mExternal.EXPECT().ReadBatch(gomock.Any()).Return(0, nil).AnyTimes()
-				mExternal.EXPECT().WriteTo(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
+				mExternal.EXPECT().WriteTo(gomock.Any(),
+					gomock.Any()).Return(0, nil).AnyTimes()
 
 				mExternal2 := mock_router.NewMockBatchConn(ctrl)
 				mExternal2.EXPECT().ReadBatch(gomock.Any()).Return(0, nil).AnyTimes()
@@ -355,14 +363,16 @@ func TestDataPlaneRun(t *testing.T) {
 							switch hbhOption.OptType {
 							case slayers.OptTypeIdentifier:
 								containsIdentifier = true
-								foundIdentifier, err = extension.ParseIdentifierOption(hbhOption, baseTs)
+								foundIdentifier, err = extension.ParseIdentifierOption(hbhOption,
+									baseTs)
 								assert.NoError(t, err)
 								assert.Equal(t, identifier.Timestamp, foundIdentifier.Timestamp)
 								assert.Equal(t, identifier.PacketID, foundIdentifier.PacketID)
 							case slayers.OptTypeFabrid:
 								containsFabrid = true
 								if containsIdentifier {
-									foundFabrid, err = extension.ParseFabridOptionFullExtension(hbhOption, 3)
+									foundFabrid, err = extension.ParseFabridOptionFullExtension(
+										hbhOption, 3)
 									assert.NoError(t, err)
 									meta := foundFabrid.HopfieldMetadata[1]
 									tmp := make([]byte, 100)
@@ -370,14 +380,21 @@ func TestDataPlaneRun(t *testing.T) {
 										EncryptedPolicyID: encPolicyID,
 										FabridEnabled:     true,
 									}
-									err = fabrid.ComputeVerifiedHVF(recomputedVerifiedHVF, foundIdentifier, &s, tmp, asToHostKey[:], 3, 4)
+									err = crypto.ComputeVerifiedHVF(recomputedVerifiedHVF,
+										foundIdentifier, &s, tmp, asToHostKey[:], 3,
+										4)
 									assert.NoError(t, err)
 									assert.Equal(t, encPolicyID, meta.EncryptedPolicyID)
-									assert.Equal(t, recomputedVerifiedHVF.HopValidationField, meta.HopValidationField)
+									assert.Equal(t, recomputedVerifiedHVF.HopValidationField,
+										meta.HopValidationField)
 								} else {
-									assert.Fail(t, "identifier not present before fabrid")
+									assert.Fail(t, "identifier not present before "+
+										"fabrid")
 								}
+							default:
+
 							}
+
 						}
 						assert.True(t, containsIdentifier)
 						assert.True(t, containsFabrid)
@@ -426,27 +443,27 @@ func TestDataPlaneRun(t *testing.T) {
 					BaseTimestamp: uint32(now.Unix()),
 				}
 
-				policyID := fabrid.FabridPolicyID{
-					ID: 0x0f,
-				}
-				ret.UpdateFabridPolicies(nil,
+				policyID := fabrid.PolicyID(0x0f)
+				err := ret.UpdateFabridPolicies(nil,
 					map[uint64]uint32{
 						3<<24 + 2<<8 + 0x0f: 7,
 					})
+				assert.NoError(t, err)
 
 				asToHostKey, err := ret.DeriveASToHostKey(int32(drkey.FABRID), now,
 					srcIA, srcAddr.String())
 				assert.NoError(t, err)
-				encPolicyID, err := fabrid.EncryptPolicyID(&policyID, &identifier, asToHostKey[:])
+				encPolicyID, err := crypto.EncryptPolicyID(policyID, &identifier, asToHostKey[:])
 				assert.NoError(t, err)
 
 				mExternal := mock_router.NewMockBatchConn(ctrl)
-				infoField := path.InfoField{SegID: 0x111, ConsDir: true, Timestamp: util.TimeToSecs(now)}
+				infoField := path.InfoField{SegID: 0x111, ConsDir: true,
+					Timestamp: util.TimeToSecs(now)}
 
 				mExternal.EXPECT().ReadBatch(gomock.Any()).DoAndReturn(
 					func(m underlayconn.Messages) (int, error) {
 						buf := gopacket.NewSerializeBuffer()
-						path := &scion.Decoded{
+						p := &scion.Decoded{
 							Base: scion.Base{
 								PathMeta: scion.MetaHdr{
 									CurrHF: 1,
@@ -464,7 +481,8 @@ func TestDataPlaneRun(t *testing.T) {
 								{ConsIngress: 5, ConsEgress: 6},
 							},
 						}
-						path.HopFields[1].Mac = computeMAC(t, key, path.InfoFields[0], path.HopFields[1])
+						p.HopFields[1].Mac = computeMAC(t, key, p.InfoFields[0],
+							p.HopFields[1])
 						rawDstAddr := dstAddr.IP().As4()
 						rawSrcAddr := srcAddr.IP().As4()
 						s := slayers.SCION{
@@ -476,21 +494,23 @@ func TestDataPlaneRun(t *testing.T) {
 							DstAddrType: slayers.T4Ip,
 							RawSrcAddr:  rawSrcAddr[:],
 							RawDstAddr:  rawDstAddr[:],
-							Path:        path,
+							Path:        p,
 						}
 
 						identifierData := make([]byte, 8)
-						identifier.Serialize(identifierData)
+						err = identifier.Serialize(identifierData)
+						assert.NoError(t, err)
 
 						meta := &extension.FabridHopfieldMetadata{
 							EncryptedPolicyID: encPolicyID,
 							FabridEnabled:     true,
 						}
 						tmp := make([]byte, 100)
-						err = fabrid.ComputeBaseHVF(meta, &identifier, &s, tmp, asToHostKey[:], 3, 2)
+						err = crypto.ComputeBaseHVF(meta, &identifier, &s, tmp, asToHostKey[:],
+							3, 2)
 						assert.NoError(t, err)
 
-						fabrid := extension.FabridOption{
+						fopt := extension.FabridOption{
 							HopfieldMetadata: []*extension.FabridHopfieldMetadata{
 								{},
 								meta,
@@ -498,7 +518,8 @@ func TestDataPlaneRun(t *testing.T) {
 							},
 						}
 						fabridData := make([]byte, 16)
-						fabrid.SerializeTo(fabridData)
+						err = fopt.SerializeTo(fabridData)
+						assert.NoError(t, err)
 						hbh := slayers.HopByHopExtn{
 							Options: []*slayers.HopByHopOption{
 								{
@@ -513,7 +534,8 @@ func TestDataPlaneRun(t *testing.T) {
 								},
 							},
 						}
-						err = gopacket.SerializeLayers(buf, gopacket.SerializeOptions{FixLengths: true}, &s, &hbh)
+						err = gopacket.SerializeLayers(buf,
+							gopacket.SerializeOptions{FixLengths: true}, &s, &hbh)
 						assert.NoError(t, err)
 						raw := buf.Bytes()
 						copy(m[0].Buffers[0], raw)
@@ -524,7 +546,8 @@ func TestDataPlaneRun(t *testing.T) {
 					},
 				).Times(1)
 				mExternal.EXPECT().ReadBatch(gomock.Any()).Return(0, nil).AnyTimes()
-				mExternal.EXPECT().WriteTo(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
+				mExternal.EXPECT().WriteTo(gomock.Any(),
+					gomock.Any()).Return(0, nil).AnyTimes()
 
 				mInternal := mock_router.NewMockBatchConn(ctrl)
 				mInternal.EXPECT().ReadBatch(gomock.Any()).Return(0, nil).AnyTimes()
@@ -550,14 +573,16 @@ func TestDataPlaneRun(t *testing.T) {
 							switch hbhOption.OptType {
 							case slayers.OptTypeIdentifier:
 								containsIdentifier = true
-								foundIdentifier, err = extension.ParseIdentifierOption(hbhOption, baseTs)
+								foundIdentifier, err = extension.ParseIdentifierOption(
+									hbhOption, baseTs)
 								assert.NoError(t, err)
 								assert.Equal(t, identifier.Timestamp, foundIdentifier.Timestamp)
 								assert.Equal(t, identifier.PacketID, foundIdentifier.PacketID)
 							case slayers.OptTypeFabrid:
 								containsFabrid = true
 								if containsIdentifier {
-									foundFabrid, err = extension.ParseFabridOptionFullExtension(hbhOption, 3)
+									foundFabrid, err = extension.ParseFabridOptionFullExtension(
+										hbhOption, 3)
 									assert.NoError(t, err)
 									meta := foundFabrid.HopfieldMetadata[1]
 									tmp := make([]byte, 100)
@@ -565,13 +590,18 @@ func TestDataPlaneRun(t *testing.T) {
 										EncryptedPolicyID: encPolicyID,
 										FabridEnabled:     true,
 									}
-									err = fabrid.ComputeVerifiedHVF(recomputedVerifiedHVF, foundIdentifier, &s, tmp, asToHostKey[:], 3, 2)
+									err = crypto.ComputeVerifiedHVF(recomputedVerifiedHVF,
+										foundIdentifier, &s, tmp, asToHostKey[:], 3,
+										2)
 									assert.NoError(t, err)
 									assert.Equal(t, encPolicyID, meta.EncryptedPolicyID)
-									assert.Equal(t, recomputedVerifiedHVF.HopValidationField, meta.HopValidationField)
+									assert.Equal(t, recomputedVerifiedHVF.HopValidationField,
+										meta.HopValidationField)
 								} else {
-									assert.Fail(t, "identifier not present before fabrid")
+									assert.Fail(t, "identifier not present "+
+										"before fabrid")
 								}
+							default:
 							}
 						}
 						assert.True(t, containsIdentifier)
@@ -624,11 +654,9 @@ func TestDataPlaneRun(t *testing.T) {
 					BaseTimestamp: uint32(now.Unix()),
 				}
 
-				policyID := fabrid.FabridPolicyID{
-					ID: 0x0f,
-				}
+				policyID := fabrid.PolicyID(0x0f)
 				_, ipPrefix, _ := net.ParseCIDR("2.2.2.0/24")
-				ret.UpdateFabridPolicies(map[uint32][]*control.PolicyIPRange{
+				err := ret.UpdateFabridPolicies(map[uint32][]*control.PolicyIPRange{
 					// ingress 3 with policy index 0x0f
 					(3<<8 + 0x0f): {
 						{
@@ -638,19 +666,22 @@ func TestDataPlaneRun(t *testing.T) {
 					},
 				}, nil)
 
+				assert.NoError(t, err)
+
 				asToHostKey, err := ret.DeriveASToHostKey(int32(drkey.FABRID), now,
 					srcIA, srcAddr.String())
 				assert.NoError(t, err)
-				encPolicyID, err := fabrid.EncryptPolicyID(&policyID, &identifier, asToHostKey[:])
+				encPolicyID, err := crypto.EncryptPolicyID(policyID, &identifier, asToHostKey[:])
 				assert.NoError(t, err)
 
 				mExternal := mock_router.NewMockBatchConn(ctrl)
-				infoField := path.InfoField{SegID: 0x111, ConsDir: true, Timestamp: util.TimeToSecs(now)}
+				infoField := path.InfoField{SegID: 0x111, ConsDir: true,
+					Timestamp: util.TimeToSecs(now)}
 
 				mExternal.EXPECT().ReadBatch(gomock.Any()).DoAndReturn(
 					func(m underlayconn.Messages) (int, error) {
 						buf := gopacket.NewSerializeBuffer()
-						path := &scion.Decoded{
+						p := &scion.Decoded{
 							Base: scion.Base{
 								PathMeta: scion.MetaHdr{
 									CurrHF: 2,
@@ -668,7 +699,8 @@ func TestDataPlaneRun(t *testing.T) {
 								{ConsIngress: 3, ConsEgress: 0},
 							},
 						}
-						path.HopFields[2].Mac = computeMAC(t, key, path.InfoFields[0], path.HopFields[2])
+						p.HopFields[2].Mac = computeMAC(t, key, p.InfoFields[0],
+							p.HopFields[2])
 						rawDstAddr := dstAddr.IP().As4()
 						rawSrcAddr := srcAddr.IP().As4()
 						s := slayers.SCION{
@@ -680,21 +712,23 @@ func TestDataPlaneRun(t *testing.T) {
 							DstAddrType: slayers.T4Ip,
 							RawSrcAddr:  rawSrcAddr[:],
 							RawDstAddr:  rawDstAddr[:],
-							Path:        path,
+							Path:        p,
 						}
 
 						identifierData := make([]byte, 8)
-						identifier.Serialize(identifierData)
+						err = identifier.Serialize(identifierData)
+						assert.NoError(t, err)
 
 						meta := &extension.FabridHopfieldMetadata{
 							EncryptedPolicyID: encPolicyID,
 							FabridEnabled:     true,
 						}
 						tmp := make([]byte, 100)
-						err = fabrid.ComputeBaseHVF(meta, &identifier, &s, tmp, asToHostKey[:], 3, 0)
+						err = crypto.ComputeBaseHVF(meta, &identifier, &s, tmp, asToHostKey[:],
+							3, 0)
 						assert.NoError(t, err)
 
-						fabrid := extension.FabridOption{
+						fopt := extension.FabridOption{
 							HopfieldMetadata: []*extension.FabridHopfieldMetadata{
 								{},
 								{},
@@ -702,7 +736,8 @@ func TestDataPlaneRun(t *testing.T) {
 							},
 						}
 						fabridData := make([]byte, 16)
-						fabrid.SerializeTo(fabridData)
+						err = fopt.SerializeTo(fabridData)
+						assert.NoError(t, err)
 						hbh := slayers.HopByHopExtn{
 							Options: []*slayers.HopByHopOption{
 								{
@@ -717,7 +752,8 @@ func TestDataPlaneRun(t *testing.T) {
 								},
 							},
 						}
-						err = gopacket.SerializeLayers(buf, gopacket.SerializeOptions{FixLengths: true}, &s, &hbh)
+						err = gopacket.SerializeLayers(buf,
+							gopacket.SerializeOptions{FixLengths: true}, &s, &hbh)
 						assert.NoError(t, err)
 						raw := buf.Bytes()
 						copy(m[0].Buffers[0], raw)
@@ -728,7 +764,8 @@ func TestDataPlaneRun(t *testing.T) {
 					},
 				).Times(1)
 				mExternal.EXPECT().ReadBatch(gomock.Any()).Return(0, nil).AnyTimes()
-				mExternal.EXPECT().WriteTo(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
+				mExternal.EXPECT().WriteTo(gomock.Any(), gomock.Any()).Return(0, nil).
+					AnyTimes()
 
 				mInternal := mock_router.NewMockBatchConn(ctrl)
 				mInternal.EXPECT().ReadBatch(gomock.Any()).Return(0, nil).AnyTimes()
@@ -754,14 +791,16 @@ func TestDataPlaneRun(t *testing.T) {
 							switch hbhOption.OptType {
 							case slayers.OptTypeIdentifier:
 								containsIdentifier = true
-								foundIdentifier, err = extension.ParseIdentifierOption(hbhOption, baseTs)
+								foundIdentifier, err = extension.ParseIdentifierOption(hbhOption,
+									baseTs)
 								assert.NoError(t, err)
 								assert.Equal(t, identifier.Timestamp, foundIdentifier.Timestamp)
 								assert.Equal(t, identifier.PacketID, foundIdentifier.PacketID)
 							case slayers.OptTypeFabrid:
 								containsFabrid = true
 								if containsIdentifier {
-									foundFabrid, err = extension.ParseFabridOptionFullExtension(hbhOption, 3)
+									foundFabrid, err = extension.ParseFabridOptionFullExtension(
+										hbhOption, 3)
 									assert.NoError(t, err)
 									meta := foundFabrid.HopfieldMetadata[2]
 									tmp := make([]byte, 100)
@@ -769,13 +808,18 @@ func TestDataPlaneRun(t *testing.T) {
 										EncryptedPolicyID: encPolicyID,
 										FabridEnabled:     true,
 									}
-									err = fabrid.ComputeVerifiedHVF(recomputedVerifiedHVF, foundIdentifier, &s, tmp, asToHostKey[:], 3, 0)
+									err = crypto.ComputeVerifiedHVF(recomputedVerifiedHVF,
+										foundIdentifier, &s, tmp, asToHostKey[:],
+										3, 0)
 									assert.NoError(t, err)
 									assert.Equal(t, encPolicyID, meta.EncryptedPolicyID)
-									assert.Equal(t, recomputedVerifiedHVF.HopValidationField, meta.HopValidationField)
+									assert.Equal(t, recomputedVerifiedHVF.HopValidationField,
+										meta.HopValidationField)
 								} else {
-									assert.Fail(t, "identifier not present before fabrid")
+									assert.Fail(t,
+										"identifier not present before fabrid")
 								}
+							default:
 							}
 						}
 						assert.True(t, containsIdentifier)
@@ -860,7 +904,8 @@ func TestDataPlaneRun(t *testing.T) {
 					},
 				).Times(1)
 				mExternal.EXPECT().ReadBatch(gomock.Any()).Return(0, nil).AnyTimes()
-				mExternal.EXPECT().WriteTo(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
+				mExternal.EXPECT().WriteTo(gomock.Any(), gomock.Any()).Return(0, nil).
+					AnyTimes()
 
 				_ = ret.AddExternalInterface(1, mExternal)
 
@@ -937,7 +982,8 @@ func TestDataPlaneRun(t *testing.T) {
 
 						return 0, fmt.Errorf("no valid BFD message")
 					}).MinTimes(1)
-				mInternal.EXPECT().WriteTo(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
+				mInternal.EXPECT().WriteTo(gomock.Any(), gomock.Any()).Return(0, nil).
+					AnyTimes()
 
 				local := &net.UDPAddr{IP: net.ParseIP("10.0.200.100").To4()}
 				_ = ret.SetKey([]byte("randomkeyformacs"))
@@ -1040,7 +1086,8 @@ func TestDataPlaneRun(t *testing.T) {
 						done <- struct{}{}
 						return 1, nil
 					}).MinTimes(1)
-				mExternal.EXPECT().WriteTo(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
+				mExternal.EXPECT().WriteTo(gomock.Any(), gomock.Any()).Return(0, nil).
+					AnyTimes()
 
 				local := control.LinkEnd{
 					IA:   xtest.MustParseIA("1-ff00:0:1"),
@@ -1120,7 +1167,8 @@ func TestDataPlaneRun(t *testing.T) {
 						}
 						return 0, fmt.Errorf("no valid BFD message")
 					}).MinTimes(1)
-				mExternal.EXPECT().WriteTo(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
+				mExternal.EXPECT().WriteTo(gomock.Any(), gomock.Any()).Return(0, nil).
+					AnyTimes()
 
 				local := control.LinkEnd{
 					IA:   xtest.MustParseIA("1-ff00:0:1"),

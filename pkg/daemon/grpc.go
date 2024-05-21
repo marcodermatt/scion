@@ -16,19 +16,20 @@ package daemon
 
 import (
 	"context"
-		"net"
+	"net"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"github.com/scionproto/scion/pkg/experimental/fabrid"
-	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
+
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	libgrpc "github.com/scionproto/scion/pkg/grpc"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/ctrl/path_mgmt"
 	"github.com/scionproto/scion/pkg/private/serrors"
+	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	sdpb "github.com/scionproto/scion/pkg/proto/daemon"
 	dkpb "github.com/scionproto/scion/pkg/proto/drkey"
 	"github.com/scionproto/scion/pkg/scrypto/cppki"
@@ -286,17 +287,17 @@ func convertPath(p *sdpb.Path, dst addr.IA) (path.Path, error) {
 		},
 		NextHop: underlayA,
 		Meta: snet.PathMetadata{
-			Interfaces:     interfaces,
-			MTU:            uint16(p.Mtu),
-			Expiry:         expiry,
-			Latency:        latency,
-			Bandwidth:      p.Bandwidth,
+			Interfaces:      interfaces,
+			MTU:             uint16(p.Mtu),
+			Expiry:          expiry,
+			Latency:         latency,
+			Bandwidth:       p.Bandwidth,
 			CarbonIntensity: p.CarbonIntensity,
-			Geo:            geo,
-			LinkType:       linkType,
-			InternalHops:   p.InternalHops,
-			Notes:          p.Notes,
-			FabridPolicies: policyIdentifiers,
+			Geo:             geo,
+			LinkType:        linkType,
+			InternalHops:    p.InternalHops,
+			Notes:           p.Notes,
+			FabridPolicies:  policyIdentifiers,
 		},
 	}
 
@@ -314,13 +315,13 @@ func fabridPoliciesFromPB(fpList *sdpb.FabridPolicies) []*fabrid.Policy {
 	pbPolicies := make([]*fabrid.Policy, len(fpList.Policies))
 	for i, fp := range fpList.Policies {
 		switch fp.PolicyIdentifier.PolicyType {
-		case experimental.FABRIDPolicyType_GLOBAL:
+		case experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_GLOBAL:
 			pbPolicies[i] = &fabrid.Policy{
 				Type:       fabrid.GlobalPolicy,
 				Identifier: fp.PolicyIdentifier.PolicyIdentifier,
 				Index:      fabrid.PolicyID(fp.PolicyIndex),
 			}
-		case experimental.FABRIDPolicyType_LOCAL:
+		case experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_LOCAL:
 			pbPolicies[i] = &fabrid.Policy{
 				Type:       fabrid.LocalPolicy,
 				Identifier: fp.PolicyIdentifier.PolicyIdentifier,

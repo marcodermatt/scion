@@ -1,5 +1,4 @@
-// Copyright 2018 ETH Zurich
-// Copyright 2019 ETH Zurich, Anapaya Systems
+// Copyright 2023 ETH Zurich
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,7 +21,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
 	"net"
 	"net/netip"
 	"os"
@@ -38,6 +36,7 @@ import (
 	"github.com/scionproto/scion/pkg/drkey"
 	"github.com/scionproto/scion/pkg/drkey/specific"
 	"github.com/scionproto/scion/pkg/experimental/fabrid"
+	"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/serrors"
@@ -226,7 +225,8 @@ func (s *server) handlePing(conn snet.PacketConn) error {
 						return err
 					}
 				case slayers.OptTypeFabrid:
-					fabridOption, err = extension.ParseFabridOptionFullExtension(opt, (opt.OptDataLen-4)/4)
+					fabridOption, err = extension.ParseFabridOptionFullExtension(opt,
+						(opt.OptDataLen-4)/4)
 					if err != nil {
 						return err
 					}
@@ -477,7 +477,8 @@ func (c *client) attemptRequest(n int) bool {
 			}
 			defer grpcconn.Close()
 			drkeyClient := drpb.NewDRKeyIntraServiceClient(grpcconn)
-			fabridPath.RegisterDRKeyFetcher(func(ctx context.Context, meta drkey.ASHostMeta) (drkey.ASHostKey, error) {
+			fabridPath.RegisterDRKeyFetcher(func(ctx context.Context,
+				meta drkey.ASHostMeta) (drkey.ASHostKey, error) {
 				rep, err := drkeyClient.DRKeyASHost(ctx, drhelper.AsHostMetaToProtoRequest(meta))
 				if err != nil {
 					return drkey.ASHostKey{}, err
@@ -488,7 +489,8 @@ func (c *client) attemptRequest(n int) bool {
 				}
 				return key, nil
 			}, func(ctx context.Context, meta drkey.HostHostMeta) (drkey.HostHostKey, error) {
-				rep, err := drkeyClient.DRKeyHostHost(ctx, drhelper.HostHostMetaToProtoRequest(meta))
+				rep, err := drkeyClient.DRKeyHostHost(ctx, drhelper.HostHostMetaToProtoRequest(
+					meta))
 				if err != nil {
 					return drkey.HostHostKey{}, err
 				}

@@ -19,14 +19,14 @@ import (
 	"net"
 	"time"
 
-	"github.com/scionproto/scion/pkg/private/serrors"
-	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
-
-	"github.com/scionproto/scion/pkg/log"
-	drpb "github.com/scionproto/scion/pkg/proto/control_plane"
-	"github.com/scionproto/scion/pkg/proto/drkey"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/scionproto/scion/pkg/log"
+	"github.com/scionproto/scion/pkg/private/serrors"
+	drpb "github.com/scionproto/scion/pkg/proto/control_plane"
+	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
+	"github.com/scionproto/scion/pkg/proto/drkey"
 )
 
 type SecretValue struct {
@@ -69,7 +69,8 @@ func (f *Fetcher) StartFabridPolicyFetcher() {
 		mplsPolicyResp, err := f.queryFabridPolicies()
 
 		if err != nil {
-			log.Debug("Error while querying the FABRID policies from local control service", "err", err)
+			log.Debug("Error while querying the FABRID policies from local control service",
+				"err", err)
 			time.Sleep(retryAfterErrorDuration)
 			continue
 		}
@@ -79,7 +80,8 @@ func (f *Fetcher) StartFabridPolicyFetcher() {
 		}
 
 		log.Debug("Updated FABRID policies")
-		err = f.dp.UpdateFabridPolicies(ipPoliciesMapFromPB(mplsPolicyResp.MplsIPMap), mplsPolicyResp.MplsInterfacePoliciesMap)
+		err = f.dp.UpdateFabridPolicies(ipPoliciesMapFromPB(mplsPolicyResp.MplsIpMap),
+			mplsPolicyResp.MplsInterfacePoliciesMap)
 		if err != nil {
 			log.Debug("Error while adding FABRID policies", "err", err)
 			time.Sleep(retryAfterErrorDuration)
@@ -90,7 +92,8 @@ func (f *Fetcher) StartFabridPolicyFetcher() {
 	}
 }
 
-func ipPoliciesMapFromPB(mplsPolicyResp map[uint32]*experimental.MPLSIPArray) map[uint32][]*PolicyIPRange {
+func ipPoliciesMapFromPB(mplsPolicyResp map[uint32]*experimental.
+	MPLSIPArray) map[uint32][]*PolicyIPRange {
 	res := make(map[uint32][]*PolicyIPRange)
 	for key, ipArray := range mplsPolicyResp {
 
@@ -101,7 +104,10 @@ func ipPoliciesMapFromPB(mplsPolicyResp map[uint32]*experimental.MPLSIPArray) ma
 			} else {
 				m = net.CIDRMask(int(ipRange.Prefix), 8*net.IPv6len)
 			}
-			res[key] = append(res[key], &PolicyIPRange{IPPrefix: &net.IPNet{IP: ipRange.Ip, Mask: m}, MPLSLabel: ipRange.MplsLabel})
+			res[key] = append(res[key], &PolicyIPRange{
+				IPPrefix:  &net.IPNet{IP: ipRange.Ip, Mask: m},
+				MPLSLabel: ipRange.MplsLabel,
+			})
 		}
 	}
 	return res
@@ -120,7 +126,7 @@ func (f *Fetcher) queryFabridPolicies() (*experimental.MPLSMapResponse, error) {
 	}
 	defer grpcconn.Close()
 	client := experimental.NewFABRIDIntraServiceClient(grpcconn)
-	rep, err := client.GetMPLSMapIfNecessary(ctx,
+	rep, err := client.MPLSMap(ctx,
 		&experimental.MPLSMapRequest{
 			Hash: nil,
 		})

@@ -1,27 +1,57 @@
+// Copyright 2023 ETH Zurich
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package grpc
 
 import (
 	"context"
+	"testing"
+	"time"
+
 	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/scionproto/scion/control/fabrid"
 	"github.com/scionproto/scion/control/fabrid/grpc/mock_grpc"
 	"github.com/scionproto/scion/pkg/addr"
+	fabrid_defs "github.com/scionproto/scion/pkg/experimental/fabrid"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/private/xtest"
 	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	fabrid_ext "github.com/scionproto/scion/pkg/segment/extensions/fabrid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"testing"
-	"time"
 )
 
 func TestGetRemotePolicyDescription(t *testing.T) {
 	ia := xtest.MustParseIA("1-ff00:00:100")
-
+	// Separating these out, as otherwise the line length is too much for the linter.
+	rpi1 := fabrid.RemotePolicyIdentifier{ISDAS: uint64(ia), Identifier: 56}
+	rpi2 := fabrid.RemotePolicyIdentifier{ISDAS: uint64(ia), Identifier: 57}
+	notPresentCache := map[fabrid.RemotePolicyIdentifier]fabrid.RemotePolicyDescription{}
+	presentExpiredCache := map[fabrid.RemotePolicyIdentifier]fabrid.RemotePolicyDescription{
+		rpi1: {
+			Description: "Test Policy Cached",
+			Expires:     time.Now().Add(-5 * time.Hour),
+		},
+	}
+	presentNotExpiredCache := map[fabrid.RemotePolicyIdentifier]fabrid.RemotePolicyDescription{
+		rpi2: {
+			Description: "Test Policy Cached",
+			Expires:     time.Now().Add(10 * time.Hour),
+		}}
 	tests := map[string]struct {
-		LocalCache map[fabrid.RemotePolicyIdentifier]fabrid.RemotePolicyDescription
-
+		LocalCache           map[fabrid.RemotePolicyIdentifier]fabrid.RemotePolicyDescription
 		PolicyIdentifier     uint32
 		PolicyAtRemote       bool
 		ExpectedFetcherCalls int
@@ -29,7 +59,7 @@ func TestGetRemotePolicyDescription(t *testing.T) {
 		ExpectedResult       string
 	}{
 		"not present in cache": {
-			LocalCache:           map[fabrid.RemotePolicyIdentifier]fabrid.RemotePolicyDescription{},
+			LocalCache:           notPresentCache,
 			PolicyIdentifier:     55,
 			PolicyAtRemote:       true,
 			ExpectedFetcherCalls: 1,
@@ -37,14 +67,7 @@ func TestGetRemotePolicyDescription(t *testing.T) {
 			ExpectedResult:       "Test Policy",
 		},
 		"present in cache but expired": {
-			LocalCache: map[fabrid.RemotePolicyIdentifier]fabrid.RemotePolicyDescription{
-				fabrid.RemotePolicyIdentifier{
-					ISDAS:      uint64(ia),
-					Identifier: 56,
-				}: {
-					Description: "Test Policy Cached",
-					Expires:     time.Now().Add(-5 * time.Hour),
-				}},
+			LocalCache:           presentExpiredCache,
 			PolicyIdentifier:     56,
 			PolicyAtRemote:       true,
 			ExpectedFetcherCalls: 1,
@@ -52,14 +75,7 @@ func TestGetRemotePolicyDescription(t *testing.T) {
 			ExpectedResult:       "Test Policy 2",
 		},
 		"present in cache and not expired": {
-			LocalCache: map[fabrid.RemotePolicyIdentifier]fabrid.RemotePolicyDescription{
-				fabrid.RemotePolicyIdentifier{
-					ISDAS:      uint64(ia),
-					Identifier: 57,
-				}: {
-					Description: "Test Policy Cached",
-					Expires:     time.Now().Add(10 * time.Hour),
-				}},
+			LocalCache:           presentNotExpiredCache,
 			PolicyIdentifier:     57,
 			PolicyAtRemote:       true,
 			ExpectedFetcherCalls: 0,
@@ -67,7 +83,7 @@ func TestGetRemotePolicyDescription(t *testing.T) {
 			ExpectedResult:       "Test Policy Cached",
 		},
 		"not present at remote": {
-			LocalCache:           map[fabrid.RemotePolicyIdentifier]fabrid.RemotePolicyDescription{},
+			LocalCache:           notPresentCache,
 			PolicyIdentifier:     58,
 			PolicyAtRemote:       false,
 			ExpectedFetcherCalls: 1,
@@ -85,12 +101,13 @@ func TestGetRemotePolicyDescription(t *testing.T) {
 				tc.PolicyIdentifier).Times(tc.ExpectedFetcherCalls).DoAndReturn(
 				func(ctx context.Context,
 					remoteIA addr.IA,
-					remotePolicyIdentifier uint32) (*experimental.PolicyDescriptionResponse,
+					remotePolicyIdentifier uint32) (*experimental.RemotePolicyDescriptionResponse,
 					error) {
 					if tc.PolicyAtRemote {
-						return &experimental.PolicyDescriptionResponse{Description: tc.ExpectedResult}, nil
+						return &experimental.RemotePolicyDescriptionResponse{
+							Description: tc.ExpectedResult}, nil
 					}
-					return &experimental.PolicyDescriptionResponse{}, serrors.New(
+					return &experimental.RemotePolicyDescriptionResponse{}, serrors.New(
 						"remote policy fetch fetch failed",
 						"try", 1,
 						"peer", remoteIA,
@@ -103,7 +120,7 @@ func TestGetRemotePolicyDescription(t *testing.T) {
 				},
 				Fetcher: fetcher,
 			}
-			descr, err := server.GetRemotePolicyDescription(context.Background(),
+			descr, err := server.RemotePolicyDescription(context.Background(),
 				&experimental.RemotePolicyDescriptionRequest{
 					PolicyIdentifier: tc.PolicyIdentifier,
 					IsdAs:            uint64(ia),
@@ -136,9 +153,9 @@ func TestGetSupportedIndicesMap(t *testing.T) {
 			SupportedIndicesMap: supportedIndices,
 		},
 	}
-	indices, err := server.GetSupportedIndicesMap(
+	indices, err := server.SupportedIndicesMap(
 		context.Background(),
-		&experimental.SupportedIndicesRequest{},
+		&experimental.SupportedIndicesMapRequest{},
 	)
 	require.NoError(t, err)
 	require.Equal(t, supportedIndices,
@@ -148,15 +165,15 @@ func TestGetSupportedIndicesMap(t *testing.T) {
 func TestGetIndexIdentifierMap(t *testing.T) {
 	indexIdentifierMap := fabrid_ext.IndexIdentifierMap{
 		2: &fabrid_ext.PolicyIdentifier{
-			Type:       fabrid_ext.GlobalPolicy,
+			Type:       fabrid_defs.GlobalPolicy,
 			Identifier: 22,
 		},
 		8: &fabrid_ext.PolicyIdentifier{
-			Type:       fabrid_ext.LocalPolicy,
+			Type:       fabrid_defs.LocalPolicy,
 			Identifier: 1,
 		},
 		15: &fabrid_ext.PolicyIdentifier{
-			Type:       fabrid_ext.GlobalPolicy,
+			Type:       fabrid_defs.GlobalPolicy,
 			Identifier: 50,
 		},
 	}
@@ -166,7 +183,7 @@ func TestGetIndexIdentifierMap(t *testing.T) {
 			IndexIdentifierMap: indexIdentifierMap,
 		},
 	}
-	identifiers, err := server.GetIndexIdentifierMap(
+	identifiers, err := server.IndexIdentifierMap(
 		context.Background(),
 		&experimental.IndexIdentifierMapRequest{},
 	)
@@ -204,8 +221,8 @@ func TestGetLocalPolicyDescription(t *testing.T) {
 					IdentifierDescriptionMap: tc.IdentifierDescriptionMap,
 				},
 			}
-			description, err := server.GetLocalPolicyDescription(context.Background(),
-				&experimental.PolicyDescriptionRequest{
+			description, err := server.LocalPolicyDescription(context.Background(),
+				&experimental.LocalPolicyDescriptionRequest{
 					PolicyIdentifier: tc.Identifier,
 				})
 			tc.Assert(t, err)
@@ -251,14 +268,15 @@ func TestGetMPLSMapIfNecessary(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			resp, err := server.GetMPLSMapIfNecessary(context.Background(),
+			resp, err := server.MPLSMap(context.Background(),
 				&experimental.MPLSMapRequest{
 					Hash: tc.RequesterHash,
 				})
 			require.NoError(t, err)
 			require.Equal(t, tc.ExpectedUpdate, resp.Update)
 			if resp.Update {
-				require.Equal(t, server.FabridManager.MPLSMap.InterfacePoliciesMap, resp.MplsInterfacePoliciesMap)
+				require.Equal(t, server.FabridManager.MPLSMap.InterfacePoliciesMap,
+					resp.MplsInterfacePoliciesMap)
 			}
 		})
 	}

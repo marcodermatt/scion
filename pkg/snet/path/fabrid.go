@@ -17,12 +17,12 @@ package path
 import (
 	"context"
 	"fmt"
-	"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
 	"time"
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
 	"github.com/scionproto/scion/pkg/experimental/fabrid"
+	"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/slayers/extension"
@@ -54,20 +54,22 @@ type FABRID struct {
 	hops             []snet.HopInterface
 }
 
-func NewFABRIDDataplanePath(p SCION, hops []snet.HopInterface, policyIDs []*fabrid.PolicyID, conf *FabridConfig) (*FABRID, error) {
+func NewFABRIDDataplanePath(p SCION, hops []snet.HopInterface, policyIDs []*fabrid.PolicyID,
+	conf *FabridConfig) (*FABRID, error) {
 	numHops := len(hops)
 	var decoded scion.Decoded
 	if err := decoded.DecodeFromBytes(p.Raw); err != nil {
 		return nil, serrors.WrapStr("decoding path", err)
 	}
-	//TODO(jvanbommel) How was this remove hops introduced by crossovers even supposed to work? Decreasing the numHops
-	// would still add the hops to ingresses and egresses of crossovers in the middle of the path, and even cut out the
-	// end of the path. What did I miss?
+	//TODO(jvanbommel) How was this remove hops introduced by crossovers even supposed to work?
+	// Decreasing the numHops would still add the hops to ingresses and egresses of crossovers
+	// in the middle of the path, and even cut out the end of the path. What did I miss?
 	keys := make(map[addr.IA]*drkey.ASHostKey, numHops)
 	if len(policyIDs) == 0 { // If no policies are provided, use empty policy for all hops
 		policyIDs = make([]*fabrid.PolicyID, numHops)
 	} else if len(policyIDs) != numHops {
-		return nil, serrors.New("Amount of policy ids does not match the amount of hops in the path.")
+		return nil, serrors.New("Amount of policy ids does not match the amount of hops in " +
+			"the path.")
 	}
 	f := &FABRID{
 		hops:             hops,
@@ -91,7 +93,8 @@ func NewFABRIDDataplanePath(p SCION, hops []snet.HopInterface, policyIDs []*fabr
 	return f, nil
 }
 
-func (f *FABRID) RegisterDRKeyFetcher(fn func(context.Context, drkey.ASHostMeta) (drkey.ASHostKey, error),
+func (f *FABRID) RegisterDRKeyFetcher(fn func(context.Context,
+	drkey.ASHostMeta) (drkey.ASHostKey, error),
 	fn2 func(context.Context, drkey.HostHostMeta) (drkey.HostHostKey, error)) {
 
 	f.drkeyFn = fn
@@ -142,7 +145,8 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 		}
 		fabridOption.HopfieldMetadata[i] = meta
 	}
-	err = crypto.InitValidators(fabridOption, identifierOption, s, f.tmpBuffer, f.pathKey.Key[:], f.keys, nil, f.hops)
+	err = crypto.InitValidators(fabridOption, identifierOption, s, f.tmpBuffer, f.pathKey.Key[:],
+		f.keys, nil, f.hops)
 	if err != nil {
 		return serrors.WrapStr("initializing validators failed", err)
 	}

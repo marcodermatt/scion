@@ -1,7 +1,22 @@
+// Copyright 2023 ETH Zurich
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package fabridquery
 
 import (
 	"fmt"
+
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	"github.com/scionproto/scion/pkg/private/common"
@@ -40,7 +55,7 @@ func (a AS) String() string {
 	if a.Wildcard {
 		return "*"
 	}
-	return fmt.Sprintf("%s", a.ASN)
+	return a.ASN.String()
 }
 
 type Interface TypedNumber
@@ -73,7 +88,7 @@ func (p Policy) String() string {
 	} else if p.Type == REJECT_POLICY_TYPE {
 		return "reject"
 	} else if p.Type == STANDARD_POLICY_TYPE {
-		return fmt.Sprintf("%s", p.Policy.String())
+		return p.Policy.String()
 	}
 	return "unknown"
 }

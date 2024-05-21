@@ -80,7 +80,8 @@ type General struct {
 	// ConfigDir for loading extra files (currently, only topology.json and staticInfoConfig.json)
 	ConfigDir string `toml:"config_dir,omitempty"`
 	// Path to the FABRID config
-	FABRIDPath string `toml:"fabrid_path,omitempty"` //TODO(jvanbommel): move this away from here. Should not be in general for all.
+	//TODO(jvanbommel): move this away from here. Should not be in general for all.
+	FABRIDPath string `toml:"fabrid_path,omitempty"`
 	// ReconnectToDispatcher can be set to true to enable transparent dispatcher
 	// reconnects.
 	ReconnectToDispatcher bool `toml:"reconnect_to_dispatcher,omitempty"`

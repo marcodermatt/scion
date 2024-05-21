@@ -20,9 +20,9 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/google/gopacket"
 	"golang.org/x/net/ipv4"
 
-	"github.com/google/gopacket"
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/private/topology"
 )

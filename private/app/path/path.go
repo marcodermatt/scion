@@ -18,8 +18,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"github.com/scionproto/scion/pkg/experimental/fabrid"
-	"github.com/scionproto/scion/private/path/fabridquery"
 	"math/rand"
 	"net"
 	"os"
@@ -32,10 +30,12 @@ import (
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/daemon"
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/snet"
 	snetpath "github.com/scionproto/scion/pkg/snet/path"
 	"github.com/scionproto/scion/private/app/path/pathprobe"
+	"github.com/scionproto/scion/private/path/fabridquery"
 	"github.com/scionproto/scion/private/path/pathpol"
 )
 
@@ -115,7 +115,9 @@ func Choose(
 				continue
 			}
 			hopIntfs := p.Metadata().Hops()
-			ml := fabridquery.MatchList{SelectedPolicies: make([]*fabridquery.Policy, len(hopIntfs))}
+			ml := fabridquery.MatchList{
+				SelectedPolicies: make([]*fabridquery.Policy, len(hopIntfs)),
+			}
 			_, pols := query.Evaluate(hopIntfs, &ml)
 
 			if !pols.Accepted() {
@@ -129,7 +131,9 @@ func Choose(
 			return snetpath.Path{Src: p.Source(), Dst: p.Destination(), DataplanePath: fabridPath,
 				NextHop: p.UnderlayNextHop(), Meta: *p.Metadata()}, nil
 		}
-		return nil, serrors.New(fmt.Sprintf("no fabrid paths available satisfying query '%s'", o.fabrid.Query))
+		return nil, serrors.New(
+			fmt.Sprintf("no fabrid paths available satisfying query '%s'",
+				o.fabrid.Query))
 	}
 	if o.probeCfg != nil {
 		paths, err = filterUnhealthy(ctx, paths, remote, conn, o.probeCfg, o.epic)

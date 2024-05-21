@@ -21,8 +21,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	"github.com/scionproto/scion/pkg/addr"
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/slayers"
 )
@@ -181,12 +181,25 @@ func (pm *PathMetadata) Hops() []HopInterface {
 		return []HopInterface{}
 	default:
 		hops := make([]HopInterface, 0, len(ifaces)/2+1)
-		hops = append(hops, HopInterface{IA: ifaces[0].IA, IgIf: 0, EgIf: ifaces[0].ID, Policies: fabridPolicies[0]})
+		hops = append(hops, HopInterface{
+			IA:       ifaces[0].IA,
+			IgIf:     0,
+			EgIf:     ifaces[0].ID,
+			Policies: fabridPolicies[0]})
 		for i := 1; i < len(ifaces)-1; i += 2 {
-			hops = append(hops, HopInterface{IA: ifaces[i].IA, IgIf: ifaces[i].ID, EgIf: ifaces[i+1].ID, Policies: fabridPolicies[(i+1)/2]})
+			hops = append(hops, HopInterface{
+				IA:       ifaces[i].IA,
+				IgIf:     ifaces[i].ID,
+				EgIf:     ifaces[i+1].ID,
+				Policies: fabridPolicies[(i+1)/2],
+			})
 		}
-		hops = append(hops, HopInterface{IA: ifaces[len(ifaces)-1].IA,
-			IgIf: ifaces[len(ifaces)-1].ID, EgIf: 0, Policies: fabridPolicies[len(ifaces)/2]})
+		hops = append(hops, HopInterface{
+			IA:       ifaces[len(ifaces)-1].IA,
+			IgIf:     ifaces[len(ifaces)-1].ID,
+			EgIf:     0,
+			Policies: fabridPolicies[len(ifaces)/2],
+		})
 		return hops
 	}
 }
@@ -197,17 +210,18 @@ func (pm *PathMetadata) Copy() *PathMetadata {
 	}
 
 	return &PathMetadata{
-		Interfaces:     append(pm.Interfaces[:0:0], pm.Interfaces...),
-		MTU:            pm.MTU,
-		Expiry:         pm.Expiry,
-		Latency:        append(pm.Latency[:0:0], pm.Latency...),
-		Bandwidth:      append(pm.Bandwidth[:0:0], pm.Bandwidth...),
+		Interfaces:      append(pm.Interfaces[:0:0], pm.Interfaces...),
+		MTU:             pm.MTU,
+		Expiry:          pm.Expiry,
+		Latency:         append(pm.Latency[:0:0], pm.Latency...),
+		Bandwidth:       append(pm.Bandwidth[:0:0], pm.Bandwidth...),
 		CarbonIntensity: append(pm.CarbonIntensity[:0:0], pm.CarbonIntensity...),
-		Geo:            append(pm.Geo[:0:0], pm.Geo...),
-		LinkType:       append(pm.LinkType[:0:0], pm.LinkType...),
-		InternalHops:   append(pm.InternalHops[:0:0], pm.InternalHops...),
-		Notes:          append(pm.Notes[:0:0], pm.Notes...),
-		FabridPolicies: append(pm.FabridPolicies[:0:0], pm.FabridPolicies...), // TODO(jvanbommel): array in array
+		Geo:             append(pm.Geo[:0:0], pm.Geo...),
+		LinkType:        append(pm.LinkType[:0:0], pm.LinkType...),
+		InternalHops:    append(pm.InternalHops[:0:0], pm.InternalHops...),
+		Notes:           append(pm.Notes[:0:0], pm.Notes...),
+		// TODO(jvanbommel): array in array:
+		FabridPolicies: append(pm.FabridPolicies[:0:0], pm.FabridPolicies...),
 
 		EpicAuths: EpicAuths{
 			AuthPHVF: append([]byte(nil), pm.EpicAuths.AuthPHVF...),

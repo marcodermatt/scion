@@ -504,7 +504,7 @@ local scion_extn_tlv_option_types = {
   [0] = "Pad1",
   [1] = "PadN",
   [2] = "Packet Authenticator Option",
-  [3] = "Fabrid Packet Identifier",
+  [3] = "Packet Identifier",
   [4] = "Fabrid Extension",
 }
 

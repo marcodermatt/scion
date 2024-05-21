@@ -17,9 +17,10 @@ package extension_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/slayers/extension"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestFabridDecode(t *testing.T) {
@@ -96,15 +97,18 @@ func TestFabridDecode(t *testing.T) {
 				assert.NoError(t, err)
 				assert.Equal(t, 3, len(fo.HopfieldMetadata))
 				assert.Equal(t, uint8(0x66), fo.HopfieldMetadata[0].EncryptedPolicyID)
-				assert.Equal(t, [3]byte{0x37, 0x88, 0x99}, fo.HopfieldMetadata[0].HopValidationField)
+				assert.Equal(t, [3]byte{0x37, 0x88, 0x99},
+					fo.HopfieldMetadata[0].HopValidationField)
 				assert.Equal(t, false, fo.HopfieldMetadata[0].FabridEnabled)
 				assert.Equal(t, false, fo.HopfieldMetadata[0].ASLevelKey)
 				assert.Equal(t, uint8(0xaa), fo.HopfieldMetadata[1].EncryptedPolicyID)
-				assert.Equal(t, [3]byte{0x0b, 0xcc, 0xdd}, fo.HopfieldMetadata[1].HopValidationField)
+				assert.Equal(t, [3]byte{0x0b, 0xcc, 0xdd},
+					fo.HopfieldMetadata[1].HopValidationField)
 				assert.Equal(t, true, fo.HopfieldMetadata[1].FabridEnabled)
 				assert.Equal(t, false, fo.HopfieldMetadata[1].ASLevelKey)
 				assert.Equal(t, uint8(0xaa), fo.HopfieldMetadata[2].EncryptedPolicyID)
-				assert.Equal(t, [3]byte{0x01, 0x01, 0x01}, fo.HopfieldMetadata[2].HopValidationField)
+				assert.Equal(t, [3]byte{0x01, 0x01, 0x01},
+					fo.HopfieldMetadata[2].HopValidationField)
 				assert.Equal(t, true, fo.HopfieldMetadata[2].FabridEnabled)
 				assert.Equal(t, true, fo.HopfieldMetadata[2].ASLevelKey)
 				assert.Equal(t, [4]byte{0x22, 0x33, 0x44, 0x55}, fo.PathValidator)
@@ -152,7 +156,8 @@ func TestFabridSerialize(t *testing.T) {
 		{
 			name: "Too many hops",
 			fabrid: &extension.FabridOption{
-				HopfieldMetadata: make([]*extension.FabridHopfieldMetadata, extension.MaxSupportedFabridHops+1),
+				HopfieldMetadata: make([]*extension.FabridHopfieldMetadata,
+					extension.MaxSupportedFabridHops+1),
 			},
 			buffer: make([]byte, 256),
 			validate: func(b []byte, err error, t *testing.T) {

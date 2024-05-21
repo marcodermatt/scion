@@ -25,12 +25,11 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"golang.org/x/sync/singleflight"
 
-	"github.com/scionproto/scion/pkg/experimental/fabrid"
-	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	drkey_daemon "github.com/scionproto/scion/daemon/drkey"
 	"github.com/scionproto/scion/daemon/fetcher"
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/ctrl/path_mgmt"
@@ -38,6 +37,7 @@ import (
 	"github.com/scionproto/scion/pkg/private/prom"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/private/util"
+	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	pb_daemon "github.com/scionproto/scion/pkg/proto/daemon"
 	sdpb "github.com/scionproto/scion/pkg/proto/daemon"
 	"github.com/scionproto/scion/pkg/snet"
@@ -179,27 +179,27 @@ func pathToPB(path snet.Path) *sdpb.Path {
 		Interface: &sdpb.Interface{
 			Address: &sdpb.Underlay{Address: nextHopStr},
 		},
-		Interfaces:     interfaces,
-		Mtu:            uint32(meta.MTU),
-		Expiration:     &timestamppb.Timestamp{Seconds: meta.Expiry.Unix()},
-		Latency:        latency,
-		Bandwidth:      meta.Bandwidth,
+		Interfaces:      interfaces,
+		Mtu:             uint32(meta.MTU),
+		Expiration:      &timestamppb.Timestamp{Seconds: meta.Expiry.Unix()},
+		Latency:         latency,
+		Bandwidth:       meta.Bandwidth,
 		CarbonIntensity: meta.CarbonIntensity,
-		Geo:            geo,
-		LinkType:       linkType,
-		InternalHops:   meta.InternalHops,
-		Notes:          meta.Notes,
-		EpicAuths:      epicAuths,
-		FabridPolicies: fabridPolicies,
+		Geo:             geo,
+		LinkType:        linkType,
+		InternalHops:    meta.InternalHops,
+		Notes:           meta.Notes,
+		EpicAuths:       epicAuths,
+		FabridPolicies:  fabridPolicies,
 	}
 }
 
 func fabridPolicyToPB(fp *fabrid.Policy) *sdpb.FabridPolicy {
 	var policyType experimental.FABRIDPolicyType
 	if fp.Type == fabrid.GlobalPolicy {
-		policyType = experimental.FABRIDPolicyType_GLOBAL
+		policyType = experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_GLOBAL
 	} else if fp.Type == fabrid.LocalPolicy {
-		policyType = experimental.FABRIDPolicyType_LOCAL
+		policyType = experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_LOCAL
 	}
 	return &sdpb.FabridPolicy{
 		PolicyIdentifier: &experimental.FABRIDPolicyIdentifier{

@@ -17,7 +17,6 @@ package beaconing
 import (
 	"context"
 	"encoding/binary"
-	fabridext "github.com/scionproto/scion/pkg/segment/extensions/fabrid"
 	"hash"
 	"time"
 
@@ -32,6 +31,7 @@ import (
 	seg "github.com/scionproto/scion/pkg/segment"
 	"github.com/scionproto/scion/pkg/segment/extensions/digest"
 	"github.com/scionproto/scion/pkg/segment/extensions/epic"
+	fabridext "github.com/scionproto/scion/pkg/segment/extensions/fabrid"
 	"github.com/scionproto/scion/pkg/slayers/path"
 )
 
@@ -196,8 +196,7 @@ func (s *DefaultExtender) Extend(
 		}
 		asEntry.UnsignedExtensions.FabridDetached = f
 
-		var d digest.Digest
-		d = digest.Digest{Digest: f.Hash()}
+		d := digest.Digest{Digest: f.Hash()}
 		if s.EPIC {
 			asEntry.Extensions.Digests.Fabrid = d
 		} else {
