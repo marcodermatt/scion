@@ -87,7 +87,10 @@ func (f *FabridManager) Active() bool {
 }
 
 func (f *FabridManager) parseAndAdd(path string, fi os.FileInfo, err error) error {
-	if !fi.Mode().IsRegular() {
+	if err != nil {
+		return nil
+	}
+	if !fi.Mode().IsRegular() { // Makes sure that the current file is not a directory
 		return nil
 	}
 
@@ -120,9 +123,17 @@ func (f *FabridManager) parseAndAdd(path string, fi os.FileInfo, err error) erro
 	}
 
 	for _, connection := range pol.SupportedBy {
+		ig, err := createConnectionPoint(connection.Ingress)
+		if err != nil {
+			return err
+		}
+		eg, err := createConnectionPoint(connection.Egress)
+		if err != nil {
+			return err
+		}
 		ie := fabrid_ext.ConnectionPair{
-			Ingress: createConnectionPoint(connection.Ingress),
-			Egress:  createConnectionPoint(connection.Egress),
+			Ingress: ig,
+			Egress:  eg,
 		}
 		f.MPLSMap.AddConnectionPoint(ie, connection.MPLSLabel, policyIdx)
 		f.SupportedIndicesMap[ie] = append(f.SupportedIndicesMap[ie], policyIdx)
@@ -137,23 +148,27 @@ func parseFABRIDYAMLPolicy(b []byte) (*config.FABRIDPolicy, error) {
 	if err := yaml.UnmarshalStrict(b, p); err != nil {
 		return nil, serrors.WrapStr("Unable to parse policy", err)
 	}
+	if err := p.Validate(); err != nil {
+		return nil, serrors.WrapStr("Unable to validate policy", err)
+	}
 	return p, nil
 }
 
-func createConnectionPoint(connection config.FABRIDConnectionPoint) fabrid_ext.ConnectionPoint {
+func createConnectionPoint(connection config.FABRIDConnectionPoint) (fabrid_ext.ConnectionPoint,
+	error) {
 	if connection.Type == fabrid_ext.Interface {
 		return fabrid_ext.ConnectionPoint{
 			Type:        fabrid_ext.Interface,
 			InterfaceId: connection.Interface,
-		}
+		}, nil
 	} else if connection.Type == fabrid_ext.IPv4Range || connection.Type == fabrid_ext.IPv6Range {
 		return fabrid_ext.IPConnectionPointFromString(connection.IPAddress,
-			uint32(connection.Prefix), connection.Type)
+			uint32(connection.Prefix), connection.Type), nil
 	} else if connection.Type == fabrid_ext.Wildcard {
 		//TODO(jvanbommel): explicit wildcard or intf 0 = wildcard?
 		return fabrid_ext.ConnectionPoint{
 			Type: fabrid_ext.Wildcard,
-		}
+		}, nil
 	}
-	return fabrid_ext.ConnectionPoint{}
+	return fabrid_ext.ConnectionPoint{}, serrors.New("Unsupported connection type")
 }

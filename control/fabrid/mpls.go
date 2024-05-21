@@ -15,8 +15,8 @@
 package fabrid
 
 import (
-	"crypto/sha256"
 	"encoding/binary"
+	"hash/fnv"
 	"sort"
 
 	"github.com/scionproto/scion/pkg/segment/extensions/fabrid"
@@ -66,57 +66,34 @@ func (m *MplsMaps) AddConnectionPoint(ie fabrid.ConnectionPair, mplsLabel uint32
 	}
 }
 
-func (m *MplsMaps) sortedIpPoliciesKeys() []uint32 {
-	// TODO(jvanbommel): Q At this point we should just use an orderedmap library
-	orderedKeys := make([]uint32, 0, len(m.IPPoliciesMap))
-	for k := range m.IPPoliciesMap {
-		orderedKeys = append(orderedKeys, k)
+func sortedKeys[K uint32 | uint64, V any](m map[K]V) []K {
+	keys := make([]K, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
 	}
-	sort.Slice(orderedKeys, func(i int, j int) bool {
-		return orderedKeys[i] < orderedKeys[j]
-	})
-	return orderedKeys
-}
 
-func (m *MplsMaps) sortedInterfacePoliciesKeys() []uint64 {
-	orderedKeys := make([]uint64, 0, len(m.InterfacePoliciesMap))
-	for k := range m.InterfacePoliciesMap {
-		orderedKeys = append(orderedKeys, k)
-	}
-	sort.Slice(orderedKeys, func(i int, j int) bool {
-		return orderedKeys[i] < orderedKeys[j]
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i] < keys[j]
 	})
-	return orderedKeys
-}
 
-//when scion is on go1.18 make it generic
-//func sortedKeys[K comparable, V any](m map[K]V) []K {
-//	keys := make([]K, 0, len(m))
-//	for k := range m {
-//		keys = append(keys, k)
-//	}
-//
-//	sort.Slice(keys, func(i, j int) bool {
-//		return keys[i] < keys[j]
-//	})
-//
-//	return keys
-//}
+	return keys
+}
 
 // This method is to be called after all inserts and removes from the internal map
 // TODO(jvanbommel): this feels too expensive for what a relatively simple synchronization need.
 // Revise?
 func (m *MplsMaps) UpdateHash() {
-	h := sha256.New()
-	for _, polIdx := range m.sortedIpPoliciesKeys() {
+	h := fnv.New64()
+	for _, polIdx := range sortedKeys(m.IPPoliciesMap) {
 		_ = binary.Write(h, binary.BigEndian, polIdx)
 		for _, ipRange := range m.IPPoliciesMap[polIdx] {
 			_ = binary.Write(h, binary.BigEndian, ipRange.MPLSLabel)
-			h.Write(ipRange.IP)
+			_, _ = h.Write(ipRange.IP)
 			_ = binary.Write(h, binary.BigEndian, ipRange.Prefix)
 		}
 	}
-	for _, polIdx := range m.sortedInterfacePoliciesKeys() {
+
+	for _, polIdx := range sortedKeys(m.InterfacePoliciesMap) {
 		_ = binary.Write(h, binary.BigEndian, polIdx)
 		_ = binary.Write(h, binary.BigEndian, m.InterfacePoliciesMap[polIdx])
 	}

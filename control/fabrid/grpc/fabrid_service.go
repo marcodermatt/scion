@@ -34,7 +34,8 @@ func (s Server) mplsIPMapToPB() map[uint32]*experimental.MPLSIPArray {
 	mplsIpMap := make(map[uint32]*experimental.MPLSIPArray)
 	for i, entry := range s.FabridManager.MPLSMap.IPPoliciesMap {
 		if _, exists := mplsIpMap[i]; !exists {
-			mplsIpMap[i] = &experimental.MPLSIPArray{Entry: make([]*experimental.MPLSIP, 0)}
+			mplsIpMap[i] = &experimental.MPLSIPArray{Entry: make([]*experimental.MPLSIP, 0,
+				len(entry))}
 		}
 		for _, iprange := range entry {
 			mplsIpMap[i].Entry = append(mplsIpMap[i].Entry, &experimental.MPLSIP{
