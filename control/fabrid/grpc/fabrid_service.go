@@ -82,7 +82,7 @@ func (s Server) RemotePolicyDescription(ctx context.Context,
 
 	s.FabridManager.RemotePolicyCache[identifier] = fabrid.RemotePolicyDescription{
 		Description: policy.Description,
-		Expires:     time.Now().Add(time.Hour * 3),
+		Expires:     time.Now().Add(s.FabridManager.RemoteCacheValidity),
 	}
 
 	return &experimental.RemotePolicyDescriptionResponse{Description: policy.Description}, nil

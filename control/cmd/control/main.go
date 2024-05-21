@@ -153,10 +153,13 @@ func realMain(ctx context.Context) error {
 
 	revCache := storage.NewRevocationStorage()
 	defer revCache.Close()
-
-	fabridMgr, err := fabrid.NewFabridManager(globalCfg.General.Fabrid())
-	if err != nil {
-		return serrors.WrapStr("initializing FABRID", err)
+	var fabridMgr *fabrid.FabridManager
+	if globalCfg.Fabrid.Enabled {
+		fabridMgr, err = fabrid.NewFabridManager(globalCfg.Fabrid.Path,
+			globalCfg.Fabrid.RemoteCacheValidity.Duration)
+		if err != nil {
+			return serrors.WrapStr("initializing FABRID", err)
+		}
 	}
 
 	pathDB, err := storage.NewPathStorage(globalCfg.PathDB)
@@ -351,7 +354,7 @@ func realMain(ctx context.Context) error {
 		},
 	})
 	// Handle fabrid map and policy requests
-	if fabridMgr.Active() {
+	if globalCfg.Fabrid.Enabled {
 		polFetcher := fabridgrpc.BasicPolicyFetcher{
 			Dialer: &libgrpc.QUICDialer{
 				Rewriter: nc.AddressRewriter(nil),

@@ -189,7 +189,7 @@ func (s *DefaultExtender) Extend(
 			Epic: d,
 		}
 	}
-	if s.Fabrid != nil && s.Fabrid.Active() {
+	if s.Fabrid != nil {
 		f := &fabridext.Detached{
 			SupportedIndicesMap: s.Fabrid.SupportedIndicesMap,
 			IndexIdentiferMap:   s.Fabrid.IndexIdentifierMap,

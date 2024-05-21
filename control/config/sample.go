@@ -101,3 +101,10 @@ connections:
     # Every connnection can have a different mpls label they use to enable the policy:
     mpls_label: 1
 `
+
+const fabridConfigSample = `
+# Whether Fabrid is enabled on this AS
+enabled = true
+# Folder in which the fabrid policies are stored
+path = "gen/ASff00_0_110/fabrid/"
+`

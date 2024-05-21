@@ -63,6 +63,8 @@ func (cfg *FABRIDConnectionPoints) Validate() error {
 	if cfg.Ingress.Type != fabrid.Interface && cfg.Ingress.Type != fabrid.Wildcard {
 		return serrors.New("FABRID policies are only supported from an interface to an IP" +
 			" range or other interface.")
+	} else if cfg.Ingress.Type == fabrid.Interface && cfg.Ingress.Interface == 0 {
+		return serrors.New("Invalid interface for connection point")
 	}
 	//TODO(jvanbommel): do we also block the case where someone configures external interface on
 	//the same BR as internal?
@@ -94,9 +96,7 @@ func (cfg *FABRIDConnectionPoint) Validate() error {
 	default:
 		return serrors.New("unknown FABRID connection point", "type", cfg.Type)
 	}
-	if cfg.Type == fabrid.Interface && cfg.Interface == 0 {
-		return serrors.New("Invalid interface for connection point")
-	} else if cfg.Type == fabrid.IPv6Range && (cfg.IPAddress == "" || cfg.Prefix > 128) {
+	if cfg.Type == fabrid.IPv6Range && (cfg.IPAddress == "" || cfg.Prefix > 128) {
 		return serrors.New("Invalid IPv6 Address range for connection point")
 	} else if cfg.Type == fabrid.IPv4Range && (cfg.IPAddress == "" || cfg.Prefix > 32) {
 		return serrors.New("Invalid IPv4 Address range for connection point")

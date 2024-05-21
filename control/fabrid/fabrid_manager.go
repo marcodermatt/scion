@@ -49,9 +49,11 @@ type FabridManager struct {
 	IdentifierDescriptionMap map[uint32]string
 	MPLSMap                  *MplsMaps
 	RemotePolicyCache        map[RemotePolicyIdentifier]RemotePolicyDescription
+	RemoteCacheValidity      time.Duration
 }
 
-func NewFabridManager(policyPath string) (*FabridManager, error) {
+func NewFabridManager(policyPath string, remoteCacheValidity time.Duration) (
+	*FabridManager, error) {
 	fb := &FabridManager{
 		PoliciesPath:             policyPath,
 		SupportedIndicesMap:      map[fabrid_ext.ConnectionPair][]uint8{},
@@ -59,6 +61,7 @@ func NewFabridManager(policyPath string) (*FabridManager, error) {
 		IdentifierDescriptionMap: map[uint32]string{},
 		MPLSMap:                  NewMplsMaps(),
 		RemotePolicyCache:        map[RemotePolicyIdentifier]RemotePolicyDescription{},
+		RemoteCacheValidity:      remoteCacheValidity,
 		autoIncrIndex:            1,
 	}
 	return fb, fb.Load()
@@ -81,11 +84,6 @@ func (f *FabridManager) Load() error {
 	return nil
 }
 
-func (f *FabridManager) Active() bool {
-	//return len(f.SupportedIndicesMap) > 0
-	return true
-}
-
 func (f *FabridManager) parseAndAdd(path string, fi os.FileInfo, err error) error {
 	if err != nil {
 		return nil
@@ -104,6 +102,10 @@ func (f *FabridManager) parseAndAdd(path string, fi os.FileInfo, err error) erro
 	pol, err := parseFABRIDYAMLPolicy(b)
 	if err != nil {
 		return err
+	}
+
+	if err := pol.Validate(); err != nil {
+		return serrors.WrapStr("Unable to validate policy", err, "path", path)
 	}
 
 	policyIdx := uint8(f.autoIncrIndex)
@@ -147,9 +149,6 @@ func parseFABRIDYAMLPolicy(b []byte) (*config.FABRIDPolicy, error) {
 	p := &config.FABRIDPolicy{}
 	if err := yaml.UnmarshalStrict(b, p); err != nil {
 		return nil, serrors.WrapStr("Unable to parse policy", err)
-	}
-	if err := p.Validate(); err != nil {
-		return nil, serrors.WrapStr("Unable to validate policy", err)
 	}
 	return p, nil
 }
