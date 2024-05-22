@@ -243,7 +243,8 @@ func TestAddPolicy(t *testing.T) {
 			require.NotEqual(t, oldIndex, newIndex)
 			if tc.Local {
 				//Check if the policy is in the IdentifierDescriptionMap
-				require.Equal(t, fm.IdentifierDescriptionMap[tc.Policy.LocalIdentifier], tc.Policy.LocalDescription)
+				require.Equal(t, fm.IdentifierDescriptionMap[tc.Policy.LocalIdentifier],
+					tc.Policy.LocalDescription)
 			}
 			// Check if the policy has been correctly inserted into the IndexIdentifierMap
 			indexIdentifierMapEntry := fm.IndexIdentifierMap[uint8(oldIndex)]
@@ -257,7 +258,8 @@ func TestAddPolicy(t *testing.T) {
 			}
 			//Check if the policy has been inserted correctly into the MPLS Maps:
 			cp1_mpls_key := 1<<31 + uint32(oldIndex) // IP
-			cp2_mpls_key := uint64(cp2.Ingress.Interface)<<24 + uint64(cp2.Egress.Interface)<<8 + uint64(oldIndex)
+			cp2_mpls_key := uint64(cp2.Ingress.Interface)<<24 + uint64(cp2.Egress.
+				Interface)<<8 + uint64(oldIndex)
 			cp3_mpls_key := uint64(1)<<63 + uint64(cp3.Egress.Interface)<<8 + uint64(oldIndex)
 			cp4_mpls_key := uint64(1)<<63 + uint64(oldIndex)
 			cp5_mpls_key := uint32(cp5.Ingress.Interface)<<8 + uint32(oldIndex) // IP
