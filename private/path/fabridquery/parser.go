@@ -107,7 +107,6 @@ func (l *pathpolicyConstraintsListener) ExitExpressionIdentifier(c *pathpolicyco
 	l.push(Expression{id})
 }
 
-// TODO(jvanbommel): --fabridquery "{0-0#0,0@G1101 ? (0-0#0,0@G1111  : 0-0#0,0@G1101} + 0-0#0,0@0"
 func (l *pathpolicyConstraintsListener) ExitExpressionConcat(c *pathpolicyconstraints.
 	ExpressionConcatContext) {
 
@@ -117,8 +116,6 @@ func (l *pathpolicyConstraintsListener) ExitExpressionConcat(c *pathpolicyconstr
 }
 
 func (l *pathpolicyConstraintsListener) ExitParens(c *pathpolicyconstraints.ParensContext) {
-	//l.push(Expression{l.pop().(Expressions)})
-	//TODO(jvanbommel) this is unnecessary, only keep for debugging
 }
 
 // ExitIdentifier is called when exiting the identifier production.

@@ -33,7 +33,7 @@ import (
 	fabrid_ext "github.com/scionproto/scion/pkg/segment/extensions/fabrid"
 )
 
-func TestGetRemotePolicyDescription(t *testing.T) {
+func TestRemotePolicyDescription(t *testing.T) {
 	ia := xtest.MustParseIA("1-ff00:00:100")
 	// Separating these out, as otherwise the line length is too much for the linter.
 	rpi1 := fabrid.RemotePolicyIdentifier{ISDAS: uint64(ia), Identifier: 56}
@@ -134,7 +134,7 @@ func TestGetRemotePolicyDescription(t *testing.T) {
 	}
 }
 
-func TestGetSupportedIndicesMap(t *testing.T) {
+func TestSupportedIndicesMap(t *testing.T) {
 	supportedIndices := fabrid_ext.SupportedIndicesMap{
 		fabrid_ext.ConnectionPair{
 			Ingress: fabrid_ext.ConnectionPoint{
@@ -162,7 +162,7 @@ func TestGetSupportedIndicesMap(t *testing.T) {
 		fabrid_ext.SupportedIndicesMapFromPB(indices.SupportedIndicesMap))
 }
 
-func TestGetIndexIdentifierMap(t *testing.T) {
+func TestIndexIdentifierMap(t *testing.T) {
 	indexIdentifierMap := fabrid_ext.IndexIdentifierMap{
 		2: &fabrid_ext.PolicyIdentifier{
 			Type:       fabrid_defs.GlobalPolicy,
@@ -192,7 +192,7 @@ func TestGetIndexIdentifierMap(t *testing.T) {
 		fabrid_ext.IndexIdentifierMapFromPB(identifiers.IndexIdentifierMap))
 }
 
-func TestGetLocalPolicyDescription(t *testing.T) {
+func TestLocalPolicyDescription(t *testing.T) {
 	tests := map[string]struct {
 		Identifier               uint32
 		IdentifierDescriptionMap map[uint32]string
@@ -233,7 +233,7 @@ func TestGetLocalPolicyDescription(t *testing.T) {
 	}
 }
 
-func TestGetMPLSMapIfNecessary(t *testing.T) {
+func TestMPLSMap(t *testing.T) {
 	baseMPLSMap := fabrid.MplsMaps{
 		InterfacePoliciesMap: map[uint64]uint32{1: 3001, 2: 2030, 3: 200, 255: 1999},
 		CurrentHash:          nil,

@@ -13,5 +13,3 @@
 // limitations under the License.
 
 package fabridquery_test
-
-//TODO(jvanbommel)

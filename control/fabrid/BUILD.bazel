@@ -4,7 +4,7 @@ go_library(
     name = "go_default_library",
     srcs = [
         "fabrid_manager.go",
-        "mpls.go",
+        "mpls_map.go",
     ],
     importpath = "github.com/scionproto/scion/control/fabrid",
     visibility = ["//visibility:public"],
@@ -20,6 +20,16 @@ go_library(
 
 go_test(
     name = "go_default_test",
-    srcs = ["fabrid_manager_test.go"],
+    srcs = [
+        "fabrid_manager_test.go",
+        "mpls_map_test.go",
+    ],
+    data = glob(["testdata/**"]),
     embed = [":go_default_library"],
+    deps = [
+        "//control/config:go_default_library",
+        "//pkg/experimental/fabrid:go_default_library",
+        "//pkg/segment/extensions/fabrid:go_default_library",
+        "@com_github_stretchr_testify//require:go_default_library",
+    ],
 )

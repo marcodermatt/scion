@@ -50,7 +50,6 @@ func (ind *SupportedIndicesMap) SortedKeys() []ConnectionPair {
 }
 
 func (id *IndexIdentifierMap) SortedKeys() []uint8 {
-	// TODO(jvanbommel): Q precompute and store?
 	orderedKeys := make([]uint8, 0, len(*id))
 	for k := range *id {
 		orderedKeys = append(orderedKeys, k)
@@ -64,18 +63,17 @@ func (id *IndexIdentifierMap) SortedKeys() []uint8 {
 type ConnectionPointType string
 
 const (
-	Unspecified ConnectionPointType = "unspecified"
-	IPv4Range   ConnectionPointType = "ipv4"
-	IPv6Range   ConnectionPointType = "ipv6"
-	Interface   ConnectionPointType = "interface"
-	Wildcard    ConnectionPointType = "wildcard"
+	IPv4Range ConnectionPointType = "ipv4"
+	IPv6Range ConnectionPointType = "ipv6"
+	Interface ConnectionPointType = "interface"
+	Wildcard  ConnectionPointType = "wildcard"
 )
 
 type ConnectionPoint struct {
 	Type        ConnectionPointType
 	IP          string // Stored as a string to allow it to be key of a map.
 	Prefix      uint32
-	InterfaceId uint16 // TODO(jvanbommel): Q this is actually not consistent in scion.
+	InterfaceId uint16
 }
 
 // To ensure that the connection point strings are identical, i.e. without padding,

@@ -155,8 +155,8 @@ func realMain(ctx context.Context) error {
 	defer revCache.Close()
 	var fabridMgr *fabrid.FabridManager
 	if globalCfg.Fabrid.Enabled {
-		fabridMgr, err = fabrid.NewFabridManager(globalCfg.Fabrid.Path,
-			globalCfg.Fabrid.RemoteCacheValidity.Duration)
+		fabridMgr = fabrid.NewFabridManager(globalCfg.Fabrid.RemoteCacheValidity.Duration)
+		fabridMgr.Load(globalCfg.Fabrid.Path)
 		if err != nil {
 			return serrors.WrapStr("initializing FABRID", err)
 		}

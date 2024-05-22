@@ -46,15 +46,8 @@ func (m *MplsMaps) AddConnectionPoint(ie fabrid.ConnectionPair, mplsLabel uint32
 	if mplsLabel == 0 {
 		return
 	}
-	if ie.Egress.Type == fabrid.Interface {
-		// Wildcard ingress interface:
-		key := 1<<63 + uint64(ie.Egress.InterfaceId)<<8 + uint64(policyIdx)
-		if ie.Ingress.Type == fabrid.Interface { // Specified ingress interface
-			key = uint64(ie.Ingress.InterfaceId)<<24 + uint64(ie.Egress.
-				InterfaceId)<<8 + uint64(policyIdx)
-		}
-		m.InterfacePoliciesMap[key] = mplsLabel
-	} else if ie.Egress.Type == fabrid.IPv4Range { // Egress is IP network:
+	if ie.Egress.Type == fabrid.IPv4Range || ie.Egress.
+		Type == fabrid.IPv6Range { // Egress is IP network:
 		key := 1<<31 + uint32(policyIdx)         // Wildcard ingress interface
 		if ie.Ingress.Type == fabrid.Interface { // Specified ingress interface
 			key = uint32(ie.Ingress.InterfaceId)<<8 + uint32(policyIdx)
@@ -63,6 +56,17 @@ func (m *MplsMaps) AddConnectionPoint(ie fabrid.ConnectionPair, mplsLabel uint32
 			IP:        ie.Egress.IPNetwork().IP,
 			Prefix:    ie.Egress.Prefix,
 			MPLSLabel: mplsLabel})
+	} else {
+		egIf := uint64(0)
+		if ie.Egress.Type == fabrid.Interface {
+			egIf = uint64(ie.Egress.InterfaceId)
+		}
+		// Wildcard ingress interface:
+		key := 1<<63 + egIf<<8 + uint64(policyIdx)
+		if ie.Ingress.Type == fabrid.Interface { // Specified ingress interface
+			key = uint64(ie.Ingress.InterfaceId)<<24 + egIf<<8 + uint64(policyIdx)
+		}
+		m.InterfacePoliciesMap[key] = mplsLabel
 	}
 }
 

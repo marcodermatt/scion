@@ -12,7 +12,7 @@ function generate {
     PACKAGE=$1
 
     bazel build //antlr:${PACKAGE}
-    rm -f ${ROOTDIR}/antlr/${PACKAGE}/*.go
+    rm ${ROOTDIR}/antlr/${PACKAGE}/*.go
     mkdir -p ${ROOTDIR}/antlr/${PACKAGE}
     cp ${ROOTDIR}/bazel-bin/antlr/${PACKAGE}.go/${PACKAGE}/*.go ${ROOTDIR}/antlr/${PACKAGE}
     chmod 0644 ${ROOTDIR}/antlr/${PACKAGE}/*

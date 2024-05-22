@@ -208,7 +208,11 @@ func (pm *PathMetadata) Copy() *PathMetadata {
 	if pm == nil {
 		return nil
 	}
-
+	fabridPoliciesCopy := make([][]*fabrid.Policy, len(pm.FabridPolicies))
+	for i := range pm.FabridPolicies {
+		fabridPoliciesCopy[i] = make([]*fabrid.Policy, len(pm.FabridPolicies[i]))
+		copy(fabridPoliciesCopy[i], pm.FabridPolicies[i])
+	}
 	return &PathMetadata{
 		Interfaces:      append(pm.Interfaces[:0:0], pm.Interfaces...),
 		MTU:             pm.MTU,
@@ -220,8 +224,7 @@ func (pm *PathMetadata) Copy() *PathMetadata {
 		LinkType:        append(pm.LinkType[:0:0], pm.LinkType...),
 		InternalHops:    append(pm.InternalHops[:0:0], pm.InternalHops...),
 		Notes:           append(pm.Notes[:0:0], pm.Notes...),
-		// TODO(jvanbommel): array in array:
-		FabridPolicies: append(pm.FabridPolicies[:0:0], pm.FabridPolicies...),
+		FabridPolicies:  fabridPoliciesCopy,
 
 		EpicAuths: EpicAuths{
 			AuthPHVF: append([]byte(nil), pm.EpicAuths.AuthPHVF...),

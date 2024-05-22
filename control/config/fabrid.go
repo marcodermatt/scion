@@ -65,9 +65,10 @@ func (cfg *FABRIDConnectionPoints) Validate() error {
 			" range or other interface.")
 	} else if cfg.Ingress.Type == fabrid.Interface && cfg.Ingress.Interface == 0 {
 		return serrors.New("Invalid interface for connection point")
+	} else if cfg.Ingress.Type == fabrid.Interface && cfg.Egress.Type == fabrid.Interface && cfg.
+		Ingress.Interface == cfg.Egress.Interface {
+		return serrors.New("Interfaces should be distinct")
 	}
-	//TODO(jvanbommel): do we also block the case where someone configures external interface on
-	//the same BR as internal?
 	return config.ValidateAll(&cfg.Ingress, &cfg.Egress)
 }
 
@@ -83,8 +84,6 @@ type FABRIDConnectionPoint struct {
 // Validate validates that all values are parsable.
 func (cfg *FABRIDConnectionPoint) Validate() error {
 	switch strings.ToLower(string(cfg.Type)) {
-	case string(fabrid.Unspecified):
-		cfg.Type = fabrid.Unspecified
 	case string(fabrid.Wildcard):
 		cfg.Type = fabrid.Wildcard
 	case string(fabrid.IPv4Range):

@@ -43,7 +43,6 @@ type RemotePolicyDescription struct {
 
 type FabridManager struct {
 	autoIncrIndex            int
-	PoliciesPath             string
 	SupportedIndicesMap      fabrid_ext.SupportedIndicesMap
 	IndexIdentifierMap       fabrid_ext.IndexIdentifierMap
 	IdentifierDescriptionMap map[uint32]string
@@ -52,10 +51,8 @@ type FabridManager struct {
 	RemoteCacheValidity      time.Duration
 }
 
-func NewFabridManager(policyPath string, remoteCacheValidity time.Duration) (
-	*FabridManager, error) {
+func NewFabridManager(remoteCacheValidity time.Duration) *FabridManager {
 	fb := &FabridManager{
-		PoliciesPath:             policyPath,
 		SupportedIndicesMap:      map[fabrid_ext.ConnectionPair][]uint8{},
 		IndexIdentifierMap:       map[uint8]*fabrid_ext.PolicyIdentifier{},
 		IdentifierDescriptionMap: map[uint32]string{},
@@ -64,21 +61,21 @@ func NewFabridManager(policyPath string, remoteCacheValidity time.Duration) (
 		RemoteCacheValidity:      remoteCacheValidity,
 		autoIncrIndex:            1,
 	}
-	return fb, fb.Load()
+	return fb
 }
 
-func (f *FabridManager) Reload() error {
+func (f *FabridManager) Reload(policiesPath string) error {
 	f.IndexIdentifierMap = make(map[uint8]*fabrid_ext.PolicyIdentifier)
 	f.SupportedIndicesMap = make(map[fabrid_ext.ConnectionPair][]uint8)
 	f.MPLSMap = NewMplsMaps()
 	f.autoIncrIndex = 1
-	return f.Load()
+	return f.Load(policiesPath)
 }
 
-func (f *FabridManager) Load() error {
-	if err := filepath.Walk(f.PoliciesPath, f.parseAndAdd); err != nil {
+func (f *FabridManager) Load(policiesPath string) error {
+	if err := filepath.Walk(policiesPath, f.parseAndAdd); err != nil {
 		return serrors.WrapStr("Unable to read the fabrid policies in folder", err,
-			"path", f.PoliciesPath)
+			"path", policiesPath)
 	}
 	f.MPLSMap.UpdateHash()
 	return nil
@@ -88,7 +85,7 @@ func (f *FabridManager) parseAndAdd(path string, fi os.FileInfo, err error) erro
 	if err != nil {
 		return nil
 	}
-	if !fi.Mode().IsRegular() { // Makes sure that the current file is not a directory
+	if fi.IsDir() { // Makes sure that the current file is not a directory
 		return nil
 	}
 
@@ -99,15 +96,19 @@ func (f *FabridManager) parseAndAdd(path string, fi os.FileInfo, err error) erro
 	if err != nil {
 		return serrors.WrapStr("Unable to read the fabrid policy in file", err, "path", path)
 	}
-	pol, err := parseFABRIDYAMLPolicy(b)
-	if err != nil {
-		return err
+	pol := &config.FABRIDPolicy{}
+	if err := yaml.UnmarshalStrict(b, pol); err != nil {
+		return serrors.WrapStr("Unable to parse policy", err)
 	}
 
 	if err := pol.Validate(); err != nil {
 		return serrors.WrapStr("Unable to validate policy", err, "path", path)
 	}
 
+	return f.addPolicy(pol)
+}
+
+func (f *FabridManager) addPolicy(pol *config.FABRIDPolicy) error {
 	policyIdx := uint8(f.autoIncrIndex)
 	f.autoIncrIndex++
 
@@ -145,14 +146,6 @@ func (f *FabridManager) parseAndAdd(path string, fi os.FileInfo, err error) erro
 	return nil
 }
 
-func parseFABRIDYAMLPolicy(b []byte) (*config.FABRIDPolicy, error) {
-	p := &config.FABRIDPolicy{}
-	if err := yaml.UnmarshalStrict(b, p); err != nil {
-		return nil, serrors.WrapStr("Unable to parse policy", err)
-	}
-	return p, nil
-}
-
 func createConnectionPoint(connection config.FABRIDConnectionPoint) (fabrid_ext.ConnectionPoint,
 	error) {
 	if connection.Type == fabrid_ext.Interface {
@@ -164,7 +157,6 @@ func createConnectionPoint(connection config.FABRIDConnectionPoint) (fabrid_ext.
 		return fabrid_ext.IPConnectionPointFromString(connection.IPAddress,
 			uint32(connection.Prefix), connection.Type), nil
 	} else if connection.Type == fabrid_ext.Wildcard {
-		//TODO(jvanbommel): explicit wildcard or intf 0 = wildcard?
 		return fabrid_ext.ConnectionPoint{
 			Type: fabrid_ext.Wildcard,
 		}, nil
