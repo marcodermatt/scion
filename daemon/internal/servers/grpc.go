@@ -382,6 +382,49 @@ func (s *DaemonServer) notifyInterfaceDown(ctx context.Context,
 	return &sdpb.NotifyInterfaceDownResponse{}, nil
 }
 
+func (s *DaemonServer) FabridKeys(ctx context.Context, req *pb_daemon.FabridKeysRequest,
+) (*pb_daemon.FabridKeysResponse, error) {
+	if s.DRKeyClient == nil {
+		return nil, serrors.New("DRKey is not available")
+	}
+	pathASes := make([]addr.IA, 0, len(req.PathAses))
+	for _, as := range req.PathAses {
+		pathASes = append(pathASes, addr.IA(as))
+	}
+	resp, err := s.DRKeyClient.FabridKeys(ctx, drkey.FabridKeysMeta{
+		SrcAS:    s.DRKeyClient.IA,
+		SrcHost:  req.SrcHost,
+		DstHost:  req.DstHost,
+		PathASes: pathASes,
+		DstAS:    addr.IA(req.DstAs),
+	})
+	if err != nil {
+		return nil, serrors.WrapStr("getting fabrid keys from client store", err)
+	}
+	fabridKeys := make([]*pb_daemon.FabridKeyResponse, 0, len(resp.ASHostKeys))
+	for i := range resp.ASHostKeys {
+		key := resp.ASHostKeys[i]
+		fabridKeys = append(fabridKeys, &sdpb.FabridKeyResponse{
+			EpochBegin: &timestamppb.Timestamp{Seconds: key.Epoch.NotBefore.Unix()},
+			EpochEnd:   &timestamppb.Timestamp{Seconds: key.Epoch.NotAfter.Unix()},
+			Key:        key.Key[:],
+		})
+	}
+
+	var hostHostKey *sdpb.FabridKeyResponse = nil
+	if req.DstHost != nil {
+		hostHostKey = &sdpb.FabridKeyResponse{
+			EpochBegin: &timestamppb.Timestamp{Seconds: resp.PathKey.Epoch.NotBefore.Unix()},
+			EpochEnd:   &timestamppb.Timestamp{Seconds: resp.PathKey.Epoch.NotAfter.Unix()},
+			Key:        resp.PathKey.Key[:],
+		}
+	}
+	return &pb_daemon.FabridKeysResponse{
+		AsHostKeys:  fabridKeys,
+		HostHostKey: hostHostKey,
+	}, nil
+}
+
 func (s *DaemonServer) DRKeyASHost(
 	ctx context.Context,
 	req *pb_daemon.DRKeyASHostRequest,

@@ -42,6 +42,8 @@ service DaemonService {
     rpc DRKeyHostAS (DRKeyHostASRequest) returns (DRKeyHostASResponse) {}
     // DRKeyHostHost returns a key that matches the request.
     rpc DRKeyHostHost (DRKeyHostHostRequest) returns (DRKeyHostHostResponse) {}
+
+    rpc FabridKeys (FabridKeysRequest) returns (FabridKeysResponse) {}
 }
 
 message PathsRequest {
@@ -126,6 +128,27 @@ message FabridPolicy {
     proto.control_plane.experimental.v1.FABRIDPolicyIdentifier policy_identifier = 1;
     // The local index, this may differ between similar policy identifiers, as it is specific to a hop.
     uint32 policy_index = 2;
+}
+
+message FabridKeysRequest {
+    string src_host = 1;
+    uint64 dst_as = 2;
+    repeated uint64 path_ases = 3;
+    optional string dst_host = 4;
+}
+
+message FabridKeyResponse {
+    // Begin of validity period of DRKey.
+    google.protobuf.Timestamp epoch_begin = 1;
+    // End of validity period of DRKey.
+    google.protobuf.Timestamp epoch_end = 2;
+    // Level2 key.
+    bytes key = 3;
+}
+
+message FabridKeysResponse {
+    repeated FabridKeyResponse  asHostKeys = 1;
+    optional FabridKeyResponse hostHostKey = 2;
 }
 
 message EpicAuths {

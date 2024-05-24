@@ -16,7 +16,6 @@ package path
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/scionproto/scion/pkg/addr"
@@ -39,10 +38,9 @@ type FabridConfig struct {
 
 type FABRID struct {
 	Raw              []byte
-	keys             map[addr.IA]*drkey.ASHostKey
-	pathKey          drkey.HostHostKey
-	drkeyFn          func(context.Context, drkey.ASHostMeta) (drkey.ASHostKey, error)
-	drkeyPathFn      func(context.Context, drkey.HostHostMeta) (drkey.HostHostKey, error)
+	keys             map[addr.IA]*drkey.FabridKey
+	pathKey          drkey.FabridKey
+	getFabridKeys    func(context.Context, drkey.FabridKeysMeta) (drkey.FabridKeysResponse, error)
 	conf             *FabridConfig
 	counter          uint32
 	baseTimestamp    uint32
@@ -64,7 +62,7 @@ func NewFABRIDDataplanePath(p SCION, hops []snet.HopInterface, policyIDs []*fabr
 	//TODO(jvanbommel) How was this remove hops introduced by crossovers even supposed to work?
 	// Decreasing the numHops would still add the hops to ingresses and egresses of crossovers
 	// in the middle of the path, and even cut out the end of the path. What did I miss?
-	keys := make(map[addr.IA]*drkey.ASHostKey, numHops)
+	keys := make(map[addr.IA]*drkey.FabridKey)
 	if len(policyIDs) == 0 { // If no policies are provided, use empty policy for all hops
 		policyIDs = make([]*fabrid.PolicyID, numHops)
 	} else if len(policyIDs) != numHops {
@@ -86,19 +84,17 @@ func NewFABRIDDataplanePath(p SCION, hops []snet.HopInterface, policyIDs []*fabr
 	// Get ingress/egress IFs and IAs from path interfaces
 	for i, hop := range hops {
 		if policyIDs[i] != nil {
-			f.keys[hop.IA] = &drkey.ASHostKey{}
+			f.keys[hop.IA] = &drkey.FabridKey{}
 		}
 	}
 	f.baseTimestamp = decoded.InfoFields[0].Timestamp
 	return f, nil
 }
 
-func (f *FABRID) RegisterDRKeyFetcher(fn func(context.Context,
-	drkey.ASHostMeta) (drkey.ASHostKey, error),
-	fn2 func(context.Context, drkey.HostHostMeta) (drkey.HostHostKey, error)) {
+func (f *FABRID) RegisterDRKeyFetcher(
+	getFabridKeys func(context.Context, drkey.FabridKeysMeta) (drkey.FabridKeysResponse, error)) {
 
-	f.drkeyFn = fn
-	f.drkeyPathFn = fn2
+	f.getFabridKeys = getFabridKeys
 }
 
 func (f *FABRID) SetPath(s *slayers.SCION) error {
@@ -115,6 +111,9 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 	}
 	if p == nil {
 		return serrors.New("packet info is nil")
+	}
+	if f.getFabridKeys == nil {
+		return serrors.New("drkey not correctly configured")
 	}
 	if p.HbhExtension == nil {
 		p.HbhExtension = &slayers.HopByHopExtn{}
@@ -176,61 +175,42 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 	return nil
 }
 
+// This function iterates over all on-path ASes and checks whether the keys are still valid.
+// If it finds expired keys it markes them as expired and renews all expired keys at once.
 func (f *FABRID) renewExpiredKeys(t time.Time) error {
+	var expiredAses []addr.IA = nil
 	for ia, key := range f.keys {
 		if key.Epoch.NotAfter.Before(t) {
-			// key is expired, renew it
-			newKey, err := f.fetchKey(t, ia)
-			if err != nil {
-				f.keys[ia] = nil
-				fmt.Println("Error while fetching drkey for AS", ia)
-				continue
+			// key is expired, mark as expired
+			if expiredAses == nil {
+				expiredAses = make([]addr.IA, 0, len(f.keys))
 			}
-			fmt.Println("Successfully fetched drkey for AS", ia)
-			f.keys[ia] = &newKey
+			expiredAses = append(expiredAses, ia)
 		}
-
 	}
-	if f.pathKey.Epoch.NotAfter.Before(t) {
-		// key is expired, renew it
-		newKey, err := f.fetchPathKey(t)
+	isPathKeyExpired := f.pathKey.Epoch.NotAfter.Before(t)
+	if expiredAses != nil || isPathKeyExpired {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		meta := drkey.FabridKeysMeta{
+			SrcAS:    f.conf.LocalIA,
+			SrcHost:  f.conf.LocalAddr,
+			PathASes: expiredAses,
+			DstAS:    f.conf.DestinationIA,
+		}
+		if isPathKeyExpired {
+			meta.DstHost = &f.conf.DestinationAddr
+		}
+		keys, err := f.getFabridKeys(ctx, meta)
 		if err != nil {
 			return err
 		}
-		f.pathKey = newKey
+		if isPathKeyExpired {
+			f.pathKey = keys.PathKey
+		}
+		for i := range keys.ASHostKeys {
+			f.keys[keys.ASHostKeys[i].AS] = &keys.ASHostKeys[i]
+		}
 	}
 	return nil
-}
-
-func (f *FABRID) fetchPathKey(t time.Time) (drkey.HostHostKey, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	key, err := f.drkeyPathFn(ctx, drkey.HostHostMeta{
-		Validity: t,
-		SrcIA:    f.conf.DestinationIA,
-		SrcHost:  f.conf.DestinationAddr,
-		DstIA:    f.conf.LocalIA,
-		DstHost:  f.conf.LocalAddr,
-		ProtoId:  drkey.FABRID,
-	})
-	if err != nil {
-		return drkey.HostHostKey{}, err
-	}
-	return key, nil
-}
-
-func (f *FABRID) fetchKey(t time.Time, ia addr.IA) (drkey.ASHostKey, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	key, err := f.drkeyFn(ctx, drkey.ASHostMeta{
-		Validity: t,
-		SrcIA:    ia,
-		DstIA:    f.conf.LocalIA,
-		DstHost:  f.conf.LocalAddr,
-		ProtoId:  drkey.FABRID,
-	})
-	if err != nil {
-		return drkey.ASHostKey{}, err
-	}
-	return key, nil
 }

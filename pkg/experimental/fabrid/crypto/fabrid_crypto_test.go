@@ -119,8 +119,8 @@ func TestSuccessfullValidators(t *testing.T) {
 							ASLevelKey:        rand.Intn(2) == 0,
 						})
 					pathKey := generateRandomBytes(16)
-					asHostKeys := make(map[addr.IA]*drkey.ASHostKey)
-					asAsKeys := make(map[addr.IA]drkey.Level1Key)
+					asHostKeys := make(map[addr.IA]*drkey.FabridKey)
+					asAsKeys := make(map[addr.IA]drkey.FabridKey)
 					hops := make([]snet.HopInterface, len(f.HopfieldMetadata))
 					//ingresses := []uint16{}
 					//egresses := []uint16{}
@@ -139,9 +139,9 @@ func TestSuccessfullValidators(t *testing.T) {
 						keyBytes := drkey.Key{}
 						copy(keyBytes[:], generateRandomBytes(16))
 						if f.HopfieldMetadata[i].ASLevelKey {
-							asAsKeys[hops[i].IA] = drkey.Level1Key{Key: keyBytes}
+							asAsKeys[hops[i].IA] = drkey.FabridKey{Key: keyBytes}
 						} else {
-							asHostKeys[hops[i].IA] = &drkey.ASHostKey{Key: keyBytes}
+							asHostKeys[hops[i].IA] = &drkey.FabridKey{Key: keyBytes}
 						}
 					}
 

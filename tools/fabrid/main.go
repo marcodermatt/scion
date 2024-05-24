@@ -450,56 +450,7 @@ func (c *client) attemptRequest(n int) bool {
 				return false
 			}
 			remote.Path = fabridPath
-			servicesInfo, err := c.sdConn.SVCInfo(ctx, []addr.SVC{addr.SvcCS})
-			if err != nil {
-				logger.Error("Error getting services", "err", err)
-				return false
-			}
-			controlServiceInfo := servicesInfo[addr.SvcCS][0]
-			localAddr := &net.TCPAddr{
-				IP:   integration.Local.Host.IP,
-				Port: 0,
-			}
-			controlAddr, err := net.ResolveTCPAddr("tcp", controlServiceInfo)
-			if err != nil {
-				logger.Error("Error resolving CS", "err", err)
-				return false
-			}
-
-			dialer := func(ctx context.Context, addr string) (net.Conn, error) {
-				return net.DialTCP("tcp", localAddr, controlAddr)
-			}
-			grpcconn, err := grpc.DialContext(ctx, controlServiceInfo,
-				grpc.WithInsecure(), grpc.WithContextDialer(dialer))
-			if err != nil {
-				logger.Error("Error connecting to CS", "err", err)
-				return false
-			}
-			defer grpcconn.Close()
-			drkeyClient := drpb.NewDRKeyIntraServiceClient(grpcconn)
-			fabridPath.RegisterDRKeyFetcher(func(ctx context.Context,
-				meta drkey.ASHostMeta) (drkey.ASHostKey, error) {
-				rep, err := drkeyClient.DRKeyASHost(ctx, drhelper.AsHostMetaToProtoRequest(meta))
-				if err != nil {
-					return drkey.ASHostKey{}, err
-				}
-				key, err := drhelper.GetASHostKeyFromReply(rep, meta)
-				if err != nil {
-					return drkey.ASHostKey{}, err
-				}
-				return key, nil
-			}, func(ctx context.Context, meta drkey.HostHostMeta) (drkey.HostHostKey, error) {
-				rep, err := drkeyClient.DRKeyHostHost(ctx, drhelper.HostHostMetaToProtoRequest(
-					meta))
-				if err != nil {
-					return drkey.HostHostKey{}, err
-				}
-				key, err := drhelper.GetHostHostKeyFromReply(rep, meta)
-				if err != nil {
-					return drkey.HostHostKey{}, err
-				}
-				return key, nil
-			})
+			fabridPath.RegisterDRKeyFetcher(c.sdConn.FabridKeys)
 
 		}
 	}

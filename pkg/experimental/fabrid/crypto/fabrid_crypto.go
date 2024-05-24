@@ -178,8 +178,8 @@ func VerifyPathValidator(f *ext.FabridOption, tmpBuffer []byte, pathKey []byte) 
 // InitValidators sets all HVFs of the FABRID option and computes the
 // path validator.
 func InitValidators(f *ext.FabridOption, id *ext.IdentifierOption, s *slayers.SCION,
-	tmpBuffer []byte, pathKey []byte, asHostKeys map[addr.IA]*drkey.ASHostKey,
-	asAsKeys map[addr.IA]drkey.Level1Key, hops []snet.HopInterface) error {
+	tmpBuffer []byte, pathKey []byte, asHostKeys map[addr.IA]*drkey.FabridKey,
+	asAsKeys map[addr.IA]drkey.FabridKey, hops []snet.HopInterface) error {
 
 	outBuffer := make([]byte, 16)
 	pathValInputLength := 3 * len(f.HopfieldMetadata)

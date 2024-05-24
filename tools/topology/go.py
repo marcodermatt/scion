@@ -92,6 +92,9 @@ class GoGenerator(object):
             'features': translate_features(self.args.features),
             'api': {
                 'addr': prom_addr(v['internal_addr'], DEFAULT_BR_PROM_PORT+700)
+            },
+            "router": {
+                'use_drkey': True
             }
         }
         return raw_entry
@@ -110,6 +113,9 @@ class GoGenerator(object):
 
     def _build_control_service_conf(self, topo_id, ia, base, name, infra_elem, ca):
         config_dir = '/share/conf' if self.args.docker else base
+        borderRouterInternalIPs = []
+        for _, v in self.args.topo_dicts[topo_id].get("border_routers", {}).items():
+            borderRouterInternalIPs.append(v['internal_addr'].rsplit(':', 1)[0].strip('[]'))
         raw_entry = {
             'general': {
                 'id': name,
@@ -130,7 +136,19 @@ class GoGenerator(object):
             'metrics': self._metrics_entry(infra_elem, CS_PROM_PORT),
             'api': self._api_entry(infra_elem, CS_PROM_PORT+700),
             'features': translate_features(self.args.features),
+            'drkey': {
+                'level1_db': {
+                    'connection': os.path.join(self.db_dir, '%s.drkey-level1.db' % name),
+                },
+                'secret_value_db': {
+                    'connection': os.path.join(self.db_dir, '%s.drkey-secret.db' % name),
+                },
+                'delegation': {
+                    'FABRID': borderRouterInternalIPs,
+                }
+            },
         }
+        
         if ca:
             raw_entry['ca'] = {'mode': 'in-process'}
         return raw_entry
@@ -168,7 +186,10 @@ class GoGenerator(object):
             'features': translate_features(self.args.features),
             'api': {
                 'addr': socket_address_str(ip, SD_API_PORT+700),
-            }
+            },
+            'drkey_level2_db': {
+                'connection': os.path.join(self.db_dir, '%s.drkey_level2.db' % name),
+            },
         }
         return raw_entry
 
