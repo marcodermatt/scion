@@ -37,7 +37,6 @@ import (
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
-	"github.com/scionproto/scion/pkg/drkey/specific"
 	libepic "github.com/scionproto/scion/pkg/experimental/epic"
 	"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
 	"github.com/scionproto/scion/pkg/log"
@@ -99,24 +98,22 @@ type BatchConn interface {
 // Currently, only the following features are supported:
 //   - initializing connections; MUST be done prior to calling Run
 type DataPlane struct {
-	interfaces       map[uint16]BatchConn
-	external         map[uint16]BatchConn
-	linkTypes        map[uint16]topology.LinkType
-	neighborIAs      map[uint16]addr.IA
-	peerInterfaces   map[uint16]uint16
-	internal         BatchConn
-	internalIP       netip.Addr
-	internalNextHops map[uint16]*net.UDPAddr
-	svc              *services
-	macFactory       func() hash.Hash
-	bfdSessions      map[uint16]bfdSession
-	localIA          addr.IA
-	mtx              sync.Mutex
-	running          bool
-	Metrics          *Metrics
-	drKeySecrets     [][2]*control.SecretValue
-	// determines whether index 0 or index 1 should be overwritten next
-	drKeySecretNextOverwrite []uint8
+	interfaces               map[uint16]BatchConn
+	external                 map[uint16]BatchConn
+	linkTypes                map[uint16]topology.LinkType
+	neighborIAs              map[uint16]addr.IA
+	peerInterfaces           map[uint16]uint16
+	internal                 BatchConn
+	internalIP               netip.Addr
+	internalNextHops         map[uint16]*net.UDPAddr
+	svc                      *services
+	macFactory               func() hash.Hash
+	bfdSessions              map[uint16]bfdSession
+	localIA                  addr.IA
+	mtx                      sync.Mutex
+	running                  bool
+	Metrics                  *Metrics
+	drKeyProvider            *control.DRKeyProvider
 	fabridPolicyIPRangeMap   map[uint32][]*control.PolicyIPRange
 	fabridPolicyInterfaceMap map[uint64]uint32
 	forwardingMetrics        map[uint16]interfaceMetrics
@@ -153,7 +150,6 @@ var (
 	macVerificationFailed         = errors.New("MAC verification failed")
 	badPacketSize                 = errors.New("bad packet size")
 	slowPathRequired              = errors.New("slow-path required")
-	drKeySecretInvalid            = errors.New("no valid drkey secret for provided time period")
 
 	// zeroBuffer will be used to reset the Authenticator option in the
 	// scionPacketProcessor.OptAuth
@@ -185,47 +181,6 @@ func (d *DataPlane) SetIA(ia addr.IA) error {
 	}
 	d.localIA = ia
 	return nil
-}
-
-func (d *DataPlane) initializeDRKey() {
-	d.drKeySecrets = make([][2]*control.SecretValue, 3)
-	for i := 0; i < 3; i++ {
-		d.drKeySecrets[i] = [2]*control.SecretValue{
-			{},
-			{},
-		}
-	}
-	d.drKeySecretNextOverwrite = make([]uint8, 3)
-}
-
-func (d *DataPlane) AddDRKeySecret(protocolID int32, sv control.SecretValue) error {
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-	if d.drKeySecrets == nil {
-		d.initializeDRKey()
-	}
-
-	if int(protocolID) > len(d.drKeySecrets) {
-		return serrors.New("Error while adding a new drkey. ProtocolID too large",
-			"protocolID", protocolID)
-	}
-	nextOverwrite := d.drKeySecretNextOverwrite[protocolID]
-	d.drKeySecrets[protocolID][nextOverwrite] = &sv
-	log.Debug("Registered new DRKey", "protocol", protocolID, "from", sv.EpochBegin,
-		"to", sv.EpochEnd)
-	// switch nextOverwrite from 0 to 1 or from 1 to 0
-	d.drKeySecretNextOverwrite[protocolID] = 1 - nextOverwrite
-	return nil
-}
-
-func (d *DataPlane) getDRKeySecret(protocolID int32, t time.Time) (*control.SecretValue, error) {
-	secrets := d.drKeySecrets[protocolID]
-	for _, sv := range secrets {
-		if t.After(sv.EpochBegin) && sv.EpochEnd.After(t) {
-			return sv, nil
-		}
-	}
-	return nil, drKeySecretInvalid
 }
 
 // SetKey sets the key used for MAC verification. The key provided here should
@@ -566,9 +521,12 @@ func (d *DataPlane) Run(ctx context.Context, cfg *RunConfig) error {
 	d.mtx.Lock()
 	d.running = true
 	d.initMetrics()
-	if d.drKeySecrets == nil {
-		d.initializeDRKey()
+
+	if d.drKeyProvider == nil {
+		d.drKeyProvider = &control.DRKeyProvider{}
+		d.drKeyProvider.Init()
 	}
+
 	processorQueueSize := max(
 		len(d.interfaces)*cfg.BatchSize/cfg.NumProcessors,
 		cfg.BatchSize)
@@ -1123,39 +1081,6 @@ func (p *scionPacketProcessor) reset() error {
 	return nil
 }
 
-var nullByte = [16]byte{}
-
-func (dp *DataPlane) deriveASToASKey(protocolID int32, t time.Time, srcAS addr.IA) ([16]byte,
-	error) {
-
-	d := specific.Deriver{}
-	secret, err := dp.getDRKeySecret(protocolID, t)
-	if err != nil {
-		return nullByte, err
-	}
-	asToAsKey, err := d.DeriveLevel1(srcAS, secret.Key)
-	if err != nil {
-		return nullByte, err
-	}
-	return asToAsKey, nil
-}
-
-func (dp *DataPlane) deriveASToHostKey(protocolID int32, t time.Time, srcAS addr.IA, src string) (
-	[16]byte, error) {
-
-	d := specific.Deriver{}
-	asToAsKey, err := dp.deriveASToASKey(protocolID, t, srcAS)
-	if err != nil {
-		return nullByte, err
-	}
-	asToHostKey, err := d.DeriveASHost(src, asToAsKey)
-	if err != nil {
-		return nullByte, err
-	}
-
-	return asToHostKey, nil
-}
-
 func (p *scionPacketProcessor) processFabrid(egressIF uint16) error {
 	meta := p.fabrid.HopfieldMetadata[0]
 	src, err := p.scionLayer.SrcAddr()
@@ -1164,10 +1089,10 @@ func (p *scionPacketProcessor) processFabrid(egressIF uint16) error {
 	}
 	var key [16]byte
 	if p.fabrid.HopfieldMetadata[0].ASLevelKey {
-		key, err = p.d.deriveASToASKey(int32(drkey.FABRID), p.identifier.Timestamp,
+		key, err = p.d.drKeyProvider.DeriveASASKey(int32(drkey.FABRID), p.identifier.Timestamp,
 			p.scionLayer.SrcIA)
 	} else {
-		key, err = p.d.deriveASToHostKey(int32(drkey.FABRID), p.identifier.Timestamp,
+		key, err = p.d.drKeyProvider.DeriveASHostKey(int32(drkey.FABRID), p.identifier.Timestamp,
 			p.scionLayer.SrcIA, src.String())
 	}
 	if err != nil {

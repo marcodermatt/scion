@@ -176,7 +176,7 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 }
 
 // This function iterates over all on-path ASes and checks whether the keys are still valid.
-// If it finds expired keys it markes them as expired and renews all expired keys at once.
+// If it finds expired keys it marks them as expired and renews all expired keys at once.
 func (f *FABRID) renewExpiredKeys(t time.Time) error {
 	var expiredAses []addr.IA = nil
 	for ia, key := range f.keys {

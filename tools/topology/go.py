@@ -93,8 +93,8 @@ class GoGenerator(object):
             'api': {
                 'addr': prom_addr(v['internal_addr'], DEFAULT_BR_PROM_PORT+700)
             },
-            "router": {
-                'use_drkey': True
+            'router': {
+                'drkey': ["FABRID"]
             }
         }
         return raw_entry
@@ -148,7 +148,7 @@ class GoGenerator(object):
                 }
             },
         }
-        
+
         if ca:
             raw_entry['ca'] = {'mode': 'in-process'}
         return raw_entry

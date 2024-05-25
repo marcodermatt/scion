@@ -25,6 +25,7 @@ import (
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/private/topology"
+	"github.com/scionproto/scion/router/control"
 )
 
 var metrics = NewMetrics()
@@ -92,10 +93,18 @@ func ExtractServices(s *services) map[addr.SVC][]*net.UDPAddr {
 
 func (d *DataPlane) DeriveASToHostKey(protocolID int32, t time.Time,
 	srcAddr addr.IA, src string) ([16]byte, error) {
-	return d.deriveASToHostKey(protocolID, t, srcAddr, src)
+	return d.drKeyProvider.DeriveASHostKey(protocolID, t, srcAddr, src)
 }
 
 func DecodeLayers(data []byte, base gopacket.DecodingLayer,
 	opts ...gopacket.DecodingLayer) (gopacket.DecodingLayer, error) {
 	return decodeLayers(data, base, opts...)
+}
+
+func (d *DataPlane) AddDRKeySecret(protocolID int32, sv control.SecretValue) error {
+	if d.drKeyProvider == nil {
+		d.drKeyProvider = &control.DRKeyProvider{}
+		d.drKeyProvider.Init()
+	}
+	return d.drKeyProvider.AddSecret(protocolID, sv)
 }

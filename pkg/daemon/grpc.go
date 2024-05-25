@@ -218,7 +218,9 @@ func (c grpcConn) DRKeyGetHostHostKey(ctx context.Context,
 }
 
 // Returns all the ASHost DRKeys for the ASes inside the meta.PathAS
-func (c grpcConn) FabridKeys(ctx context.Context, meta drkey.FabridKeysMeta) (drkey.FabridKeysResponse, error) {
+func (c grpcConn) FabridKeys(ctx context.Context, meta drkey.FabridKeysMeta,
+) (drkey.FabridKeysResponse, error) {
+
 	client := sdpb.NewDaemonServiceClient((c.conn))
 	pathASes := make([]uint64, 0, len(meta.PathASes))
 	for i := 0; i < len(meta.PathASes); i++ {

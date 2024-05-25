@@ -22,11 +22,12 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/scionproto/scion/pkg/drkey"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
-	drpb "github.com/scionproto/scion/pkg/proto/control_plane"
+	cppb "github.com/scionproto/scion/pkg/proto/control_plane"
 	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
-	"github.com/scionproto/scion/pkg/proto/drkey"
+	drpb "github.com/scionproto/scion/pkg/proto/drkey"
 )
 
 type SecretValue struct {
@@ -136,22 +137,36 @@ func (f *Fetcher) queryFabridPolicies() (*experimental.MPLSMapResponse, error) {
 	return rep, err
 }
 
-func (f *Fetcher) StartSecretUpdater() {
+func (f *Fetcher) StartSecretUpdater(protocols []string) {
 	retryAfterErrorDuration := 10 * time.Second
-	for {
-		sv, err := f.queryASSecret(drkey.Protocol_PROTOCOL_FABRID)
-		if err != nil {
-			log.Debug("Error while querying secret value from local control service", "err", err)
-			time.Sleep(retryAfterErrorDuration)
-			continue
+	runProtocol := func(protocolID drkey.Protocol) {
+		for {
+			sv, err := f.queryASSecret(protocolID)
+			if err != nil {
+				log.Debug("Error while querying secret value from local control service",
+					"err", err)
+				time.Sleep(retryAfterErrorDuration)
+				continue
+			}
+			err = f.dp.AddDRKeySecret(int32(protocolID), sv)
+			if err != nil {
+				log.Debug("Error while adding drkey", "err", err)
+				time.Sleep(retryAfterErrorDuration)
+				continue
+			}
+			sleepTime := max(time.Until(sv.EpochEnd)-2*time.Minute, retryAfterErrorDuration)
+			time.Sleep(sleepTime)
 		}
-		err = f.dp.AddDRKeySecret(int32(drkey.Protocol_PROTOCOL_FABRID), sv)
-		if err != nil {
-			log.Debug("Error while adding drkey", "err", err)
-			time.Sleep(retryAfterErrorDuration)
-			continue
+	}
+	for _, p := range protocols {
+		pID, ok := drkey.ProtocolStringToId("PROTOCOL_" + p)
+		if ok {
+			log.Debug("Register DRKey secret fetcher for", "protocol", p)
+			go func(protocol drkey.Protocol) {
+				defer log.HandlePanic()
+				runProtocol(protocol)
+			}(pID)
 		}
-		time.Sleep(time.Until(sv.EpochEnd) - 5*time.Minute)
 	}
 }
 
@@ -169,10 +184,10 @@ func (f *Fetcher) queryASSecret(
 		return SecretValue{}, err
 	}
 	defer grpcconn.Close()
-	client := drpb.NewDRKeyIntraServiceClient(grpcconn)
-	req := &drpb.DRKeySecretValueRequest{
-		ProtocolId: protocolID,
-		ValTime:    timestamppb.New(time.Now().Add(1 * time.Hour)),
+	client := cppb.NewDRKeyIntraServiceClient(grpcconn)
+	req := &cppb.DRKeySecretValueRequest{
+		ProtocolId: drpb.Protocol(protocolID),
+		ValTime:    timestamppb.New(time.Now()),
 	}
 	res, err := client.DRKeySecretValue(ctx, req)
 	if err != nil {

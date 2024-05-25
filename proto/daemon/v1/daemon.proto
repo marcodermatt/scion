@@ -42,7 +42,7 @@ service DaemonService {
     rpc DRKeyHostAS (DRKeyHostASRequest) returns (DRKeyHostASResponse) {}
     // DRKeyHostHost returns a key that matches the request.
     rpc DRKeyHostHost (DRKeyHostHostRequest) returns (DRKeyHostHostResponse) {}
-
+    // FabridKeys returns the DRKeys for FABRID
     rpc FabridKeys (FabridKeysRequest) returns (FabridKeysResponse) {}
 }
 
@@ -131,9 +131,13 @@ message FabridPolicy {
 }
 
 message FabridKeysRequest {
+    // The source host
     string src_host = 1;
+    // The destination AS
     uint64 dst_as = 2;
+    // A list of ASes for which the AS-Host Key should be fetched
     repeated uint64 path_ases = 3;
+    // The destination host. Only required if the path key should be fetched too
     optional string dst_host = 4;
 }
 
@@ -147,8 +151,10 @@ message FabridKeyResponse {
 }
 
 message FabridKeysResponse {
-    repeated FabridKeyResponse  asHostKeys = 1;
-    optional FabridKeyResponse hostHostKey = 2;
+    // The FABRID AS-Host DRKeys
+    repeated FabridKeyResponse as_host_keys = 1;
+    // The FABRID path key
+    optional FabridKeyResponse host_host_key = 2;
 }
 
 message EpicAuths {
