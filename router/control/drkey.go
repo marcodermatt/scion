@@ -23,6 +23,7 @@ import (
 	"github.com/scionproto/scion/pkg/drkey/specific"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
+	pb "github.com/scionproto/scion/pkg/proto/drkey"
 )
 
 const pastValidity time.Duration = time.Second * 5
@@ -44,14 +45,15 @@ func (d *DRKeyProvider) Init() {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	log.Debug("Initialize DRKey provider")
-	d.drKeySecrets = make([][2]*SecretValue, 3)
-	for i := 0; i < 3; i++ {
+	numDRKeyProtocols := len(pb.Protocol_value)
+	d.drKeySecrets = make([][2]*SecretValue, numDRKeyProtocols)
+	for i := 0; i < numDRKeyProtocols; i++ {
 		d.drKeySecrets[i] = [2]*SecretValue{
 			{},
 			{},
 		}
 	}
-	d.drKeySecretNextOverwrite = make([]uint8, 3)
+	d.drKeySecretNextOverwrite = make([]uint8, numDRKeyProtocols)
 }
 
 func (d *DRKeyProvider) AddSecret(protocolID int32, sv SecretValue) error {

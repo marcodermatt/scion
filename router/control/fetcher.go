@@ -138,24 +138,34 @@ func (f *Fetcher) queryFabridPolicies() (*experimental.MPLSMapResponse, error) {
 }
 
 func (f *Fetcher) StartSecretUpdater(protocols []string) {
-	retryAfterErrorDuration := 10 * time.Second
+	retryAfterErrorDuration := 5 * time.Second
+	prefetchTime := time.Minute * 3
 	runProtocol := func(protocolID drkey.Protocol) {
+		// First we make sure that we have a secret that is valid now.
+		// After that we start prefetching. In case we initially receive a secret value
+		// that expires before the prefetch time, we prefetch the new secret value immediately.
+		isPrefetching := false
 		for {
-			sv, err := f.queryASSecret(protocolID)
+			t := time.Now()
+			if isPrefetching {
+				t = t.Add(prefetchTime)
+			}
+			sv, err := f.queryASSecret(protocolID, t)
 			if err != nil {
 				log.Debug("Error while querying secret value from local control service",
-					"err", err)
+					"protocol", protocolID, "err", err)
 				time.Sleep(retryAfterErrorDuration)
 				continue
 			}
 			err = f.dp.AddDRKeySecret(int32(protocolID), sv)
 			if err != nil {
-				log.Debug("Error while adding drkey", "err", err)
+				log.Debug("Error while adding drkey", "protocol", protocolID, "err", err)
 				time.Sleep(retryAfterErrorDuration)
 				continue
 			}
-			sleepTime := max(time.Until(sv.EpochEnd)-2*time.Minute, retryAfterErrorDuration)
+			sleepTime := max(time.Until(sv.EpochEnd)-prefetchTime, 0)
 			time.Sleep(sleepTime)
+			isPrefetching = true
 		}
 	}
 	for _, p := range protocols {
@@ -171,7 +181,7 @@ func (f *Fetcher) StartSecretUpdater(protocols []string) {
 }
 
 func (f *Fetcher) queryASSecret(
-	protocolID drkey.Protocol) (SecretValue, error) {
+	protocolID drkey.Protocol, minValStart time.Time) (SecretValue, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -187,7 +197,7 @@ func (f *Fetcher) queryASSecret(
 	client := cppb.NewDRKeyIntraServiceClient(grpcconn)
 	req := &cppb.DRKeySecretValueRequest{
 		ProtocolId: drpb.Protocol(protocolID),
-		ValTime:    timestamppb.New(time.Now()),
+		ValTime:    timestamppb.New(minValStart),
 	}
 	res, err := client.DRKeySecretValue(ctx, req)
 	if err != nil {
