@@ -18,13 +18,13 @@ import (
 	"fmt"
 
 	"github.com/scionproto/scion/pkg/experimental/fabrid"
-	"github.com/scionproto/scion/pkg/snet"
 )
 
 type MatchList struct {
 	SelectedPolicies []*Policy
 }
 
+// Copy creates a deep copy of the MatchList object, including the list of selected policies.
 func (ml MatchList) Copy() *MatchList {
 	duplicate := make([]*Policy, len(ml.SelectedPolicies))
 	copy(duplicate, ml.SelectedPolicies)
@@ -41,13 +41,19 @@ func (ml MatchList) StorePolicy(hop int, policy *Policy) {
 // Accepted checks if all hops have at least a policy assigned, which is not the rejection policy
 func (ml MatchList) Accepted() bool {
 	for _, policy := range ml.SelectedPolicies {
-		if policy == nil || policy.Type == REJECT_POLICY_TYPE {
+		if policy != nil && policy.Type == REJECT_POLICY_TYPE {
 			return false
 		}
 	}
 	return true
 }
 
+// Policies returns a slice of PolicyIDs representing the policies used in each hop of the MatchList object.
+// A zero PolicyID is used for a nil selected policy, and a zero or reject PolicyID is used when a wildcard or reject policy is selected.
+// For other policies, the PolicyID is obtained from the selected policy's Policy.Index field.
+// It also prints the index and policy details of each hop to console.
+// The returned slice has the same length as the MatchList.SelectedPolicies slice.
+// func (ml MatchList) Policies() (pols []*fabrid.PolicyID) {}
 func (ml MatchList) Policies() (pols []*fabrid.PolicyID) {
 	pols = make([]*fabrid.PolicyID, len(ml.SelectedPolicies))
 	for i, selected := range ml.SelectedPolicies {
@@ -64,60 +70,4 @@ func (ml MatchList) Policies() (pols []*fabrid.PolicyID) {
 		}
 	}
 	return pols
-}
-
-func (e Expression) Evaluate(pi []snet.HopInterface, ml *MatchList) (bool, *MatchList) {
-	return e.Expressions.Evaluate(pi, ml)
-}
-
-func (e Query) Evaluate(pi []snet.HopInterface, ml *MatchList) (bool, *MatchList) {
-	mlOriginal := ml.Copy()
-	qRes, _ := e.Q.Evaluate(pi, mlOriginal)
-	if qRes {
-		return e.T.Evaluate(pi, ml)
-	}
-	return e.F.Evaluate(pi, ml)
-}
-
-func (e ConcatExpression) Evaluate(pi []snet.HopInterface, ml *MatchList) (bool, *MatchList) {
-	left, mlLeft := e.Left.Evaluate(pi, ml)
-	right, mlRight := e.Right.Evaluate(pi, mlLeft)
-	return left && right, mlRight
-}
-
-func (e Identifier) Evaluate(pi []snet.HopInterface, ml *MatchList) (bool, *MatchList) {
-	matched := false
-	for i, p := range pi {
-		// Check if ISD, AS and intferfaces match between the query and a hop in the path.
-		if !(e.Isd.Matches(p.IA.ISD()) && e.As.Matches(p.IA.AS()) && e.IgIntf.Matches(p.IgIf) &&
-			e.EgIntf.Matches(p.EgIf)) {
-			continue
-		}
-		// If so and the query sets a wildcard or reject policy, assign this and continue evaluating
-		// the query
-		if e.Policy.Type == WILDCARD_POLICY_TYPE || e.Policy.Type == REJECT_POLICY_TYPE {
-			if e.Policy.Type == WILDCARD_POLICY_TYPE && len(p.Policies) > 0 {
-				ml.StorePolicy(i, &e.Policy)
-			}
-			matched = true
-			continue
-		}
-		// Check if the query's policy matches a policy that is available for this hop.
-		for _, pol := range p.Policies {
-			if pol.Identifier == e.Policy.Identifier && e.Policy.Policy.Type == pol.Type {
-
-				ml.StorePolicy(i, &Policy{
-					Type:   STANDARD_POLICY_TYPE,
-					Policy: pol,
-				})
-				matched = true
-			}
-		}
-
-	}
-	return matched, ml
-}
-
-func (n Nop) Evaluate(_ []snet.HopInterface, list *MatchList) (bool, *MatchList) {
-	return true, list
 }

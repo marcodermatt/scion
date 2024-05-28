@@ -17,9 +17,13 @@ package fabridquery
 import (
 	"fmt"
 
+	"github.com/antlr/antlr4/runtime/Go/antlr"
+
+	"github.com/scionproto/scion/antlr/pathpolicyconstraints"
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	"github.com/scionproto/scion/pkg/private/common"
+	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/snet"
 )
 
@@ -93,6 +97,11 @@ func (p Policy) String() string {
 	return "unknown"
 }
 
+type Expressions interface {
+	Evaluate([]snet.HopInterface, *MatchList) (bool, *MatchList)
+	String() string
+}
+
 type Identifier struct {
 	Isd    ISD
 	As     AS
@@ -106,13 +115,47 @@ func (i Identifier) String() string {
 		i.EgIntf, i.Policy)
 }
 
-type Expressions interface {
-	Evaluate([]snet.HopInterface, *MatchList) (bool, *MatchList)
-	String() string
+func (i Identifier) Evaluate(pi []snet.HopInterface, ml *MatchList) (bool, *MatchList) {
+	matched := false
+	for idx, p := range pi {
+		// Check if ISD, AS and interfaces match between the query and a hop in the path.
+		if !(i.Isd.Matches(p.IA.ISD()) && i.As.Matches(p.IA.AS()) && i.IgIntf.Matches(p.IgIf) &&
+			i.EgIntf.Matches(p.EgIf)) {
+			continue
+		}
+		// If so and the query sets a wildcard or reject policy, assign this and continue evaluating
+		// the query
+		if (i.Policy.Type == WILDCARD_POLICY_TYPE && len(p.Policies) > 0) || i.Policy.
+			Type == REJECT_POLICY_TYPE {
+			ml.StorePolicy(idx, &i.Policy)
+		}
+
+		if i.Policy.Type == WILDCARD_POLICY_TYPE || i.Policy.Type == REJECT_POLICY_TYPE {
+			matched = true
+			continue
+		}
+		// Check if the query's policy matches a policy that is available for this hop.
+		for _, pol := range p.Policies {
+			if pol.Identifier == i.Policy.Identifier && i.Policy.Policy.Type == pol.Type {
+
+				ml.StorePolicy(idx, &Policy{
+					Type:   STANDARD_POLICY_TYPE,
+					Policy: pol,
+				})
+				matched = true
+			}
+		}
+
+	}
+	return matched, ml
 }
 
 type Expression struct {
 	Expressions
+}
+
+func (e Expression) Evaluate(pi []snet.HopInterface, ml *MatchList) (bool, *MatchList) {
+	return e.Expressions.Evaluate(pi, ml)
 }
 
 type Query struct {
@@ -125,10 +168,13 @@ func (q Query) String() string {
 	return fmt.Sprintf(" Query { Query %s, True %s, False %s } ", q.Q, q.T, q.F)
 }
 
-type Nop struct{}
-
-func (n Nop) String() string {
-	return "Nop"
+func (q Query) Evaluate(pi []snet.HopInterface, ml *MatchList) (bool, *MatchList) {
+	mlOriginal := ml.Copy()
+	qRes, _ := q.Q.Evaluate(pi, mlOriginal)
+	if qRes {
+		return q.T.Evaluate(pi, ml)
+	}
+	return q.F.Evaluate(pi, ml)
 }
 
 type ConcatExpression struct {
@@ -136,6 +182,44 @@ type ConcatExpression struct {
 	Right Expressions
 }
 
-func (c ConcatExpression) String() string {
-	return fmt.Sprintf(" Concat { Left %s, Right %s } ", c.Left, c.Right)
+func (e ConcatExpression) String() string {
+	return fmt.Sprintf(" Concat { Left %s, Right %s } ", e.Left, e.Right)
+}
+
+func (e ConcatExpression) Evaluate(pi []snet.HopInterface, ml *MatchList) (bool, *MatchList) {
+	left, mlLeft := e.Left.Evaluate(pi, ml)
+	right, mlRight := e.Right.Evaluate(pi, mlLeft)
+	return left && right, mlRight
+}
+
+type Nop struct{}
+
+func (n Nop) String() string {
+	return "Nop"
+}
+
+func (n Nop) Evaluate(_ []snet.HopInterface, list *MatchList) (bool, *MatchList) {
+	return true, list
+}
+
+func ParseFabridQuery(input string) (Expressions, error) {
+	istream := antlr.NewInputStream(input)
+	lexer := pathpolicyconstraints.NewPathPolicyConstraintsLexer(istream)
+	lexer.RemoveErrorListeners()
+	errListener := &errorListener{}
+	lexer.AddErrorListener(errListener)
+	tstream := antlr.NewCommonTokenStream(lexer, antlr.TokenDefaultChannel)
+	parser := pathpolicyconstraints.NewPathPolicyConstraintsParser(tstream)
+	parser.RemoveErrorListeners()
+	parser.AddErrorListener(errListener)
+	listener := pathpolicyConstraintsListener{}
+	antlr.ParseTreeWalkerDefault.Walk(&listener, parser.Start())
+	if errListener.msg != "" || (len(listener.stack) != 1) {
+		return nil, serrors.New(errListener.msg)
+	}
+	expr, ok := listener.stack[0].(Expressions)
+	if !ok {
+		return nil, serrors.New("Not a valid query")
+	}
+	return expr, nil
 }

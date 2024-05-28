@@ -14,4 +14,70 @@
 
 package fabridquery_test
 
-//TODO(jvanbommel):
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
+	"github.com/scionproto/scion/private/path/fabridquery"
+)
+
+func TestAddExistingHop(t *testing.T) {
+	ml := fabridquery.MatchList{SelectedPolicies: make([]*fabridquery.Policy, 5)}
+	polIdx := 1
+	ml.StorePolicy(1, &fabridquery.Policy{
+		Type: fabridquery.STANDARD_POLICY_TYPE,
+		Policy: &fabrid.Policy{
+			Type:       fabrid.GlobalPolicy,
+			Identifier: 100,
+			Index:      fabrid.PolicyID(polIdx),
+		},
+	})
+
+	ml.StorePolicy(1, &fabridquery.Policy{
+		Type: fabridquery.REJECT_POLICY_TYPE,
+	})
+	require.Equal(t, fabrid.PolicyID(polIdx), *ml.Policies()[1])
+}
+
+func TestRejectedHop(t *testing.T) {
+	ml := fabridquery.MatchList{SelectedPolicies: make([]*fabridquery.Policy, 5)}
+	polIdx := 1
+
+	ml.StorePolicy(1, &fabridquery.Policy{
+		Type: fabridquery.REJECT_POLICY_TYPE,
+	})
+	ml.StorePolicy(1, &fabridquery.Policy{
+		Type: fabridquery.STANDARD_POLICY_TYPE,
+		Policy: &fabrid.Policy{
+			Type:       fabrid.GlobalPolicy,
+			Identifier: 100,
+			Index:      fabrid.PolicyID(polIdx),
+		},
+	})
+	require.NotEqual(t, fabrid.PolicyID(polIdx), *ml.Policies()[1])
+	require.False(t, ml.Accepted())
+}
+
+func TestAcceptedHop(t *testing.T) {
+	ml := fabridquery.MatchList{SelectedPolicies: make([]*fabridquery.Policy, 6)}
+	for i := 0; i < 6; i++ {
+		ml.StorePolicy(i, &fabridquery.Policy{
+			Type: fabridquery.STANDARD_POLICY_TYPE,
+			Policy: &fabrid.Policy{
+				Type:       fabrid.GlobalPolicy,
+				Identifier: uint32(100 + i),
+				Index:      fabrid.PolicyID(200 + i),
+			},
+		})
+	}
+	require.True(t, ml.Accepted())
+	for i, pol := range ml.Policies() {
+		require.Equal(t, fabrid.PolicyID(200+i), *pol)
+	}
+}
+
+func TestPolicies(t *testing.T) {
+
+}

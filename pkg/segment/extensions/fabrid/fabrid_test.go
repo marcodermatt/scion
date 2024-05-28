@@ -278,12 +278,12 @@ func TestConnectionPointFromString(t *testing.T) {
 
 func TestDetachedToFromPB(t *testing.T) {
 	tests := map[string]struct {
-		Input    *Detached
-		Expected *experimental.FABRIDDetachedExtension
+		Expected *Detached
+		Input    *experimental.FABRIDDetachedExtension
 	}{
 		"nil": {},
 		"index-identifiers only": {
-			Input: &Detached{
+			Expected: &Detached{
 				SupportedIndicesMap: SupportedIndicesMap{},
 				IndexIdentiferMap: IndexIdentifierMap{
 					2: &PolicyIdentifier{
@@ -300,7 +300,7 @@ func TestDetachedToFromPB(t *testing.T) {
 					},
 				},
 			},
-			Expected: &experimental.FABRIDDetachedExtension{Maps: &experimental.
+			Input: &experimental.FABRIDDetachedExtension{Maps: &experimental.
 				FABRIDDetachableMaps{
 				IndexIdentifierMap: map[uint32]*experimental.FABRIDPolicyIdentifier{
 					2: {
@@ -319,7 +319,7 @@ func TestDetachedToFromPB(t *testing.T) {
 			}},
 		},
 		"index-identifiers and supported indices": {
-			Input: &Detached{
+			Expected: &Detached{
 				SupportedIndicesMap: SupportedIndicesMap{
 					ConnectionPair{
 						Ingress: ConnectionPoint{
@@ -369,7 +369,7 @@ func TestDetachedToFromPB(t *testing.T) {
 					},
 				},
 			},
-			Expected: &experimental.FABRIDDetachedExtension{Maps: &experimental.
+			Input: &experimental.FABRIDDetachedExtension{Maps: &experimental.
 				FABRIDDetachableMaps{
 				SupportedIndicesMap: []*experimental.FABRIDIndexMapEntry{
 					{
@@ -437,9 +437,8 @@ func TestDetachedToFromPB(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			out := DetachedToPB(tc.Input)
-			//todo(jvanbommel): Does not want to work with the pb expected.
-			assert.Equal(t, tc.Input, DetachedFromPB(out))
+			assert.Equal(t, tc.Expected, DetachedFromPB(tc.Input))
+			assert.Equal(t, tc.Expected, DetachedFromPB(DetachedToPB(tc.Expected)))
 		})
 	}
 

@@ -23,7 +23,6 @@ import (
 	"github.com/scionproto/scion/antlr/pathpolicyconstraints"
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/experimental/fabrid"
-	"github.com/scionproto/scion/pkg/private/serrors"
 )
 
 type errorListener struct {
@@ -264,26 +263,4 @@ func (l *pathpolicyConstraintsListener) ExitReject(c *pathpolicyconstraints.Reje
 func (l *pathpolicyConstraintsListener) ExitPolicyIndex(c *pathpolicyconstraints.
 	PolicyIndexContext) {
 	// UNUSED
-}
-
-func ParseFabridQuery(input string) (Expressions, error) {
-	istream := antlr.NewInputStream(input)
-	lexer := pathpolicyconstraints.NewPathPolicyConstraintsLexer(istream)
-	lexer.RemoveErrorListeners()
-	errListener := &errorListener{}
-	lexer.AddErrorListener(errListener)
-	tstream := antlr.NewCommonTokenStream(lexer, antlr.TokenDefaultChannel)
-	parser := pathpolicyconstraints.NewPathPolicyConstraintsParser(tstream)
-	parser.RemoveErrorListeners()
-	parser.AddErrorListener(errListener)
-	listener := pathpolicyConstraintsListener{}
-	antlr.ParseTreeWalkerDefault.Walk(&listener, parser.Start())
-	if errListener.msg != "" || (len(listener.stack) != 1) {
-		return nil, serrors.New(errListener.msg)
-	}
-	expr, ok := listener.stack[0].(Expressions)
-	if !ok {
-		return nil, serrors.New("Not a valid query")
-	}
-	return expr, nil
 }

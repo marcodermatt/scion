@@ -30,7 +30,6 @@ import (
 
 const MaxFabridPolicies = 255
 
-// TODO(jvanbommel): Can probably combine this with PolicyIdentifier
 type RemotePolicyIdentifier struct {
 	ISDAS      uint64
 	Identifier uint32
