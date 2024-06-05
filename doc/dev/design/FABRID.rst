@@ -4,7 +4,7 @@ FABRID
 .. _fabrid-design:
 
 - **Author**: Justin Rohrer, Jelte van Bommel, Marc Odermatt, Marc Wyss, Cyrill Krähenbühl, Juan A. García-Pardo
-- **Last updated**: 2024-05-06
+- **Last updated**: 2024-06-05
 - **Discussion at**: -
 
 Abstract
@@ -99,7 +99,7 @@ iteration, e.g. when adding path validation also for the source endhost.
 Header design
 --------------
 
-The FABRID header design is based on SCION Hop-by-Hop extensions (HBH), in order to allow for incremental deployability.
+The FABRID header design is based on SCION :ref:`Hop-by-Hop extensions <hop-by-hop-options>` (HBH), in order to allow for incremental deployability.
 We define two options, the Identifier option and the FABRID option.
 The Identifier option contains the packet ID and a timestamp, which are used to uniquely identify a packet.
 The FABRID option contains the FABRID hopfield metadata fields and a path validator field.
@@ -219,9 +219,9 @@ These formulas correspond to the previously mentioned FABRID HBH extension field
 
 .. math::
     \begin{align*}
+        &K_i \text{ = DRKey (AS A}_i \rightarrow \text{AS}_0\text{:Endhost) or DRKey (AS A}_i \rightarrow \text{AS}_0)\\\\
         &\text{encryptedPolicyID = policyID} \oplus \text{AES.Encrypt(}K_i\text{, Identifier)[0]}\\\\
         &\text{policyID = encryptedPolicyID} \oplus \text{AES.Encrypt(}K_i\text{, Identifier)[0]}\\\\
-        &K_i \text{ = DRKey (AS A}_i \rightarrow \text{AS}_0\text{:Endhost) or DRKey (AS A}_i \rightarrow \text{AS}_0)\\\\
         &\text{HVF}_i = \text{MAC}_{K_i}\text{(Identifier, ingress}_i\text{, egress}_i\text{, encryptedPolicyID}_i, \\& \text{srcAddrLen, srcHostAddr)[0:3] } \& \text{ 0x3FFFFF}\\\\
         &\text{HVFVerified}_i = \text{MAC}_{K_i}\text{(Identifier, ingress}_i\text{, egress}_i\text{, encryptedPolicyID}_i, \\& \text{srcAddrLen, srcHostAddr)[3:6] } \& \text{ 0x3FFFFF}\\\\
     \end{align*}
