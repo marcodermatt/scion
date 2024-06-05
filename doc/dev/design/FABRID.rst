@@ -328,6 +328,8 @@ The following list explains the most important maps used in the FABRID service:
 - MPLS
     Routers need to be aware of the supported policy indices and the corresponding MPLS config they need to apply to packets to
     enforce the policy in the internal network.
+    Different MPLS labels can be applied for the same policy, depending on the traversed connections.
+    The map key therefore includes both the policy index and the connection points.
     Routers periodically fetch this map from the control service.
     A hash of the MPLS map is maintained, such that routers only have to update if their hash differs from the one at the control service.
 - Remote policy cache
@@ -638,8 +640,8 @@ PolicyID length and how to determine whether policy is local or global
 ----------------------------------------------------------------------------------
 
 In the header design the FABRID policyIndex has a length of 1 byte, which allows for 256 different options.
-But since the control service can configure the policies per interface pair and / or per IP range, there
-are many more options than the 256.
+This means, that an AS can only offer 256 different policies at one point in time.
+If this should become a problem, a new FABRID extension option can be introduced with longer policy indices.
 Note that the decision on whether a certain FABRID policy is a local or global policy is done by the control service,
 hence we do not have to reserve any bits of the FABRID policy index in the FABRID packets to encode whether
 it is a local or global policy.
