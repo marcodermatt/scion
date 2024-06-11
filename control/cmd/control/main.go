@@ -44,7 +44,7 @@ import (
 	"github.com/scionproto/scion/control/config"
 	"github.com/scionproto/scion/control/drkey"
 	drkeygrpc "github.com/scionproto/scion/control/drkey/grpc"
-	fabrid "github.com/scionproto/scion/control/fabrid"
+	"github.com/scionproto/scion/control/fabrid"
 	fabridgrpc "github.com/scionproto/scion/control/fabrid/grpc"
 	"github.com/scionproto/scion/control/ifstate"
 	api "github.com/scionproto/scion/control/mgmtapi"
@@ -153,10 +153,13 @@ func realMain(ctx context.Context) error {
 
 	revCache := storage.NewRevocationStorage()
 	defer revCache.Close()
-
-	fabridMgr, err := fabrid.NewFabridManager(globalCfg.General.Fabrid())
-	if err != nil {
-		return serrors.WrapStr("initializing FABRID", err)
+	var fabridMgr *fabrid.FabridManager
+	if globalCfg.Fabrid.Enabled {
+		fabridMgr = fabrid.NewFabridManager(globalCfg.Fabrid.RemoteCacheValidity.Duration)
+		err = fabridMgr.Load(globalCfg.Fabrid.Path)
+		if err != nil {
+			return serrors.WrapStr("initializing FABRID", err)
+		}
 	}
 
 	pathDB, err := storage.NewPathStorage(globalCfg.PathDB)
@@ -324,8 +327,12 @@ func realMain(ctx context.Context) error {
 	quicServer := grpc.NewServer(
 		grpc.Creds(libgrpc.PassThroughCredentials{}),
 		libgrpc.UnaryServerInterceptor(),
+		libgrpc.DefaultMaxConcurrentStreams(),
 	)
-	tcpServer := grpc.NewServer(libgrpc.UnaryServerInterceptor())
+	tcpServer := grpc.NewServer(
+		libgrpc.UnaryServerInterceptor(),
+		libgrpc.DefaultMaxConcurrentStreams(),
+	)
 
 	// Register trust material related handlers.
 	trustServer := &cstrustgrpc.MaterialServer{
@@ -347,7 +354,7 @@ func realMain(ctx context.Context) error {
 		},
 	})
 	// Handle fabrid map and policy requests
-	if fabridMgr.Active() {
+	if globalCfg.Fabrid.Enabled {
 		polFetcher := fabridgrpc.BasicPolicyFetcher{
 			Dialer: &libgrpc.QUICDialer{
 				Rewriter: nc.AddressRewriter(nil),
@@ -800,13 +807,15 @@ func realMain(ctx context.Context) error {
 		},
 		SegmentRegister: beaconinggrpc.Registrar{Dialer: dialer},
 		BeaconStore:     beaconStore,
-		SignerGen:       signer.SignerGen,
-		Inspector:       inspector,
-		Metrics:         metrics,
-		DRKeyEngine:     drkeyEngine,
-		MACGen:          macGen,
-		NextHopper:      topo,
-		StaticInfo:      func() *beaconing.StaticInfoCfg { return staticInfo },
+		SignerGen: beaconing.SignerGenFunc(func(ctx context.Context) (beaconing.Signer, error) {
+			return signer.SignerGen.Generate(ctx)
+		}),
+		Inspector:   inspector,
+		Metrics:     metrics,
+		DRKeyEngine: drkeyEngine,
+		MACGen:      macGen,
+		NextHopper:  topo,
+		StaticInfo:  func() *beaconing.StaticInfoCfg { return staticInfo },
 
 		OriginationInterval:       globalCfg.BS.OriginationInterval.Duration,
 		PropagationInterval:       globalCfg.BS.PropagationInterval.Duration,

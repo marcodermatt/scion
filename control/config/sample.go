@@ -85,6 +85,11 @@ connections:
   # Every connection has an ingress and an egress point:
   - ingress:
       # The type of the connection point, can be "ipv4", "ipv6" or "interface"
+      type: interface
+      # If the type is set to "interface", specify the specific interface
+      interface: 1
+    egress:
+      # The type of the connection point, can be "ipv4", "ipv6" or "interface"
       type: ipv6
       # If the type is set to "ipv4" or "ipv6", specify the IP range using a IP and prefix
       ip: 2001:0db8:3c4d:0015:0000:0000:1a2f:1a2b
@@ -93,9 +98,13 @@ connections:
       prefix: 100
       # If the type is set to "interface", specify the specific interface, e.g.
       # interface: 1
-    egress:
-      # The type of the connection point, can be "ipv4", "ipv6" or "interface"
-      type: interface
-      # If the type is set to "interface", specify the specific interface
-      interface: 1
+    # Every connnection can have a different mpls label they use to enable the policy:
+    mpls_label: 1
+`
+
+const fabridConfigSample = `
+# Whether Fabrid is enabled on this AS
+enabled = true
+# Folder in which the fabrid policies are stored
+path = "gen/ASff00_0_110/fabrid/"
 `

@@ -16,9 +16,12 @@ package fabrid
 
 import (
 	"fmt"
-	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
+	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 )
 
 func TestSupportedIndicesSortedKeys(t *testing.T) {
@@ -267,55 +270,56 @@ func TestConnectionPointFromString(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, ConnectionPointFromString(tc.Eq1.IP, tc.Eq1.Prefix, tc.Eq1.Type).IP,
-				ConnectionPointFromString(tc.Eq2.IP, tc.Eq2.Prefix, tc.Eq2.Type).IP)
+			assert.Equal(t, IPConnectionPointFromString(tc.Eq1.IP, tc.Eq1.Prefix, tc.Eq1.Type).IP,
+				IPConnectionPointFromString(tc.Eq2.IP, tc.Eq2.Prefix, tc.Eq2.Type).IP)
 		})
 	}
 }
 
 func TestDetachedToFromPB(t *testing.T) {
 	tests := map[string]struct {
-		Input    *Detached
-		Expected *experimental.FABRIDDetachedExtension
+		Expected *Detached
+		Input    *experimental.FABRIDDetachedExtension
 	}{
 		"nil": {},
 		"index-identifiers only": {
-			Input: &Detached{
+			Expected: &Detached{
 				SupportedIndicesMap: SupportedIndicesMap{},
 				IndexIdentiferMap: IndexIdentifierMap{
 					2: &PolicyIdentifier{
-						Type:       GlobalPolicy,
+						Type:       fabrid.GlobalPolicy,
 						Identifier: 22,
 					},
 					8: &PolicyIdentifier{
-						Type:       LocalPolicy,
+						Type:       fabrid.LocalPolicy,
 						Identifier: 1,
 					},
 					15: &PolicyIdentifier{
-						Type:       GlobalPolicy,
+						Type:       fabrid.GlobalPolicy,
 						Identifier: 50,
 					},
 				},
 			},
-			Expected: &experimental.FABRIDDetachedExtension{Maps: &experimental.FABRIDDetachableMaps{
+			Input: &experimental.FABRIDDetachedExtension{Maps: &experimental.
+				FABRIDDetachableMaps{
 				IndexIdentifierMap: map[uint32]*experimental.FABRIDPolicyIdentifier{
 					2: {
-						PolicyType:       experimental.FABRIDPolicyType_GLOBAL,
+						PolicyType:       experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_GLOBAL,
 						PolicyIdentifier: 22,
 					},
 					8: {
-						PolicyType:       experimental.FABRIDPolicyType_LOCAL,
+						PolicyType:       experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_LOCAL,
 						PolicyIdentifier: 1,
 					},
 					15: {
-						PolicyType:       experimental.FABRIDPolicyType_GLOBAL,
+						PolicyType:       experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_GLOBAL,
 						PolicyIdentifier: 50,
 					},
 				},
 			}},
 		},
 		"index-identifiers and supported indices": {
-			Input: &Detached{
+			Expected: &Detached{
 				SupportedIndicesMap: SupportedIndicesMap{
 					ConnectionPair{
 						Ingress: ConnectionPoint{
@@ -352,29 +356,32 @@ func TestDetachedToFromPB(t *testing.T) {
 				},
 				IndexIdentiferMap: IndexIdentifierMap{
 					2: &PolicyIdentifier{
-						Type:       GlobalPolicy,
+						Type:       fabrid.GlobalPolicy,
 						Identifier: 22,
 					},
 					8: &PolicyIdentifier{
-						Type:       LocalPolicy,
+						Type:       fabrid.LocalPolicy,
 						Identifier: 1,
 					},
 					15: &PolicyIdentifier{
-						Type:       GlobalPolicy,
+						Type:       fabrid.GlobalPolicy,
 						Identifier: 50,
 					},
 				},
 			},
-			Expected: &experimental.FABRIDDetachedExtension{Maps: &experimental.FABRIDDetachableMaps{
+			Input: &experimental.FABRIDDetachedExtension{Maps: &experimental.
+				FABRIDDetachableMaps{
 				SupportedIndicesMap: []*experimental.FABRIDIndexMapEntry{
 					{
 						IePair: &experimental.FABRIDIngressEgressPair{
 							Ingress: &experimental.FABRIDConnectionPoint{
-								Type:      experimental.FABRIDConnectionType_INTERFACE,
+								Type: experimental.
+									FABRIDConnectionType_FABRID_CONNECTION_TYPE_INTERFACE,
 								Interface: 9,
 							},
 							Egress: &experimental.FABRIDConnectionPoint{
-								Type:      experimental.FABRIDConnectionType_IPv4_RANGE,
+								Type: experimental.
+									FABRIDConnectionType_FABRID_CONNECTION_TYPE_IPV4_RANGE,
 								IpAddress: []byte{192, 168, 55, 0},
 								IpPrefix:  24,
 							},
@@ -383,11 +390,13 @@ func TestDetachedToFromPB(t *testing.T) {
 					}, {
 						IePair: &experimental.FABRIDIngressEgressPair{
 							Ingress: &experimental.FABRIDConnectionPoint{
-								Type:      experimental.FABRIDConnectionType_INTERFACE,
+								Type: experimental.
+									FABRIDConnectionType_FABRID_CONNECTION_TYPE_INTERFACE,
 								Interface: 5,
 							},
 							Egress: &experimental.FABRIDConnectionPoint{
-								Type:      experimental.FABRIDConnectionType_INTERFACE,
+								Type: experimental.
+									FABRIDConnectionType_FABRID_CONNECTION_TYPE_INTERFACE,
 								Interface: 6,
 							},
 						},
@@ -395,12 +404,14 @@ func TestDetachedToFromPB(t *testing.T) {
 					}, {
 						IePair: &experimental.FABRIDIngressEgressPair{
 							Ingress: &experimental.FABRIDConnectionPoint{
-								Type:      experimental.FABRIDConnectionType_IPv4_RANGE,
+								Type: experimental.
+									FABRIDConnectionType_FABRID_CONNECTION_TYPE_IPV4_RANGE,
 								IpAddress: []byte{192, 168, 2, 0},
 								IpPrefix:  24,
 							},
 							Egress: &experimental.FABRIDConnectionPoint{
-								Type:      experimental.FABRIDConnectionType_INTERFACE,
+								Type: experimental.
+									FABRIDConnectionType_FABRID_CONNECTION_TYPE_INTERFACE,
 								Interface: 5,
 							},
 						},
@@ -409,15 +420,15 @@ func TestDetachedToFromPB(t *testing.T) {
 				},
 				IndexIdentifierMap: map[uint32]*experimental.FABRIDPolicyIdentifier{
 					2: {
-						PolicyType:       experimental.FABRIDPolicyType_GLOBAL,
+						PolicyType:       experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_GLOBAL,
 						PolicyIdentifier: 22,
 					},
 					8: {
-						PolicyType:       experimental.FABRIDPolicyType_LOCAL,
+						PolicyType:       experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_LOCAL,
 						PolicyIdentifier: 1,
 					},
 					15: {
-						PolicyType:       experimental.FABRIDPolicyType_GLOBAL,
+						PolicyType:       experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_GLOBAL,
 						PolicyIdentifier: 50,
 					},
 				},
@@ -426,8 +437,8 @@ func TestDetachedToFromPB(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			out := DetachedToPB(tc.Input) //todo(jvanbommel): Does not want to work with the pb expected.
-			assert.Equal(t, tc.Input, DetachedFromPB(out))
+			assert.Equal(t, tc.Expected, DetachedFromPB(tc.Input))
+			assert.Equal(t, tc.Expected, DetachedFromPB(DetachedToPB(tc.Expected)))
 		})
 	}
 
@@ -470,15 +481,15 @@ func TestHash(t *testing.T) {
 		},
 		IndexIdentiferMap: IndexIdentifierMap{
 			2: &PolicyIdentifier{
-				Type:       GlobalPolicy,
+				Type:       fabrid.GlobalPolicy,
 				Identifier: 22,
 			},
 			8: &PolicyIdentifier{
-				Type:       LocalPolicy,
+				Type:       fabrid.LocalPolicy,
 				Identifier: 1,
 			},
 			15: &PolicyIdentifier{
-				Type:       GlobalPolicy,
+				Type:       fabrid.GlobalPolicy,
 				Identifier: 50,
 			},
 		},
@@ -520,15 +531,15 @@ func TestHash(t *testing.T) {
 		},
 		IndexIdentiferMap: IndexIdentifierMap{
 			15: &PolicyIdentifier{
-				Type:       GlobalPolicy,
+				Type:       fabrid.GlobalPolicy,
 				Identifier: 50,
 			},
 			8: &PolicyIdentifier{
-				Type:       LocalPolicy,
+				Type:       fabrid.LocalPolicy,
 				Identifier: 1,
 			},
 			2: &PolicyIdentifier{
-				Type:       GlobalPolicy,
+				Type:       fabrid.GlobalPolicy,
 				Identifier: 22,
 			},
 		},
@@ -570,15 +581,15 @@ func TestHash(t *testing.T) {
 		},
 		IndexIdentiferMap: IndexIdentifierMap{
 			15: &PolicyIdentifier{
-				Type:       GlobalPolicy,
+				Type:       fabrid.GlobalPolicy,
 				Identifier: 50,
 			},
 			8: &PolicyIdentifier{
-				Type:       LocalPolicy,
+				Type:       fabrid.LocalPolicy,
 				Identifier: 1,
 			},
 			2: &PolicyIdentifier{
-				Type:       GlobalPolicy,
+				Type:       fabrid.GlobalPolicy,
 				Identifier: 22,
 			},
 		},

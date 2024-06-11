@@ -15,12 +15,12 @@
 package segment
 
 import (
-	"github.com/scionproto/scion/pkg/segment/extensions/fabrid"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
 	"github.com/scionproto/scion/pkg/segment/extensions/epic"
+	"github.com/scionproto/scion/pkg/segment/extensions/fabrid"
 )
 
 func TestDecodeEncode(t *testing.T) {

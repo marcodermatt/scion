@@ -132,10 +132,10 @@ func realMain(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if globalCfg.Router.UseDRKey {
+	if len(globalCfg.Router.DRKey) != 0 {
 		go func() {
 			defer log.HandlePanic()
-			fetcher.StartSecretUpdater()
+			fetcher.StartSecretUpdater(globalCfg.Router.DRKey)
 		}()
 		go func() {
 			defer log.HandlePanic()
@@ -143,7 +143,7 @@ func realMain(ctx context.Context) error {
 			for i, iface := range controlConfig.BR.IFIDs {
 				interfaces[i] = uint16(iface)
 			}
-			fetcher.StartFabridPolicyFetcher(interfaces)
+			fetcher.StartFabridPolicyFetcher()
 		}()
 	}
 	g.Go(func() error {

@@ -77,10 +77,12 @@ func (id *IdentifierOption) Serialize(b []byte) error {
 	return nil
 }
 
-func ParseIdentifierOption(o *slayers.HopByHopOption, baseTimestamp uint32) (*IdentifierOption, error) {
+func ParseIdentifierOption(o *slayers.HopByHopOption, baseTimestamp uint32) (
+	*IdentifierOption, error) {
 	if o.OptType != slayers.OptTypeIdentifier {
 		return nil,
-			serrors.New("Wrong option type", "expected", slayers.OptTypeIdentifier, "actual", o.OptType)
+			serrors.New("Wrong option type", "expected", slayers.OptTypeIdentifier,
+				"actual", o.OptType)
 	}
 	identifier := &IdentifierOption{
 		BaseTimestamp: baseTimestamp,

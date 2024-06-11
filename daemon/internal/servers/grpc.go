@@ -29,6 +29,7 @@ import (
 	"github.com/scionproto/scion/daemon/fetcher"
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/ctrl/path_mgmt"
@@ -36,6 +37,7 @@ import (
 	"github.com/scionproto/scion/pkg/private/prom"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/private/util"
+	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	pb_daemon "github.com/scionproto/scion/pkg/proto/daemon"
 	sdpb "github.com/scionproto/scion/pkg/proto/daemon"
 	"github.com/scionproto/scion/pkg/snet"
@@ -163,9 +165,9 @@ func pathToPB(path snet.Path) *sdpb.Path {
 	if nextHop := path.UnderlayNextHop(); nextHop != nil {
 		nextHopStr = nextHop.String()
 	}
-	fabridPolicies := make([]*sdpb.FABRIDPolicyIdentifierList, len(meta.FabridPolicies))
+	fabridPolicies := make([]*sdpb.FabridPolicies, len(meta.FabridPolicies))
 	for i, v := range meta.FabridPolicies {
-		fabridPolicies[i] = fabridPolicyIdentifiersToPB(v)
+		fabridPolicies[i] = fabridPoliciesToPB(v)
 	}
 	epicAuths := &sdpb.EpicAuths{
 		AuthPhvf: append([]byte(nil), meta.EpicAuths.AuthPHVF...),
@@ -177,46 +179,43 @@ func pathToPB(path snet.Path) *sdpb.Path {
 		Interface: &sdpb.Interface{
 			Address: &sdpb.Underlay{Address: nextHopStr},
 		},
-		Interfaces:     interfaces,
-		Mtu:            uint32(meta.MTU),
-		Expiration:     &timestamppb.Timestamp{Seconds: meta.Expiry.Unix()},
-		Latency:        latency,
-		Bandwidth:      meta.Bandwidth,
-		Geo:            geo,
-		LinkType:       linkType,
-		InternalHops:   meta.InternalHops,
-		Notes:          meta.Notes,
-		EpicAuths:      epicAuths,
-		FabridPolicies: fabridPolicies,
+		Interfaces:      interfaces,
+		Mtu:             uint32(meta.MTU),
+		Expiration:      &timestamppb.Timestamp{Seconds: meta.Expiry.Unix()},
+		Latency:         latency,
+		Bandwidth:       meta.Bandwidth,
+		CarbonIntensity: meta.CarbonIntensity,
+		Geo:             geo,
+		LinkType:        linkType,
+		InternalHops:    meta.InternalHops,
+		Notes:           meta.Notes,
+		EpicAuths:       epicAuths,
+		FabridPolicies:  fabridPolicies,
 	}
-
 }
 
-func fabridPolicyIdentifiersToPB(fpList []*snet.FabridPolicyIdentifier) *sdpb.FABRIDPolicyIdentifierList {
-	pbPolicies := make([]*sdpb.FABRIDPolicyIdentifier, len(fpList))
-	for i, fp := range fpList {
-		switch fp.Type {
-		case snet.FabridGlobalPolicy:
-			pbPolicies[i] = &sdpb.FABRIDPolicyIdentifier{
-				PolicyType:       sdpb.FABRIDPolicyType_GLOBAL,
-				PolicyIdentifier: fp.Identifier,
-				PolicyIndex:      uint32(fp.Index),
-			}
-		case snet.FabridLocalPolicy:
-			pbPolicies[i] = &sdpb.FABRIDPolicyIdentifier{
-				PolicyType:       sdpb.FABRIDPolicyType_LOCAL,
-				PolicyIdentifier: fp.Identifier,
-				PolicyIndex:      uint32(fp.Index),
-			}
-		default:
-			pbPolicies[i] = &sdpb.FABRIDPolicyIdentifier{
-				PolicyType:       sdpb.FABRIDPolicyType_UNSPECIFIED,
-				PolicyIdentifier: fp.Identifier,
-				PolicyIndex:      uint32(fp.Index),
-			}
-		}
+func fabridPolicyToPB(fp *fabrid.Policy) *sdpb.FabridPolicy {
+	var policyType experimental.FABRIDPolicyType
+	if fp.Type == fabrid.GlobalPolicy {
+		policyType = experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_GLOBAL
+	} else if fp.Type == fabrid.LocalPolicy {
+		policyType = experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_LOCAL
 	}
-	return &sdpb.FABRIDPolicyIdentifierList{
+	return &sdpb.FabridPolicy{
+		PolicyIdentifier: &experimental.FABRIDPolicyIdentifier{
+			PolicyType:       policyType,
+			PolicyIdentifier: fp.Identifier,
+		},
+		PolicyIndex: uint32(fp.Index),
+	}
+}
+
+func fabridPoliciesToPB(fpList []*fabrid.Policy) *sdpb.FabridPolicies {
+	pbPolicies := make([]*sdpb.FabridPolicy, len(fpList))
+	for i, fp := range fpList {
+		pbPolicies[i] = fabridPolicyToPB(fp)
+	}
+	return &sdpb.FabridPolicies{
 		Policies: pbPolicies,
 	}
 }
@@ -383,11 +382,57 @@ func (s *DaemonServer) notifyInterfaceDown(ctx context.Context,
 	return &sdpb.NotifyInterfaceDownResponse{}, nil
 }
 
+func (s *DaemonServer) FabridKeys(ctx context.Context, req *pb_daemon.FabridKeysRequest,
+) (*pb_daemon.FabridKeysResponse, error) {
+	if s.DRKeyClient == nil {
+		return nil, serrors.New("DRKey is not available")
+	}
+	pathASes := make([]addr.IA, 0, len(req.PathAses))
+	for _, as := range req.PathAses {
+		pathASes = append(pathASes, addr.IA(as))
+	}
+	resp, err := s.DRKeyClient.FabridKeys(ctx, drkey.FabridKeysMeta{
+		SrcAS:    s.DRKeyClient.IA,
+		SrcHost:  req.SrcHost,
+		DstHost:  req.DstHost,
+		PathASes: pathASes,
+		DstAS:    addr.IA(req.DstAs),
+	})
+	if err != nil {
+		return nil, serrors.WrapStr("getting fabrid keys from client store", err)
+	}
+	fabridKeys := make([]*pb_daemon.FabridKeyResponse, 0, len(resp.ASHostKeys))
+	for i := range resp.ASHostKeys {
+		key := resp.ASHostKeys[i]
+		fabridKeys = append(fabridKeys, &sdpb.FabridKeyResponse{
+			EpochBegin: &timestamppb.Timestamp{Seconds: key.Epoch.NotBefore.Unix()},
+			EpochEnd:   &timestamppb.Timestamp{Seconds: key.Epoch.NotAfter.Unix()},
+			Key:        key.Key[:],
+		})
+	}
+
+	var hostHostKey *sdpb.FabridKeyResponse = nil
+	if req.DstHost != nil {
+		hostHostKey = &sdpb.FabridKeyResponse{
+			EpochBegin: &timestamppb.Timestamp{Seconds: resp.PathKey.Epoch.NotBefore.Unix()},
+			EpochEnd:   &timestamppb.Timestamp{Seconds: resp.PathKey.Epoch.NotAfter.Unix()},
+			Key:        resp.PathKey.Key[:],
+		}
+	}
+	return &pb_daemon.FabridKeysResponse{
+		AsHostKeys:  fabridKeys,
+		HostHostKey: hostHostKey,
+	}, nil
+}
+
 func (s *DaemonServer) DRKeyASHost(
 	ctx context.Context,
 	req *pb_daemon.DRKeyASHostRequest,
 ) (*pb_daemon.DRKeyASHostResponse, error) {
 
+	if s.DRKeyClient == nil {
+		return nil, serrors.New("DRKey is not available")
+	}
 	meta, err := requestToASHostMeta(req)
 	if err != nil {
 		return nil, serrors.WrapStr("parsing protobuf ASHostReq", err)
@@ -410,6 +455,9 @@ func (s *DaemonServer) DRKeyHostAS(
 	req *pb_daemon.DRKeyHostASRequest,
 ) (*pb_daemon.DRKeyHostASResponse, error) {
 
+	if s.DRKeyClient == nil {
+		return nil, serrors.New("DRKey is not available")
+	}
 	meta, err := requestToHostASMeta(req)
 	if err != nil {
 		return nil, serrors.WrapStr("parsing protobuf HostASReq", err)
@@ -432,6 +480,9 @@ func (s *DaemonServer) DRKeyHostHost(
 	req *pb_daemon.DRKeyHostHostRequest,
 ) (*pb_daemon.DRKeyHostHostResponse, error) {
 
+	if s.DRKeyClient == nil {
+		return nil, serrors.New("DRKey is not available")
+	}
 	meta, err := requestToHostHostMeta(req)
 	if err != nil {
 		return nil, serrors.WrapStr("parsing protobuf HostHostReq", err)

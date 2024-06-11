@@ -28,18 +28,13 @@ message FABRIDDetachableMaps {
     map<uint32, FABRIDPolicyIdentifier> index_identifier_map = 2;
 }
 
-//message FABRIDPolicyIdentifierMap {
-//    // Provides a mapping from policy index a
-//    uint32 policy_index = 1;
-//    FABRIDPolicyIdentifier policy_identifier = 2;
-//}
 enum FABRIDPolicyType {
     // The type of policy has not been specified
-    UNSPECIFIED = 0;
+    FABRID_POLICY_TYPE_UNSPECIFIED = 0;
     // The policy is AS-local
-    LOCAL = 1;
+    FABRID_POLICY_TYPE_LOCAL = 1;
     // The policy is global and present in the global policy description store.
-    GLOBAL = 2;
+    FABRID_POLICY_TYPE_GLOBAL = 2;
 }
 message FABRIDPolicyIdentifier {
     // The type of this policy, either local or global
@@ -59,13 +54,15 @@ message FABRIDIndexMapEntry {
 
 enum FABRIDConnectionType {
     // Unspecified connection type
-    UNSPECIFIED_TYPE = 0;
+    FABRID_CONNECTION_TYPE_UNSPECIFIED = 0;
     // IPv4 Range
-    IPv4_RANGE = 1;
+    FABRID_CONNECTION_TYPE_IPV4_RANGE = 1;
     // IPv6 Range
-    IPv6_RANGE = 2;
+    FABRID_CONNECTION_TYPE_IPV6_RANGE = 2;
     // AS egress or ingress interface
-    INTERFACE = 3;
+    FABRID_CONNECTION_TYPE_INTERFACE = 3;
+    // Wildcard, policy from any interface
+    FABRID_CONNECTION_TYPE_WILDCARD = 4;
 }
 message FABRIDIngressEgressPair {
     // Specifies the IP range or interface traffic is coming from, in order to satisfy
@@ -83,7 +80,6 @@ message FABRIDConnectionPoint {
     bytes ip_address = 2;
     // IP prefix length, as in CIDR notation.
     uint32 ip_prefix = 3;
-    // TODO(jvanbommel): Q we can also from-to the IP range.
     // The interface for the interface type.
     uint64 interface = 4;
 

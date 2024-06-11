@@ -17,6 +17,7 @@ package segment
 import (
 	"bytes"
 	"encoding/hex"
+
 	"github.com/scionproto/scion/pkg/private/serrors"
 	cppb "github.com/scionproto/scion/pkg/proto/control_plane"
 	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
@@ -98,13 +99,15 @@ func checkUnsignedExtensions(ue *UnsignedExtensions, e *Extensions) error {
 		fabridDigest := e.Digests != nil && len(e.Digests.Fabrid.Digest) != 0
 		if hasSupportedIndices && !hasIndexIdentifiers {
 			// An AS may announce index->identifiers that are not used in the supported indices map.
-			// However, announcing supported policy indices without specifying the identifiers is invalid.
+			//However, announcing supported policy indices without specifying the identifiers is
+			//invalid.
 			return serrors.New("fabrid maps are malformed")
 		}
 
 		if fabridDigest {
 			if digest := ue.FabridDetached.Hash(); !bytes.Equal(e.Digests.Fabrid.Digest, digest) {
-				return serrors.New("fabrid digest validation failed", "calculated", hex.EncodeToString(e.Digests.Fabrid.Digest),
+				return serrors.New("fabrid digest validation failed",
+					"calculated", hex.EncodeToString(e.Digests.Fabrid.Digest),
 					"stored", hex.EncodeToString(digest))
 			}
 		} else {

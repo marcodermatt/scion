@@ -16,17 +16,19 @@ package grpc_test
 
 import (
 	"context"
+	"net"
+	"testing"
+
 	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/scionproto/scion/control/fabrid"
 	"github.com/scionproto/scion/control/fabrid/grpc"
 	"github.com/scionproto/scion/pkg/private/xtest"
 	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	"github.com/scionproto/scion/pkg/snet"
 	"github.com/scionproto/scion/pkg/snet/mock_snet"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"net"
-	"testing"
 )
 
 func TestFetchRemotePolicy(t *testing.T) {
@@ -46,7 +48,8 @@ func TestFetchRemotePolicy(t *testing.T) {
 		IdentifierDescriptions map[uint32]string
 		RequestedPolicy        uint32
 		Assert                 assert.ErrorAssertionFunc
-		PostCheck              func(t *testing.T, response *experimental.PolicyDescriptionResponse)
+		PostCheck              func(t *testing.T,
+			response *experimental.RemotePolicyDescriptionResponse)
 	}{
 		"existing": {
 			IdentifierDescriptions: map[uint32]string{
@@ -55,7 +58,7 @@ func TestFetchRemotePolicy(t *testing.T) {
 			},
 			RequestedPolicy: 33,
 			Assert:          assert.NoError,
-			PostCheck: func(t *testing.T, response *experimental.PolicyDescriptionResponse) {
+			PostCheck: func(t *testing.T, response *experimental.RemotePolicyDescriptionResponse) {
 				require.Equal(t, response.Description, "Test Policy")
 			},
 		},
@@ -66,7 +69,9 @@ func TestFetchRemotePolicy(t *testing.T) {
 			},
 			RequestedPolicy: 55,
 			Assert:          assert.Error,
-			PostCheck:       func(t *testing.T, response *experimental.PolicyDescriptionResponse) {},
+			PostCheck: func(t *testing.T,
+				response *experimental.RemotePolicyDescriptionResponse) {
+			},
 		},
 	}
 	for name, tc := range tests {

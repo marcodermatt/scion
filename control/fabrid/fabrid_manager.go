@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//	http://www.apache.org/licenses/LICENSE-2.0
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,19 +15,21 @@
 package fabrid
 
 import (
-	"github.com/scionproto/scion/control/config"
-	"github.com/scionproto/scion/pkg/log"
-	"github.com/scionproto/scion/pkg/private/serrors"
-	"github.com/scionproto/scion/pkg/segment/extensions/fabrid"
-	"gopkg.in/yaml.v2"
 	"os"
 	"path/filepath"
 	"time"
+
+	"gopkg.in/yaml.v2"
+
+	"github.com/scionproto/scion/control/config"
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
+	"github.com/scionproto/scion/pkg/log"
+	"github.com/scionproto/scion/pkg/private/serrors"
+	fabrid_ext "github.com/scionproto/scion/pkg/segment/extensions/fabrid"
 )
 
 const MaxFabridPolicies = 255
 
-// TODO(jvanbommel): Can probably combine this with PolicyIdentifier
 type RemotePolicyIdentifier struct {
 	ISDAS      uint64
 	Identifier uint32
@@ -38,64 +40,51 @@ type RemotePolicyDescription struct {
 	Expires     time.Time
 }
 
-//type FabridManagerInterface interface {
-//	Reload() error
-//	Load() error
-//	Active() bool
-//	GetIndexIdentifierMap() *fabrid.IndexIdentifierMap
-//	GetSupportedIndicesMap() *fabrid.SupportedIndicesMap
-//	GetIdentifierDescriptionMap() *map[uint32]string
-//	GetMPLSMap() *map[uint8]uint32
-//	GetRemotePolicyCache() *map[RemotePolicyIdentifier]RemotePolicyDescription
-//}
-
 type FabridManager struct {
 	autoIncrIndex            int
-	PoliciesPath             string
-	SupportedIndicesMap      fabrid.SupportedIndicesMap
-	IndexIdentifierMap       fabrid.IndexIdentifierMap
+	SupportedIndicesMap      fabrid_ext.SupportedIndicesMap
+	IndexIdentifierMap       fabrid_ext.IndexIdentifierMap
 	IdentifierDescriptionMap map[uint32]string
-	MPLSMap                  MPLSMap
+	MPLSMap                  *MplsMaps
 	RemotePolicyCache        map[RemotePolicyIdentifier]RemotePolicyDescription
+	RemoteCacheValidity      time.Duration
 }
 
-func NewFabridManager(policyPath string) (*FabridManager, error) {
+func NewFabridManager(remoteCacheValidity time.Duration) *FabridManager {
 	fb := &FabridManager{
-		PoliciesPath:             policyPath,
-		SupportedIndicesMap:      map[fabrid.ConnectionPair][]uint8{},
-		IndexIdentifierMap:       map[uint8]*fabrid.PolicyIdentifier{},
+		SupportedIndicesMap:      map[fabrid_ext.ConnectionPair][]uint8{},
+		IndexIdentifierMap:       map[uint8]*fabrid_ext.PolicyIdentifier{},
 		IdentifierDescriptionMap: map[uint32]string{},
-		MPLSMap:                  MPLSMap{Data: map[uint32]uint32{}, CurrentHash: []byte{}},
+		MPLSMap:                  NewMplsMaps(),
 		RemotePolicyCache:        map[RemotePolicyIdentifier]RemotePolicyDescription{},
+		RemoteCacheValidity:      remoteCacheValidity,
 		autoIncrIndex:            1,
 	}
-	return fb, fb.Load()
+	return fb
 }
 
-func (f *FabridManager) Reload() error {
-	f.IndexIdentifierMap = make(map[uint8]*fabrid.PolicyIdentifier)
-	f.SupportedIndicesMap = make(map[fabrid.ConnectionPair][]uint8)
-	f.MPLSMap = MPLSMap{Data: map[uint32]uint32{}, CurrentHash: []byte{}}
-	f.IdentifierDescriptionMap = make(map[uint32]string)
+func (f *FabridManager) Reload(policiesPath string) error {
+	f.IndexIdentifierMap = make(map[uint8]*fabrid_ext.PolicyIdentifier)
+	f.SupportedIndicesMap = make(map[fabrid_ext.ConnectionPair][]uint8)
+	f.MPLSMap = NewMplsMaps()
 	f.autoIncrIndex = 1
-	return f.Load()
+	return f.Load(policiesPath)
 }
 
-func (f *FabridManager) Load() error {
-	if err := filepath.Walk(f.PoliciesPath, f.parseAndAdd); err != nil {
-		return serrors.WrapStr("Unable to read the fabrid policies in folder", err, "path", f.PoliciesPath)
+func (f *FabridManager) Load(policiesPath string) error {
+	if err := filepath.Walk(policiesPath, f.parseAndAdd); err != nil {
+		return serrors.WrapStr("Unable to read the fabrid policies in folder", err,
+			"path", policiesPath)
 	}
 	f.MPLSMap.UpdateHash()
 	return nil
 }
 
-func (f *FabridManager) Active() bool {
-	//return len(f.SupportedIndicesMap) > 0
-	return true
-}
-
 func (f *FabridManager) parseAndAdd(path string, fi os.FileInfo, err error) error {
-	if !fi.Mode().IsRegular() {
+	if err != nil {
+		return nil
+	}
+	if fi.IsDir() { // Makes sure that the current file is not a directory
 		return nil
 	}
 
@@ -106,64 +95,70 @@ func (f *FabridManager) parseAndAdd(path string, fi os.FileInfo, err error) erro
 	if err != nil {
 		return serrors.WrapStr("Unable to read the fabrid policy in file", err, "path", path)
 	}
-	pol, err := parseFABRIDYAMLPolicy(b)
-	if err != nil {
-		return err
+	pol := &config.FABRIDPolicy{}
+	if err := yaml.UnmarshalStrict(b, pol); err != nil {
+		return serrors.WrapStr("Unable to parse policy", err)
 	}
 
+	if err := pol.Validate(); err != nil {
+		return serrors.WrapStr("Unable to validate policy", err, "path", path)
+	}
+
+	return f.addPolicy(pol)
+}
+
+func (f *FabridManager) addPolicy(pol *config.FABRIDPolicy) error {
 	policyIdx := uint8(f.autoIncrIndex)
 	f.autoIncrIndex++
 
 	if pol.IsLocalPolicy {
-		f.IndexIdentifierMap[policyIdx] = &fabrid.PolicyIdentifier{
+		f.IndexIdentifierMap[policyIdx] = &fabrid_ext.PolicyIdentifier{
 			Type:       fabrid.LocalPolicy,
 			Identifier: pol.LocalIdentifier,
 		}
 		f.IdentifierDescriptionMap[pol.LocalIdentifier] = pol.LocalDescription
 	} else {
-		f.IndexIdentifierMap[policyIdx] = &fabrid.PolicyIdentifier{
+		f.IndexIdentifierMap[policyIdx] = &fabrid_ext.PolicyIdentifier{
 			Type:       fabrid.GlobalPolicy,
 			Identifier: pol.GlobalIdentifier,
 		}
 	}
 
 	for _, connection := range pol.SupportedBy {
-		var eg, ig fabrid.ConnectionPoint
-		if connection.Egress.Type == fabrid.Interface {
-			eg = fabrid.ConnectionPoint{
-				Type:        fabrid.Interface,
-				InterfaceId: connection.Egress.Interface,
-			}
-		} else if connection.Egress.Type == fabrid.IPv4Range || connection.Egress.Type == fabrid.IPv6Range {
-			eg = fabrid.ConnectionPointFromString(connection.Egress.IPAddress, uint32(connection.Egress.Prefix), connection.Egress.Type)
+		ig, err := createConnectionPoint(connection.Ingress)
+		if err != nil {
+			return err
 		}
-		if connection.Ingress.Type == fabrid.Interface {
-			ig = fabrid.ConnectionPoint{
-				Type:        fabrid.Interface,
-				InterfaceId: connection.Ingress.Interface,
-			}
-		} else if connection.Ingress.Type == fabrid.IPv4Range || connection.Ingress.Type == fabrid.IPv6Range {
-			ig = fabrid.ConnectionPointFromString(connection.Ingress.IPAddress, uint32(connection.Ingress.Prefix), connection.Ingress.Type)
+		eg, err := createConnectionPoint(connection.Egress)
+		if err != nil {
+			return err
 		}
-		ie := fabrid.ConnectionPair{
+		ie := fabrid_ext.ConnectionPair{
 			Ingress: ig,
 			Egress:  eg,
 		}
+		f.MPLSMap.AddConnectionPoint(ie, connection.MPLSLabel, policyIdx)
 		f.SupportedIndicesMap[ie] = append(f.SupportedIndicesMap[ie], policyIdx)
-	}
-
-	if pol.MPLSLabel != 0 {
-		f.MPLSMap.Data[uint32(policyIdx)] = pol.MPLSLabel
 	}
 
 	log.Debug("Loaded FABRID policy", "pol", pol)
 	return nil
 }
 
-func parseFABRIDYAMLPolicy(b []byte) (*config.FABRIDPolicy, error) {
-	p := &config.FABRIDPolicy{}
-	if err := yaml.UnmarshalStrict(b, p); err != nil {
-		return nil, serrors.WrapStr("Unable to parse policy", err)
+func createConnectionPoint(connection config.FABRIDConnectionPoint) (fabrid_ext.ConnectionPoint,
+	error) {
+	if connection.Type == fabrid_ext.Interface {
+		return fabrid_ext.ConnectionPoint{
+			Type:        fabrid_ext.Interface,
+			InterfaceId: connection.Interface,
+		}, nil
+	} else if connection.Type == fabrid_ext.IPv4Range || connection.Type == fabrid_ext.IPv6Range {
+		return fabrid_ext.IPConnectionPointFromString(connection.IPAddress,
+			uint32(connection.Prefix), connection.Type), nil
+	} else if connection.Type == fabrid_ext.Wildcard {
+		return fabrid_ext.ConnectionPoint{
+			Type: fabrid_ext.Wildcard,
+		}, nil
 	}
-	return p, nil
+	return fabrid_ext.ConnectionPoint{}, serrors.New("Unsupported connection type")
 }

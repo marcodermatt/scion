@@ -94,32 +94,32 @@ class GoGenerator(object):
                 'addr': prom_addr(v['internal_addr'], DEFAULT_BR_PROM_PORT+700)
             },
             'router': {
-                'use_drkey': True,
-            },
+                'drkey': ["FABRID"]
+            }
         }
         return raw_entry
 
     def generate_control_service(self):
         for topo_id, topo in self.args.topo_dicts.items():
             ca = self.args.config["ASes"][str(topo_id)].get("issuing", False)
-            # get ip addresses of BRs in AS for FABRID DRKey delegation
-            br_addresses = [v['internal_addr'].rsplit(':', 1)[0].strip('[]') for _, v in topo.get('border_routers', {}).items()]
             for elem_id, elem in topo.get("control_service", {}).items():
                 # only a single Go-BS per AS is currently supported
                 if elem_id.endswith("-1"):
                     base = topo_id.base_dir(self.args.output_dir)
                     bs_conf = self._build_control_service_conf(
-                        topo_id, topo["isd_as"], base, elem_id, elem, ca, br_addresses)
+                        topo_id, topo["isd_as"], base, elem_id, elem, ca)
                     write_file(os.path.join(base, "%s.toml" % elem_id),
                                toml.dumps(bs_conf))
 
-    def _build_control_service_conf(self, topo_id, ia, base, name, infra_elem, ca, br_addresses):
+    def _build_control_service_conf(self, topo_id, ia, base, name, infra_elem, ca):
         config_dir = '/share/conf' if self.args.docker else base
+        borderRouterInternalIPs = []
+        for _, v in self.args.topo_dicts[topo_id].get("border_routers", {}).items():
+            borderRouterInternalIPs.append(v['internal_addr'].rsplit(':', 1)[0].strip('[]'))
         raw_entry = {
             'general': {
                 'id': name,
                 'config_dir': config_dir,
-                'fabrid_path': 'gen-fabrid/',
                 'reconnect_to_dispatcher': True,
             },
             'log': self._log_entry(name),
@@ -132,6 +132,10 @@ class GoGenerator(object):
             'path_db': {
                 'connection': os.path.join(self.db_dir, '%s.path.db' % name),
             },
+            'tracing': self._tracing_entry(),
+            'metrics': self._metrics_entry(infra_elem, CS_PROM_PORT),
+            'api': self._api_entry(infra_elem, CS_PROM_PORT+700),
+            'features': translate_features(self.args.features),
             'drkey': {
                 'level1_db': {
                     'connection': os.path.join(self.db_dir, '%s.drkey-level1.db' % name),
@@ -140,14 +144,11 @@ class GoGenerator(object):
                     'connection': os.path.join(self.db_dir, '%s.drkey-secret.db' % name),
                 },
                 'delegation': {
-                    'FABRID': br_addresses,
+                    'FABRID': borderRouterInternalIPs,
                 }
             },
-            'tracing': self._tracing_entry(),
-            'metrics': self._metrics_entry(infra_elem, CS_PROM_PORT),
-            'api': self._api_entry(infra_elem, CS_PROM_PORT+700),
-            'features': translate_features(self.args.features),
         }
+
         if ca:
             raw_entry['ca'] = {'mode': 'in-process'}
         return raw_entry
@@ -175,9 +176,6 @@ class GoGenerator(object):
             'path_db': {
                 'connection': os.path.join(self.db_dir, '%s.path.db' % name),
             },
-            'drkey_level2_db': {
-                'connection': os.path.join(self.db_dir, '%s.drkey_level2.db' % name),
-            },
             'sd': {
                 'address': socket_address_str(ip, SD_API_PORT),
             },
@@ -188,7 +186,10 @@ class GoGenerator(object):
             'features': translate_features(self.args.features),
             'api': {
                 'addr': socket_address_str(ip, SD_API_PORT+700),
-            }
+            },
+            'drkey_level2_db': {
+                'connection': os.path.join(self.db_dir, '%s.drkey_level2.db' % name),
+            },
         }
         return raw_entry
 

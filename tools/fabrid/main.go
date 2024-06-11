@@ -1,5 +1,4 @@
-// Copyright 2018 ETH Zurich
-// Copyright 2019 ETH Zurich, Anapaya Systems
+// Copyright 2023 ETH Zurich
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,6 +36,7 @@ import (
 	"github.com/scionproto/scion/pkg/drkey"
 	"github.com/scionproto/scion/pkg/drkey/specific"
 	"github.com/scionproto/scion/pkg/experimental/fabrid"
+	"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/serrors"
@@ -225,7 +225,8 @@ func (s *server) handlePing(conn snet.PacketConn) error {
 						return err
 					}
 				case slayers.OptTypeFabrid:
-					fabridOption, err = extension.ParseFabridOptionFullExtension(opt, (opt.OptDataLen-4)/4)
+					fabridOption, err = extension.ParseFabridOptionFullExtension(opt,
+						(opt.OptDataLen-4)/4)
 					if err != nil {
 						return err
 					}
@@ -254,7 +255,7 @@ func (s *server) handlePing(conn snet.PacketConn) error {
 		}
 
 		tmpBuffer := make([]byte, (len(fabridOption.HopfieldMetadata)*3+15)&^15+16)
-		_, _, success, err := fabrid.VerifyPathValidator(fabridOption, tmpBuffer, hostHostKey[:])
+		_, _, success, err := crypto.VerifyPathValidator(fabridOption, tmpBuffer, hostHostKey[:])
 		if err != nil {
 			return err
 		}
@@ -433,73 +434,26 @@ func (c *client) attemptRequest(n int) bool {
 	if path != nil {
 		switch s := path.Dataplane().(type) {
 		case snetpath.SCION:
-			polIdentifier := snet.FabridPolicyIdentifier{
-				Type:       snet.FabridGlobalPolicy,
-				Identifier: 0,
-				Index:      0,
-			}
-			fabridClientConfig := fabrid.SimpleFabridConfig{
-				DestinationIA:   remote.IA,
-				DestinationAddr: remote.Host.IP.String(),
-				LocalIA:         integration.Local.IA,
-				LocalAddr:       integration.Local.Host.IP.String(),
-				ValidationRatio: 0,
-				Policy:          polIdentifier,
-			}
 			fabridConfig := &snetpath.FabridConfig{
 				LocalIA:         integration.Local.IA,
 				LocalAddr:       integration.Local.Host.IP.String(),
 				DestinationIA:   remote.IA,
 				DestinationAddr: remote.Host.IP.String(),
 			}
-			servicesInfo, err := c.sdConn.SVCInfo(ctx, []addr.SVC{addr.SvcCS})
-			if err != nil {
-				logger.Error("Error getting services", "err", err)
-				return false
+			hops := path.Metadata().Hops()
+			policies := make([]*fabrid.PolicyID, len(hops))
+			zeroPol := fabrid.PolicyID(0)
+			for i := 0; i < len(hops); i++ {
+				policies[i] = &zeroPol
 			}
-			controlServiceInfo := servicesInfo[addr.SvcCS][0]
-			localAddr := &net.TCPAddr{
-				IP:   integration.Local.Host.IP,
-				Port: 0,
-			}
-			controlAddr, err := net.ResolveTCPAddr("tcp", controlServiceInfo)
-			if err != nil {
-				logger.Error("Error resolving CS", "err", err)
-				return false
-			}
-
-			dialer := func(ctx context.Context, addr string) (net.Conn, error) {
-				return net.DialTCP("tcp", localAddr, controlAddr)
-			}
-			grpcconn, err := grpc.DialContext(ctx, controlServiceInfo,
-				grpc.WithInsecure(), grpc.WithContextDialer(dialer))
-			if err != nil {
-				logger.Error("Error connecting to CS", "err", err)
-				return false
-			}
-			defer grpcconn.Close()
-			fabridClient := fabrid.NewFabridClient(remote, fabridClientConfig, grpcconn)
-			fabridClient.NewFabridPathState(snet.Fingerprint(path))
-			var policies []snet.FabridPolicyPerHop
-			fabridPath, err := snetpath.NewFABRIDDataplanePath(s, path.Metadata().Interfaces,
-				policies, fabridConfig, fabridClient, snet.Fingerprint(path))
+			fabridPath, err := snetpath.NewFABRIDDataplanePath(s, hops,
+				policies, fabridConfig)
 			if err != nil {
 				logger.Error("Error creating FABRID path", "err", err)
 				return false
 			}
 			remote.Path = fabridPath
-			drkeyClient := drpb.NewDRKeyIntraServiceClient(grpcconn)
-			fabridPath.RegisterDRKeyFetcher(func(ctx context.Context, meta drkey.ASHostMeta) (drkey.ASHostKey, error) {
-				rep, err := drkeyClient.DRKeyASHost(ctx, drhelper.AsHostMetaToProtoRequest(meta))
-				if err != nil {
-					return drkey.ASHostKey{}, err
-				}
-				key, err := drhelper.GetASHostKeyFromReply(rep, meta)
-				if err != nil {
-					return drkey.ASHostKey{}, err
-				}
-				return key, nil
-			})
+			fabridPath.RegisterDRKeyFetcher(c.sdConn.FabridKeys)
 
 		}
 	}

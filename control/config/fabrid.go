@@ -15,11 +15,11 @@
 package config
 
 import (
-	"github.com/scionproto/scion/pkg/segment/extensions/fabrid"
 	"io"
 	"strings"
 
 	"github.com/scionproto/scion/pkg/private/serrors"
+	"github.com/scionproto/scion/pkg/segment/extensions/fabrid"
 	"github.com/scionproto/scion/private/config"
 )
 
@@ -28,7 +28,6 @@ type FABRIDPolicy struct {
 	LocalIdentifier  uint32                   `yaml:"local_identifier,omitempty"`
 	LocalDescription string                   `yaml:"local_description,omitempty"`
 	GlobalIdentifier uint32                   `yaml:"global_identifier,omitempty"`
-	MPLSLabel        uint32                   `yaml:"mpls_label,omitempty"`
 	SupportedBy      []FABRIDConnectionPoints `yaml:"connections,omitempty"`
 }
 
@@ -54,15 +53,27 @@ func (cfg *FABRIDPolicy) Sample(dst io.Writer, path config.Path, ctx config.CtxM
 }
 
 type FABRIDConnectionPoints struct {
-	Ingress FABRIDConnectionPoint `yaml:"ingress,omitempty"`
-	Egress  FABRIDConnectionPoint `yaml:"egress,omitempty"`
+	Ingress   FABRIDConnectionPoint `yaml:"ingress,omitempty"`
+	Egress    FABRIDConnectionPoint `yaml:"egress,omitempty"`
+	MPLSLabel uint32                `yaml:"mpls_label,omitempty"`
 }
 
 // Validate validates that all values are parsable.
 func (cfg *FABRIDConnectionPoints) Validate() error {
+	if cfg.Ingress.Type != fabrid.Interface && cfg.Ingress.Type != fabrid.Wildcard {
+		return serrors.New("FABRID policies are only supported from an interface to an IP" +
+			" range or other interface.")
+	} else if cfg.Ingress.Type == fabrid.Interface && cfg.Ingress.Interface == 0 {
+		return serrors.New("Invalid interface for connection point")
+	} else if cfg.Ingress.Type == fabrid.Interface && cfg.Egress.Type == fabrid.Interface && cfg.
+		Ingress.Interface == cfg.Egress.Interface {
+		return serrors.New("Interfaces should be distinct")
+	}
 	return config.ValidateAll(&cfg.Ingress, &cfg.Egress)
 }
 
+// A connection point describes a specific interface, or an IP range. A FABRID policy can be valid
+// for a pair of connection points.
 type FABRIDConnectionPoint struct {
 	Type      fabrid.ConnectionPointType `yaml:"type,omitempty"`
 	IPAddress string                     `yaml:"ip,omitempty"`
@@ -73,8 +84,8 @@ type FABRIDConnectionPoint struct {
 // Validate validates that all values are parsable.
 func (cfg *FABRIDConnectionPoint) Validate() error {
 	switch strings.ToLower(string(cfg.Type)) {
-	case string(fabrid.Unspecified):
-		cfg.Type = fabrid.Unspecified
+	case string(fabrid.Wildcard):
+		cfg.Type = fabrid.Wildcard
 	case string(fabrid.IPv4Range):
 		cfg.Type = fabrid.IPv4Range
 	case string(fabrid.IPv6Range):
@@ -84,9 +95,7 @@ func (cfg *FABRIDConnectionPoint) Validate() error {
 	default:
 		return serrors.New("unknown FABRID connection point", "type", cfg.Type)
 	}
-	if cfg.Type == fabrid.Interface && cfg.Interface == 0 {
-		return serrors.New("Invalid interface for connection point")
-	} else if cfg.Type == fabrid.IPv6Range && (cfg.IPAddress == "" || cfg.Prefix > 128) {
+	if cfg.Type == fabrid.IPv6Range && (cfg.IPAddress == "" || cfg.Prefix > 128) {
 		return serrors.New("Invalid IPv6 Address range for connection point")
 	} else if cfg.Type == fabrid.IPv4Range && (cfg.IPAddress == "" || cfg.Prefix > 32) {
 		return serrors.New("Invalid IPv4 Address range for connection point")

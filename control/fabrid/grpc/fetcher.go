@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//	http://www.apache.org/licenses/LICENSE-2.0
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,13 +17,14 @@ package grpc
 import (
 	"context"
 	"errors"
+	"strings"
+	"time"
+
 	"github.com/scionproto/scion/pkg/addr"
 	libgrpc "github.com/scionproto/scion/pkg/grpc"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	"github.com/scionproto/scion/pkg/snet"
-	"strings"
-	"time"
 )
 
 const (
@@ -34,7 +35,8 @@ var errNotReachable = serrors.New("remote not reachable")
 var errNotFound = serrors.New("FABRID local policy is not found")
 
 type PolicyFetcher interface {
-	GetRemotePolicy(ctx context.Context, remoteIA addr.IA, remotePolicyIdentifier uint32) (*experimental.PolicyDescriptionResponse, error)
+	GetRemotePolicy(ctx context.Context, remoteIA addr.IA,
+		remotePolicyIdentifier uint32) (*experimental.RemotePolicyDescriptionResponse, error)
 }
 
 type BasicPolicyFetcher struct {
@@ -49,13 +51,14 @@ func (f *BasicPolicyFetcher) GetRemotePolicy(
 	ctx context.Context,
 	remoteIA addr.IA,
 	remotePolicyIdentifier uint32,
-) (*experimental.PolicyDescriptionResponse, error) {
+) (*experimental.RemotePolicyDescriptionResponse, error) {
 	var errList serrors.List
 	f.errorPaths = make(map[snet.PathFingerprint]struct{})
 	for i := 0; i < f.MaxRetries; i++ {
 		rep, err := f.attemptFetchRemotePolicy(ctx, remoteIA, remotePolicyIdentifier)
-		if errors.Is(err, errNotReachable) || (err != nil && strings.Contains(err.Error(), errNotFound.Error())) {
-			return &experimental.PolicyDescriptionResponse{}, serrors.New(
+		if errors.Is(err, errNotReachable) || (err != nil && strings.Contains(err.Error(),
+			errNotFound.Error())) {
+			return &experimental.RemotePolicyDescriptionResponse{}, serrors.New(
 				"remote policy fetch fetch failed",
 				"try", i+1,
 				"peer", remoteIA,
@@ -69,7 +72,7 @@ func (f *BasicPolicyFetcher) GetRemotePolicy(
 			serrors.WrapStr("fetching policy", err, "try", i+1, "peer", remoteIA),
 		)
 	}
-	return &experimental.PolicyDescriptionResponse{}, serrors.WrapStr(
+	return &experimental.RemotePolicyDescriptionResponse{}, serrors.WrapStr(
 		"reached max retry attempts fetching remote policy",
 		errList,
 	)
@@ -79,7 +82,7 @@ func (f *BasicPolicyFetcher) attemptFetchRemotePolicy(
 	ctx context.Context,
 	srcIA addr.IA,
 	remotePolicyIdentifier uint32,
-) (*experimental.PolicyDescriptionResponse, error) {
+) (*experimental.RemotePolicyDescriptionResponse, error) {
 
 	path, err := f.pathToDst(ctx, srcIA)
 	if err != nil {
@@ -99,12 +102,12 @@ func (f *BasicPolicyFetcher) attemptFetchRemotePolicy(
 	}
 	defer conn.Close()
 	client := experimental.NewFABRIDInterServiceClient(conn)
-	rep, err := client.GetLocalPolicyDescription(ctx,
-		&experimental.PolicyDescriptionRequest{PolicyIdentifier: remotePolicyIdentifier})
+	rep, err := client.LocalPolicyDescription(ctx,
+		&experimental.LocalPolicyDescriptionRequest{PolicyIdentifier: remotePolicyIdentifier})
 	if err != nil {
 		return nil, serrors.WrapStr("requesting policy", err)
 	}
-	return rep, nil
+	return &experimental.RemotePolicyDescriptionResponse{Description: rep.Description}, nil
 }
 
 func (f *BasicPolicyFetcher) pathToDst(ctx context.Context, dst addr.IA) (snet.Path, error) {

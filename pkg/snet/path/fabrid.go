@@ -23,6 +23,7 @@ import (
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
 	"github.com/scionproto/scion/pkg/experimental/fabrid"
+	"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/slayers/extension"
@@ -39,10 +40,9 @@ type FabridConfig struct {
 
 type FABRID struct {
 	Raw              []byte
-	keys             map[addr.IA]drkey.ASHostKey
-	ingresses        []uint16
-	egresses         []uint16
-	drkeyFn          func(context.Context, drkey.ASHostMeta) (drkey.ASHostKey, error)
+	keys             map[addr.IA]*drkey.FabridKey
+	pathKey          drkey.FabridKey
+	getFabridKeys    func(context.Context, drkey.FabridKeysMeta) (drkey.FabridKeysResponse, error)
 	conf             *FabridConfig
 	counter          uint32
 	baseTimestamp    uint32
@@ -51,52 +51,38 @@ type FABRID struct {
 	fabridBuffer     []byte
 	e2eBuffer        []byte
 	numHops          int
-	policyIDs        []*fabrid.FabridPolicyID
-	ias              []addr.IA
-	support          map[addr.IA]bool
+	hops             []snet.HopInterface
+	policyIDs        []*fabrid.PolicyID
 	client           *fabrid.Client
 	fingerprint      snet.PathFingerprint
 }
 
-func NewFABRIDDataplanePath(p SCION, interfaces []snet.PathInterface, policyIDsPerHop []snet.FabridPolicyPerHop, conf *FabridConfig, client *fabrid.Client, fingerprint snet.PathFingerprint) (*FABRID, error) {
-
+func NewFABRIDDataplanePath(p SCION, hops []snet.HopInterface, policyIDs []*fabrid.PolicyID,
+	conf *FabridConfig, client *fabrid.Client, fingerprint snet.PathFingerprint) (*FABRID, error) {
+	numHops := len(hops)
 	var decoded scion.Decoded
 	if err := decoded.DecodeFromBytes(p.Raw); err != nil {
 		return nil, serrors.WrapStr("decoding path", err)
 	}
-	numSegs := len(decoded.InfoFields)
-	var numHops int
-	if isPeering(decoded) {
-		numHops = len(decoded.HopFields)
-	} else {
-		numHops = len(decoded.HopFields) - numSegs + 1 // Remove hops introduced by crossovers
-	}
-	keys := make(map[addr.IA]drkey.ASHostKey, len(policyIDsPerHop))
-	var policyIDs []*fabrid.FabridPolicyID
-	var ias []addr.IA
-	if len(policyIDsPerHop) > 0 {
-		policyIDs, ias = policiesToHopFields(numHops, policyIDsPerHop, decoded, keys)
-	} else {
-		// If no policies are provided, use zero policy for all hops
-		policyIDs = make([]*fabrid.FabridPolicyID, numHops)
-		for i := 0; i < numHops; i++ {
-			policyIDs[i] = &fabrid.FabridPolicyID{ID: 0}
-		}
-		ias = make([]addr.IA, numHops)
-
+	//TODO(jvanbommel) How was this remove hops introduced by crossovers even supposed to work?
+	// Decreasing the numHops would still add the hops to ingresses and egresses of crossovers
+	// in the middle of the path, and even cut out the end of the path. What did I miss?
+	keys := make(map[addr.IA]*drkey.FabridKey)
+	if len(policyIDs) == 0 { // If no policies are provided, use empty policy for all hops
+		policyIDs = make([]*fabrid.PolicyID, numHops)
+	} else if len(policyIDs) != numHops {
+		return nil, serrors.New("Amount of policy ids does not match the amount of hops in " +
+			"the path.")
 	}
 	f := &FABRID{
+		hops:             hops,
 		numHops:          numHops,
 		conf:             conf,
 		keys:             keys,
-		ias:              ias,
-		ingresses:        make([]uint16, numHops),
-		egresses:         make([]uint16, numHops),
 		tmpBuffer:        make([]byte, 64),
 		identifierBuffer: make([]byte, 8),
 		fabridBuffer:     make([]byte, 8+4*numHops),
 		e2eBuffer:        make([]byte, 5*2),
-		support:          make(map[addr.IA]bool),
 		Raw:              append([]byte(nil), p.Raw...),
 		policyIDs:        policyIDs,
 		client:           client,
@@ -104,91 +90,19 @@ func NewFABRIDDataplanePath(p SCION, interfaces []snet.PathInterface, policyIDsP
 	}
 
 	// Get ingress/egress IFs and IAs from path interfaces
-	f.ingresses[0] = 0
-	f.egresses[0] = uint16(interfaces[0].ID)
-	f.ias[0] = interfaces[0].IA
-	f.keys[f.ias[0]] = drkey.ASHostKey{}
-	for i := 1; i < numHops-1; i++ {
-		f.ingresses[i] = uint16(interfaces[2*i-1].ID)
-		f.egresses[i] = uint16(interfaces[2*i].ID)
-		f.ias[i] = interfaces[2*i-1].IA
-		f.keys[f.ias[i]] = drkey.ASHostKey{}
-	}
-	f.ingresses[numHops-1] = uint16(interfaces[(numHops-1)*2-1].ID)
-	f.egresses[numHops-1] = 0
-	f.ias[numHops-1] = interfaces[(numHops-1)*2-1].IA
-	f.keys[f.ias[numHops-1]] = drkey.ASHostKey{}
-	for _, ia := range ias {
-		f.support[ia] = true
+	for i, hop := range hops {
+		if policyIDs[i] != nil {
+			f.keys[hop.IA] = &drkey.FabridKey{}
+		}
 	}
 	f.baseTimestamp = decoded.InfoFields[0].Timestamp
 	return f, nil
 }
 
-func isPeering(path scion.Decoded) bool {
-	// Explicit check for assumption that peering paths can only have 2 segments
-	return path.NumINF == 2 && path.InfoFields[0].Peer && path.InfoFields[1].Peer
-}
+func (f *FABRID) RegisterDRKeyFetcher(
+	getFabridKeys func(context.Context, drkey.FabridKeysMeta) (drkey.FabridKeysResponse, error)) {
 
-func hfEqual(consDir bool, consIngress, consEgress, compIngress, compEgress uint16) bool {
-	return (consIngress == compIngress && consEgress == compEgress && consDir) ||
-		(consIngress == compEgress && consEgress == compIngress && !consDir)
-}
-
-func policiesToHopFields(numHops int, policyIDs []snet.FabridPolicyPerHop, decoded scion.Decoded,
-	keys map[addr.IA]drkey.ASHostKey) ([]*fabrid.FabridPolicyID, []addr.IA) {
-	polIds := make([]*fabrid.FabridPolicyID, numHops)
-	ias := make([]addr.IA, numHops)
-	hfIdx := 0
-	log.Debug("Policy conversion", "policyIDs", policyIDs)
-	ifIdx := 0
-	polIdx := 0
-
-	for _, seglen := range decoded.PathMeta.SegLen {
-		for seg := uint8(0); seg < seglen; seg++ {
-			if polIdx >= len(policyIDs) {
-				break
-			}
-			keys[policyIDs[polIdx].IA] = drkey.ASHostKey{}
-			hfOneToOne := hfIdx < numHops && hfEqual(decoded.InfoFields[ifIdx].ConsDir,
-				decoded.HopFields[hfIdx].ConsIngress,
-				decoded.HopFields[hfIdx].ConsEgress,
-				policyIDs[polIdx].Ingress,
-				policyIDs[polIdx].Egress)
-
-			log.Debug("HFPol", "hfIdx", hfIdx, "hhfOneToOne", hfOneToOne, "consDir", decoded.InfoFields[ifIdx].ConsDir, "hopField", decoded.HopFields[hfIdx], "policyIDs", policyIDs[polIdx])
-
-			if hfOneToOne {
-				if policyIDs[polIdx].Pol == nil {
-					polIds[hfIdx] = nil
-					log.Debug("HF not using a policy", "hfIdx", hfIdx)
-
-				} else {
-					polIds[hfIdx] = &fabrid.FabridPolicyID{
-						ID: policyIDs[polIdx].Pol.Index,
-					}
-					log.Debug("HF uses a policy", "hfIdx", hfIdx, "policy index", policyIDs[polIdx].Pol.Index, "IA", policyIDs[polIdx].IA)
-
-				}
-				ias[hfIdx] = policyIDs[polIdx].IA
-			} else {
-				polIds[hfIdx] = nil
-				ias[hfIdx] = policyIDs[polIdx].IA
-				log.Debug("HF uses nil policy", "hfIdx", hfIdx)
-			}
-			hfIdx++
-			polIdx++
-		}
-		ifIdx++
-	}
-	//for _, policy := range policyIDs {
-	//
-	//}
-	return polIds, ias
-}
-
-func (f *FABRID) RegisterDRKeyFetcher(fn func(context.Context, drkey.ASHostMeta) (drkey.ASHostKey, error)) {
-	f.drkeyFn = fn
+	f.getFabridKeys = getFabridKeys
 }
 
 func (f *FABRID) SetPath(s *slayers.SCION) error {
@@ -206,6 +120,9 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 	if p == nil {
 		return serrors.New("packet info is nil")
 	}
+	if f.getFabridKeys == nil {
+		return serrors.New("drkey not correctly configured")
+	}
 	if p.HbhExtension == nil {
 		p.HbhExtension = &slayers.HopByHopExtn{}
 	}
@@ -213,10 +130,6 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 	err := f.renewExpiredKeys(now)
 	if err != nil {
 		return serrors.WrapStr("While obtaining fabrid keys", err)
-	}
-	err = f.client.RenewPathKey(now)
-	if err != nil {
-		return err
 	}
 	identifierOption := &extension.IdentifierOption{
 		Timestamp:     now,
@@ -227,16 +140,11 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 		HopfieldMetadata: make([]*extension.FabridHopfieldMetadata, f.numHops),
 	}
 	for i := 0; i < f.numHops; i++ {
-		if f.policyIDs[i] == nil {
-			fabridOption.HopfieldMetadata[i] = &extension.FabridHopfieldMetadata{}
-			continue
-		}
 		meta := &extension.FabridHopfieldMetadata{}
-		if f.support[f.ias[i]] {
+		if f.policyIDs[i] != nil && f.keys[f.hops[i].IA] != nil {
 			meta.FabridEnabled = true
-
-			key := f.keys[f.ias[i]].Key
-			encPolicyID, err := fabrid.EncryptPolicyID(f.policyIDs[i], identifierOption, key[:])
+			key := f.keys[f.hops[i].IA].Key
+			encPolicyID, err := crypto.EncryptPolicyID(*f.policyIDs[i], identifierOption, key[:])
 			if err != nil {
 				return serrors.WrapStr("encrypting policy ID", err)
 			}
@@ -244,7 +152,8 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 		}
 		fabridOption.HopfieldMetadata[i] = meta
 	}
-	valNumber, pathValReply, err := fabrid.InitValidators(fabridOption, identifierOption, s, f.tmpBuffer, f.client.PathKey.Key[:], f.keys, nil, f.ias, f.ingresses, f.egresses)
+	valNumber, pathValReply, err = crypto.InitValidators(fabridOption, identifierOption, s, f.tmpBuffer, f.pathKey.Key[:],
+		f.keys, nil, f.hops)
 	if err != nil {
 		return serrors.WrapStr("initializing validators failed", err)
 	}
@@ -347,36 +256,42 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 	return nil
 }
 
+// This function iterates over all on-path ASes and checks whether the keys are still valid.
+// If it finds expired keys it marks them as expired and renews all expired keys at once.
 func (f *FABRID) renewExpiredKeys(t time.Time) error {
+	var expiredAses []addr.IA = nil
 	for ia, key := range f.keys {
-		if f.support[ia] {
-			if key.Epoch.NotAfter.Before(t) {
-				// key is expired, renew it
-				newKey, err := f.fetchKey(t, ia)
-				if err != nil {
-					f.support[ia] = false
-					log.Error("Error while fetching drkey", "IA", ia)
-					continue
-				}
-				log.Debug("Successfully fetched drkey", "IA", ia)
-				f.keys[ia] = newKey
+		if key.Epoch.NotAfter.Before(t) {
+			// key is expired, mark as expired
+			if expiredAses == nil {
+				expiredAses = make([]addr.IA, 0, len(f.keys))
 			}
+			expiredAses = append(expiredAses, ia)
+		}
+	}
+	isPathKeyExpired := f.pathKey.Epoch.NotAfter.Before(t)
+	if expiredAses != nil || isPathKeyExpired {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		meta := drkey.FabridKeysMeta{
+			SrcAS:    f.conf.LocalIA,
+			SrcHost:  f.conf.LocalAddr,
+			PathASes: expiredAses,
+			DstAS:    f.conf.DestinationIA,
+		}
+		if isPathKeyExpired {
+			meta.DstHost = &f.conf.DestinationAddr
+		}
+		keys, err := f.getFabridKeys(ctx, meta)
+		if err != nil {
+			return err
+		}
+		if isPathKeyExpired {
+			f.pathKey = keys.PathKey
+		}
+		for i := range keys.ASHostKeys {
+			f.keys[keys.ASHostKeys[i].AS] = &keys.ASHostKeys[i]
 		}
 	}
 	return nil
-}
-func (f *FABRID) fetchKey(t time.Time, ia addr.IA) (drkey.ASHostKey, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	key, err := f.drkeyFn(ctx, drkey.ASHostMeta{
-		Validity: t,
-		SrcIA:    ia,
-		DstIA:    f.conf.LocalIA,
-		DstHost:  f.conf.LocalAddr,
-		ProtoId:  drkey.FABRID,
-	})
-	if err != nil {
-		return drkey.ASHostKey{}, err
-	}
-	return key, nil
 }

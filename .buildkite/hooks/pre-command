@@ -30,9 +30,10 @@ rm -f $HOME/.bazelrc
 # --nostamp is required for better caching (only on non-release jobs).
 if [ "$BUILDKITE_PIPELINE_SLUG" == "scion" ]; then
     echo "build --nostamp" > $HOME/.bazelrc
-    # Also set a fixed GIT_VERSION so that the workspace_status_command always
-    # returns the same value on CI to improve cache reuse.
-    export GIT_VERSION="ci-fixed"
+    # Shorten the git version to omit commit information, improving cache reuse.
+    # The format of git-version is "<tag>-<number-of-commits-since-the-tag>-<commit-short-hash>"
+    # This will be shortened to "<tag>-modified-ci"
+    export GIT_VERSION=$(tools/git-version | sed 's/-.*/-modified-ci/')
 else
     echo "build --stamp" > $HOME/.bazelrc
 fi
@@ -43,7 +44,7 @@ echo "~~~ Starting bazel remote cache proxy"
 # Start bazel remote cache proxy for S3
 # Note that S3 keys are injected by buildkite, see
 # https://buildkite.com/docs/pipelines/secrets#storing-secrets-with-the-elastic-ci-stack-for-aws
-docker compose --compatibility -f .buildkite/hooks/bazel-remote.yml -p bazel_remote up -d
+docker compose -f .buildkite/hooks/bazel-remote.yml up -d
 
 echo "~~~ Starting go module proxy"
-docker compose --compatibility -f .buildkite/hooks/go-module-proxy.yml -p athens up -d
+docker compose -f .buildkite/hooks/go-module-proxy.yml up -d

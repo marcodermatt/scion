@@ -24,10 +24,12 @@ import (
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	libgrpc "github.com/scionproto/scion/pkg/grpc"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/ctrl/path_mgmt"
 	"github.com/scionproto/scion/pkg/private/serrors"
+	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	sdpb "github.com/scionproto/scion/pkg/proto/daemon"
 	dkpb "github.com/scionproto/scion/pkg/proto/drkey"
 	"github.com/scionproto/scion/pkg/scrypto/cppki"
@@ -76,6 +78,7 @@ func (c grpcConn) LocalIA(ctx context.Context) (addr.IA, error) {
 
 func (c grpcConn) Paths(ctx context.Context, dst, src addr.IA,
 	f PathReqFlags) ([]snet.Path, error) {
+
 	client := sdpb.NewDaemonServiceClient(c.conn)
 	response, err := client.Paths(ctx, &sdpb.PathsRequest{
 		SourceIsdAs:      uint64(src),
@@ -214,6 +217,57 @@ func (c grpcConn) DRKeyGetHostHostKey(ctx context.Context,
 	return key, nil
 }
 
+// Returns all the ASHost DRKeys for the ASes inside the meta.PathAS
+func (c grpcConn) FabridKeys(ctx context.Context, meta drkey.FabridKeysMeta,
+) (drkey.FabridKeysResponse, error) {
+
+	client := sdpb.NewDaemonServiceClient((c.conn))
+	pathASes := make([]uint64, 0, len(meta.PathASes))
+	for i := 0; i < len(meta.PathASes); i++ {
+		pathASes = append(pathASes, uint64(meta.PathASes[i]))
+	}
+	resp, err := client.FabridKeys(ctx, &sdpb.FabridKeysRequest{
+		SrcHost:  meta.SrcHost,
+		PathAses: pathASes,
+		DstAs:    uint64(meta.DstAS),
+		DstHost:  meta.DstHost,
+	})
+	if err != nil {
+		return drkey.FabridKeysResponse{}, err
+	}
+	asHostKeys := make([]drkey.FabridKey, 0, len(resp.AsHostKeys))
+	for i, key := range resp.AsHostKeys {
+		epoch := drkey.Epoch{
+			Validity: cppki.Validity{
+				NotBefore: key.EpochBegin.AsTime(),
+				NotAfter:  key.EpochEnd.AsTime(),
+			},
+		}
+		asHostKeys = append(asHostKeys, drkey.FabridKey{
+			Epoch: epoch,
+			AS:    meta.PathASes[i],
+			Key:   drkey.Key(key.Key),
+		})
+	}
+	var hostHostKey drkey.FabridKey = drkey.FabridKey{}
+	if resp.HostHostKey != nil {
+		hostHostKey = drkey.FabridKey{
+			Epoch: drkey.Epoch{
+				Validity: cppki.Validity{
+					NotBefore: resp.HostHostKey.EpochBegin.AsTime(),
+					NotAfter:  resp.HostHostKey.EpochEnd.AsTime(),
+				},
+			},
+			AS:  meta.DstAS,
+			Key: drkey.Key(resp.HostHostKey.Key),
+		}
+	}
+	return drkey.FabridKeysResponse{
+		ASHostKeys: asHostKeys,
+		PathKey:    hostHostKey,
+	}, nil
+}
+
 func (c grpcConn) Close() error {
 	return c.conn.Close()
 }
@@ -271,9 +325,9 @@ func convertPath(p *sdpb.Path, dst addr.IA) (path.Path, error) {
 		linkType[i] = linkTypeFromPB(v)
 	}
 
-	policyIdentifiers := make([][]*snet.FabridPolicyIdentifier, len(p.FabridPolicies))
+	policyIdentifiers := make([][]*fabrid.Policy, len(p.FabridPolicies))
 	for i, v := range p.FabridPolicies {
-		policyIdentifiers[i] = fabridPolicyIdentifiersFromPB(v)
+		policyIdentifiers[i] = fabridPoliciesFromPB(v)
 	}
 
 	res := path.Path{
@@ -284,16 +338,17 @@ func convertPath(p *sdpb.Path, dst addr.IA) (path.Path, error) {
 		},
 		NextHop: underlayA,
 		Meta: snet.PathMetadata{
-			Interfaces:     interfaces,
-			MTU:            uint16(p.Mtu),
-			Expiry:         expiry,
-			Latency:        latency,
-			Bandwidth:      p.Bandwidth,
-			Geo:            geo,
-			LinkType:       linkType,
-			InternalHops:   p.InternalHops,
-			Notes:          p.Notes,
-			FabridPolicies: policyIdentifiers,
+			Interfaces:      interfaces,
+			MTU:             uint16(p.Mtu),
+			Expiry:          expiry,
+			Latency:         latency,
+			Bandwidth:       p.Bandwidth,
+			CarbonIntensity: p.CarbonIntensity,
+			Geo:             geo,
+			LinkType:        linkType,
+			InternalHops:    p.InternalHops,
+			Notes:           p.Notes,
+			FabridPolicies:  policyIdentifiers,
 		},
 	}
 
@@ -307,28 +362,24 @@ func convertPath(p *sdpb.Path, dst addr.IA) (path.Path, error) {
 	return res, nil
 }
 
-func fabridPolicyIdentifiersFromPB(fpList *sdpb.FABRIDPolicyIdentifierList) []*snet.FabridPolicyIdentifier {
-	pbPolicies := make([]*snet.FabridPolicyIdentifier, len(fpList.Policies))
+func fabridPoliciesFromPB(fpList *sdpb.FabridPolicies) []*fabrid.Policy {
+	pbPolicies := make([]*fabrid.Policy, len(fpList.Policies))
 	for i, fp := range fpList.Policies {
-		switch fp.PolicyType {
-		case sdpb.FABRIDPolicyType_GLOBAL:
-			pbPolicies[i] = &snet.FabridPolicyIdentifier{
-				Type:       snet.FabridGlobalPolicy,
-				Identifier: fp.PolicyIdentifier,
-				Index:      uint8(fp.PolicyIndex),
+		switch fp.PolicyIdentifier.PolicyType {
+		case experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_GLOBAL:
+			pbPolicies[i] = &fabrid.Policy{
+				Type:       fabrid.GlobalPolicy,
+				Identifier: fp.PolicyIdentifier.PolicyIdentifier,
+				Index:      fabrid.PolicyID(fp.PolicyIndex),
 			}
-		case sdpb.FABRIDPolicyType_LOCAL:
-			pbPolicies[i] = &snet.FabridPolicyIdentifier{
-				Type:       snet.FabridLocalPolicy,
-				Identifier: fp.PolicyIdentifier,
-				Index:      uint8(fp.PolicyIndex),
+		case experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_LOCAL:
+			pbPolicies[i] = &fabrid.Policy{
+				Type:       fabrid.LocalPolicy,
+				Identifier: fp.PolicyIdentifier.PolicyIdentifier,
+				Index:      fabrid.PolicyID(fp.PolicyIndex),
 			}
 		default:
-			pbPolicies[i] = &snet.FabridPolicyIdentifier{
-				Type:       snet.FabridUnspecifiedPolicy,
-				Identifier: fp.PolicyIdentifier,
-				Index:      uint8(fp.PolicyIndex),
-			}
+			continue
 		}
 	}
 	return pbPolicies

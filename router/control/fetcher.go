@@ -19,14 +19,15 @@ import (
 	"net"
 	"time"
 
-	"github.com/scionproto/scion/pkg/private/serrors"
-	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
-
-	"github.com/scionproto/scion/pkg/log"
-	drpb "github.com/scionproto/scion/pkg/proto/control_plane"
-	"github.com/scionproto/scion/pkg/proto/drkey"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/scionproto/scion/pkg/drkey"
+	"github.com/scionproto/scion/pkg/log"
+	"github.com/scionproto/scion/pkg/private/serrors"
+	cppb "github.com/scionproto/scion/pkg/proto/control_plane"
+	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
+	drpb "github.com/scionproto/scion/pkg/proto/drkey"
 )
 
 type SecretValue struct {
@@ -63,41 +64,57 @@ func NewFetcher(localIP string, csAddr string, dp Dataplane) (*Fetcher, error) {
 	return f, nil
 }
 
-func (f *Fetcher) StartFabridPolicyFetcher(interfaces []uint16) {
+func (f *Fetcher) StartFabridPolicyFetcher() {
 	retryAfterErrorDuration := 10 * time.Second
 	for {
-		policies, err := f.queryFabridPolicies()
+		mplsPolicyResp, err := f.queryFabridPolicies()
+
 		if err != nil {
-			log.Debug("Error while querying the FABRID policies from local control service", "err", err)
+			log.Debug("Error while querying the FABRID policies from local control service",
+				"err", err)
 			time.Sleep(retryAfterErrorDuration)
 			continue
 		}
-		// create tmp solution until control service is updated with new data structure
-		// <TODO delete this part>
-		tmp := make(map[uint32][]*PolicyIPRange)
-		for policyIndex, mplsLabel := range policies {
-			for _, iface := range interfaces {
-				_, ipprefix, _ := net.ParseCIDR("0.0.0.0/0")
-				tmp[uint32(iface)<<8+uint32(policyIndex)] = []*PolicyIPRange{
-					{
-						IPPrefix:  ipprefix,
-						MPLSLabel: mplsLabel,
-					},
-				}
-			}
+		if !mplsPolicyResp.Update {
+			time.Sleep(30 * time.Minute)
+			continue
 		}
-		// </>
-		err = f.dp.UpdateFabridPolicies(tmp, nil)
+
+		log.Debug("Updated FABRID policies")
+		err = f.dp.UpdateFabridPolicies(ipPoliciesMapFromPB(mplsPolicyResp.MplsIpMap),
+			mplsPolicyResp.MplsInterfacePoliciesMap)
 		if err != nil {
 			log.Debug("Error while adding FABRID policies", "err", err)
 			time.Sleep(retryAfterErrorDuration)
 			continue
 		}
+
 		time.Sleep(30 * time.Minute)
 	}
 }
 
-func (f *Fetcher) queryFabridPolicies() (map[uint8]uint32, error) {
+func ipPoliciesMapFromPB(mplsPolicyResp map[uint32]*experimental.
+	MPLSIPArray) map[uint32][]*PolicyIPRange {
+	res := make(map[uint32][]*PolicyIPRange)
+	for key, ipArray := range mplsPolicyResp {
+
+		for _, ipRange := range ipArray.Entry {
+			var m net.IPMask
+			if len(ipRange.Ip) == 4 { //TODO(jvanbommel): test this
+				m = net.CIDRMask(int(ipRange.Prefix), 8*net.IPv4len)
+			} else {
+				m = net.CIDRMask(int(ipRange.Prefix), 8*net.IPv6len)
+			}
+			res[key] = append(res[key], &PolicyIPRange{
+				IPPrefix:  &net.IPNet{IP: ipRange.Ip, Mask: m},
+				MPLSLabel: ipRange.MplsLabel,
+			})
+		}
+	}
+	return res
+}
+
+func (f *Fetcher) queryFabridPolicies() (*experimental.MPLSMapResponse, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	dialer := func(ctx context.Context, addr string) (net.Conn, error) {
@@ -110,43 +127,61 @@ func (f *Fetcher) queryFabridPolicies() (map[uint8]uint32, error) {
 	}
 	defer grpcconn.Close()
 	client := experimental.NewFABRIDIntraServiceClient(grpcconn)
-	rep, err := client.GetMPLSMapIfNecessary(ctx,
+	rep, err := client.MPLSMap(ctx,
 		&experimental.MPLSMapRequest{
 			Hash: nil,
 		})
 	if err != nil {
 		return nil, serrors.WrapStr("requesting policy", err)
 	}
-	result := make(map[uint8]uint32, len(rep.MplsLabelMap))
-	for k, v := range rep.MplsLabelMap {
-		result[uint8(k)] = v
-	}
-	//TODO(jvanbommel): add optional update.
-
-	return result, nil
+	return rep, err
 }
 
-func (f *Fetcher) StartSecretUpdater() {
-	retryAfterErrorDuration := 10 * time.Second
-	for {
-		sv, err := f.queryASSecret(drkey.Protocol_PROTOCOL_FABRID)
-		if err != nil {
-			log.Debug("Error while querying secret value from local control service", "err", err)
-			time.Sleep(retryAfterErrorDuration)
-			continue
+func (f *Fetcher) StartSecretUpdater(protocols []string) {
+	retryAfterErrorDuration := 5 * time.Second
+	prefetchTime := time.Minute * 3
+	runProtocol := func(protocolID drkey.Protocol) {
+		// First we make sure that we have a secret that is valid now.
+		// After that we start prefetching. In case we initially receive a secret value
+		// that expires before the prefetch time, we prefetch the new secret value immediately.
+		isPrefetching := false
+		for {
+			t := time.Now()
+			if isPrefetching {
+				t = t.Add(prefetchTime)
+			}
+			sv, err := f.queryASSecret(protocolID, t)
+			if err != nil {
+				log.Debug("Error while querying secret value from local control service",
+					"protocol", protocolID, "err", err)
+				time.Sleep(retryAfterErrorDuration)
+				continue
+			}
+			err = f.dp.AddDRKeySecret(int32(protocolID), sv)
+			if err != nil {
+				log.Debug("Error while adding drkey", "protocol", protocolID, "err", err)
+				time.Sleep(retryAfterErrorDuration)
+				continue
+			}
+			sleepTime := max(time.Until(sv.EpochEnd)-prefetchTime, 0)
+			time.Sleep(sleepTime)
+			isPrefetching = true
 		}
-		err = f.dp.AddDRKeySecret(int32(drkey.Protocol_PROTOCOL_FABRID), sv)
-		if err != nil {
-			log.Debug("Error while adding drkey", "err", err)
-			time.Sleep(retryAfterErrorDuration)
-			continue
+	}
+	for _, p := range protocols {
+		pID, ok := drkey.ProtocolStringToId("PROTOCOL_" + p)
+		if ok {
+			log.Debug("Register DRKey secret fetcher for", "protocol", p)
+			go func(protocol drkey.Protocol) {
+				defer log.HandlePanic()
+				runProtocol(protocol)
+			}(pID)
 		}
-		time.Sleep(time.Until(sv.EpochEnd) - 5*time.Minute)
 	}
 }
 
 func (f *Fetcher) queryASSecret(
-	protocolID drkey.Protocol) (SecretValue, error) {
+	protocolID drkey.Protocol, minValStart time.Time) (SecretValue, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -159,10 +194,10 @@ func (f *Fetcher) queryASSecret(
 		return SecretValue{}, err
 	}
 	defer grpcconn.Close()
-	client := drpb.NewDRKeyIntraServiceClient(grpcconn)
-	req := &drpb.DRKeySecretValueRequest{
-		ProtocolId: protocolID,
-		ValTime:    timestamppb.New(time.Now().Add(1 * time.Hour)),
+	client := cppb.NewDRKeyIntraServiceClient(grpcconn)
+	req := &cppb.DRKeySecretValueRequest{
+		ProtocolId: drpb.Protocol(protocolID),
+		ValTime:    timestamppb.New(minValStart),
 	}
 	res, err := client.DRKeySecretValue(ctx, req)
 	if err != nil {

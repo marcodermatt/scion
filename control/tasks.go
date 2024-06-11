@@ -16,7 +16,6 @@ package control
 
 import (
 	"context"
-	"github.com/scionproto/scion/control/fabrid"
 	"hash"
 	"net"
 	"time"
@@ -24,6 +23,7 @@ import (
 	"github.com/scionproto/scion/control/beacon"
 	"github.com/scionproto/scion/control/beaconing"
 	"github.com/scionproto/scion/control/drkey"
+	"github.com/scionproto/scion/control/fabrid"
 	"github.com/scionproto/scion/control/ifstate"
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/experimental/hiddenpath"
@@ -87,7 +87,6 @@ func (t *TasksConfig) Originator() *periodic.Runner {
 		return nil
 	}
 	s := &beaconing.Originator{
-
 		Extender: t.extender("originator", t.IA, t.MTU, func() uint8 {
 			return t.BeaconStore.MaxExpTime(beacon.PropPolicy)
 		}),

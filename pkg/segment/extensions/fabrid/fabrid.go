@@ -1,25 +1,34 @@
+// Copyright 2023 ETH Zurich
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package fabrid
 
 import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
-	fabridpb "github.com/scionproto/scion/pkg/proto/control_plane/experimental"
-	"github.com/scionproto/scion/pkg/segment/extensions/digest"
 	"net"
 	"sort"
+
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
+	fabridpb "github.com/scionproto/scion/pkg/proto/control_plane/experimental"
+	"github.com/scionproto/scion/pkg/segment/extensions/digest"
 )
 
 type SupportedIndicesMap map[ConnectionPair][]uint8
 
 type IndexIdentifierMap map[uint8]*PolicyIdentifier
-
-type PolicyType int32
-
-const (
-	LocalPolicy  PolicyType = 0
-	GlobalPolicy PolicyType = 1
-)
 
 type Detached struct {
 	SupportedIndicesMap SupportedIndicesMap
@@ -41,7 +50,6 @@ func (ind *SupportedIndicesMap) SortedKeys() []ConnectionPair {
 }
 
 func (id *IndexIdentifierMap) SortedKeys() []uint8 {
-	// TODO(jvanbommel): Q precompute and store?
 	orderedKeys := make([]uint8, 0, len(*id))
 	for k := range *id {
 		orderedKeys = append(orderedKeys, k)
@@ -55,21 +63,23 @@ func (id *IndexIdentifierMap) SortedKeys() []uint8 {
 type ConnectionPointType string
 
 const (
-	Unspecified ConnectionPointType = "unspecified"
-	IPv4Range   ConnectionPointType = "ipv4"
-	IPv6Range   ConnectionPointType = "ipv6"
-	Interface   ConnectionPointType = "interface"
+	IPv4Range ConnectionPointType = "ipv4"
+	IPv6Range ConnectionPointType = "ipv6"
+	Interface ConnectionPointType = "interface"
+	Wildcard  ConnectionPointType = "wildcard"
 )
 
 type ConnectionPoint struct {
 	Type        ConnectionPointType
 	IP          string // Stored as a string to allow it to be key of a map.
 	Prefix      uint32
-	InterfaceId uint16 // TODO(jvanbommel): Q this is actually not consistent in scion.
+	InterfaceId uint16
 }
 
-// To ensure that the connection point strings are identical, i.e. without padding, parse using the net library
-func ConnectionPointFromString(IP string, Prefix uint32, Type ConnectionPointType) ConnectionPoint {
+// To ensure that the connection point strings are identical, i.e. without padding,
+// parse using the net library
+func IPConnectionPointFromString(IP string, Prefix uint32,
+	Type ConnectionPointType) ConnectionPoint {
 	var m net.IPMask
 	if Type == IPv4Range {
 		m = net.CIDRMask(int(Prefix), 8*net.IPv4len)
@@ -103,8 +113,7 @@ func (c *ConnectionPoint) IPNetwork() *net.IPNet {
 	return &net.IPNet{}
 }
 func (c *ConnectionPoint) MatchesIF(intf uint16) bool {
-	return ((c.Type == IPv4Range || c.Type == IPv6Range) && intf == 0) ||
-		(c.Type == Interface && c.InterfaceId == intf)
+	return (c.Type == Interface && c.InterfaceId == intf) || c.Type == Wildcard
 }
 
 type ConnectionPair struct {
@@ -112,35 +121,72 @@ type ConnectionPair struct {
 	Egress  ConnectionPoint
 }
 
-func (c *ConnectionPair) Matches(ingress, egress uint16) bool {
-	return c.Ingress.MatchesIF(ingress) && c.Egress.MatchesIF(egress)
+func (c *ConnectionPair) Matches(ingress, egress uint16, allowIpPolicies bool) bool {
+	match := c.Ingress.MatchesIF(ingress) && c.Egress.MatchesIF(egress)
+	if allowIpPolicies {
+		match = match || (c.Ingress.MatchesIF(ingress) && egress == 0 &&
+			(c.Egress.Type == IPv4Range || c.Egress.Type == IPv6Range))
+	}
+	return match
 }
 
 type PolicyIdentifier struct {
-	Type       PolicyType
+	Type       fabrid.PolicyType
 	Identifier uint32
 }
 
-//TODO(jvanbommel): policy identifier to from pb
+func PolicyIdentifierToPB(identifier *PolicyIdentifier) *fabridpb.FABRIDPolicyIdentifier {
+	if identifier.Type == fabrid.GlobalPolicy {
+		return &fabridpb.FABRIDPolicyIdentifier{
+			PolicyType:       fabridpb.FABRIDPolicyType_FABRID_POLICY_TYPE_GLOBAL,
+			PolicyIdentifier: identifier.Identifier,
+		}
+	} else if identifier.Type == fabrid.LocalPolicy {
+		return &fabridpb.FABRIDPolicyIdentifier{
+			PolicyType:       fabridpb.FABRIDPolicyType_FABRID_POLICY_TYPE_LOCAL,
+			PolicyIdentifier: identifier.Identifier,
+		}
+	}
+	return &fabridpb.FABRIDPolicyIdentifier{}
+}
+
+func PolicyIdentifierFromPB(identifier *fabridpb.FABRIDPolicyIdentifier) *PolicyIdentifier {
+	if identifier.PolicyType == fabridpb.FABRIDPolicyType_FABRID_POLICY_TYPE_GLOBAL {
+		return &PolicyIdentifier{
+			Type:       fabrid.GlobalPolicy,
+			Identifier: identifier.PolicyIdentifier,
+		}
+	} else if identifier.PolicyType == fabridpb.FABRIDPolicyType_FABRID_POLICY_TYPE_LOCAL {
+		return &PolicyIdentifier{
+			Type:       fabrid.LocalPolicy,
+			Identifier: identifier.PolicyIdentifier,
+		}
+	}
+	return nil
+}
 
 func ConnectionPointToPB(point ConnectionPoint) *fabridpb.FABRIDConnectionPoint {
 	switch point.Type {
 	case IPv4Range:
 		return &fabridpb.FABRIDConnectionPoint{
-			Type:      fabridpb.FABRIDConnectionType_IPv4_RANGE,
+			Type:      fabridpb.FABRIDConnectionType_FABRID_CONNECTION_TYPE_IPV4_RANGE,
 			IpAddress: point.IPNetwork().IP,
 			IpPrefix:  point.Prefix,
 		}
 	case IPv6Range:
 		return &fabridpb.FABRIDConnectionPoint{
-			Type:      fabridpb.FABRIDConnectionType_IPv6_RANGE,
+			Type:      fabridpb.FABRIDConnectionType_FABRID_CONNECTION_TYPE_IPV6_RANGE,
 			IpAddress: point.IPNetwork().IP,
 			IpPrefix:  point.Prefix,
 		}
 	case Interface:
 		return &fabridpb.FABRIDConnectionPoint{
-			Type:      fabridpb.FABRIDConnectionType_INTERFACE,
+			Type:      fabridpb.FABRIDConnectionType_FABRID_CONNECTION_TYPE_INTERFACE,
 			Interface: uint64(point.InterfaceId),
+		}
+	case Wildcard:
+		return &fabridpb.FABRIDConnectionPoint{
+			Type: fabridpb.FABRIDConnectionType_FABRID_CONNECTION_TYPE_WILDCARD,
 		}
 	default:
 		return &fabridpb.FABRIDConnectionPoint{}
@@ -149,23 +195,25 @@ func ConnectionPointToPB(point ConnectionPoint) *fabridpb.FABRIDConnectionPoint 
 
 func ConnectionPointFromPB(point *fabridpb.FABRIDConnectionPoint) ConnectionPoint {
 	switch point.Type {
-	case fabridpb.FABRIDConnectionType_IPv4_RANGE:
+	case fabridpb.FABRIDConnectionType_FABRID_CONNECTION_TYPE_IPV4_RANGE:
 		return ConnectionPoint{
 			Type:   IPv4Range,
 			IP:     net.IP(point.IpAddress).String(),
 			Prefix: point.IpPrefix,
 		}
-	case fabridpb.FABRIDConnectionType_IPv6_RANGE:
+	case fabridpb.FABRIDConnectionType_FABRID_CONNECTION_TYPE_IPV6_RANGE:
 		return ConnectionPoint{
 			Type:   IPv6Range,
 			IP:     net.IP(point.IpAddress).String(),
 			Prefix: point.IpPrefix,
 		}
-	case fabridpb.FABRIDConnectionType_INTERFACE:
+	case fabridpb.FABRIDConnectionType_FABRID_CONNECTION_TYPE_INTERFACE:
 		return ConnectionPoint{
 			Type:        Interface,
 			InterfaceId: uint16(point.Interface),
 		}
+	case fabridpb.FABRIDConnectionType_FABRID_CONNECTION_TYPE_WILDCARD:
+		return ConnectionPoint{Type: Wildcard}
 	default:
 		return ConnectionPoint{}
 	}
@@ -206,39 +254,20 @@ func SupportedIndicesMapFromPB(indicesMap []*fabridpb.FABRIDIndexMapEntry) Suppo
 	return supIndices
 }
 
-func IndexIdentifierMapToPB(identifierMap IndexIdentifierMap) map[uint32]*fabridpb.FABRIDPolicyIdentifier {
+func IndexIdentifierMapToPB(identifierMap IndexIdentifierMap) map[uint32]*fabridpb.
+	FABRIDPolicyIdentifier {
 	identMap := make(map[uint32]*fabridpb.FABRIDPolicyIdentifier, len(identifierMap))
 	for index, identifier := range identifierMap {
-		if identifier.Type == GlobalPolicy {
-			identMap[uint32(index)] = &fabridpb.FABRIDPolicyIdentifier{
-				PolicyType:       fabridpb.FABRIDPolicyType_GLOBAL,
-				PolicyIdentifier: identifier.Identifier,
-			}
-		} else if identifier.Type == LocalPolicy {
-
-			identMap[uint32(index)] = &fabridpb.FABRIDPolicyIdentifier{
-				PolicyType:       fabridpb.FABRIDPolicyType_LOCAL,
-				PolicyIdentifier: identifier.Identifier,
-			}
-		}
+		identMap[uint32(index)] = PolicyIdentifierToPB(identifier)
 	}
 	return identMap
 }
 
-func IndexIdentifierMapFromPB(identifierMap map[uint32]*fabridpb.FABRIDPolicyIdentifier) IndexIdentifierMap {
+func IndexIdentifierMapFromPB(identifierMap map[uint32]*fabridpb.
+	FABRIDPolicyIdentifier) IndexIdentifierMap {
 	identMap := make(IndexIdentifierMap, len(identifierMap))
 	for index, identifier := range identifierMap {
-		if identifier.PolicyType == fabridpb.FABRIDPolicyType_GLOBAL {
-			identMap[uint8(index)] = &PolicyIdentifier{
-				Type:       GlobalPolicy,
-				Identifier: identifier.PolicyIdentifier,
-			}
-		} else if identifier.PolicyType == fabridpb.FABRIDPolicyType_LOCAL {
-			identMap[uint8(index)] = &PolicyIdentifier{
-				Type:       LocalPolicy,
-				Identifier: identifier.PolicyIdentifier,
-			}
-		}
+		identMap[uint8(index)] = PolicyIdentifierFromPB(identifier)
 	}
 	return identMap
 }
@@ -268,7 +297,8 @@ func DetachedFromPB(detached *fabridpb.FABRIDDetachedExtension) *Detached {
 func (d *Detached) String() string {
 	base := " indexIdentifierMap: ["
 	for _, k := range d.IndexIdentiferMap.SortedKeys() {
-		base += fmt.Sprintf("{ index: %d, type: %d, identifier: %d }", k, d.IndexIdentiferMap[k].Type, d.IndexIdentiferMap[k].Identifier)
+		base += fmt.Sprintf("{ index: %d, type: %d, identifier: %d }", k,
+			d.IndexIdentiferMap[k].Type, d.IndexIdentiferMap[k].Identifier)
 	}
 	base += "], supportedIndicesMap: ["
 
@@ -278,6 +308,8 @@ func (d *Detached) String() string {
 			base += fmt.Sprintf("interfaceId: %d }", k.Ingress.InterfaceId)
 		} else if k.Ingress.Type == IPv4Range || k.Ingress.Type == IPv6Range {
 			base += fmt.Sprintf("ip: %s, prefix: %d }", k.Ingress.IP, k.Ingress.Prefix)
+		} else if k.Ingress.Type == Wildcard {
+			base += "wildcard }"
 		}
 
 		base += fmt.Sprintf("} egress : { type: %s ", k.Egress.Type)
@@ -285,6 +317,8 @@ func (d *Detached) String() string {
 			base += fmt.Sprintf("interfaceId: %d } ", k.Egress.InterfaceId)
 		} else if k.Egress.Type == IPv4Range || k.Egress.Type == IPv6Range {
 			base += fmt.Sprintf("ip: %s, prefix: %d } ", k.Egress.IP, k.Egress.Prefix)
+		} else if k.Ingress.Type == Wildcard {
+			base += "wildcard }"
 		}
 		base += " supports: ["
 		supported := d.SupportedIndicesMap[k]
@@ -302,31 +336,31 @@ func (d *Detached) String() string {
 func (d *Detached) Hash() []byte {
 	h := sha256.New()
 	for _, k := range d.IndexIdentiferMap.SortedKeys() {
-		binary.Write(h, binary.BigEndian, k)
-		binary.Write(h, binary.BigEndian, d.IndexIdentiferMap[k].Type)
-		binary.Write(h, binary.BigEndian, d.IndexIdentiferMap[k].Identifier)
+		_ = binary.Write(h, binary.BigEndian, k)
+		_ = binary.Write(h, binary.BigEndian, d.IndexIdentiferMap[k].Type)
+		_ = binary.Write(h, binary.BigEndian, d.IndexIdentiferMap[k].Identifier)
 	}
 	for _, k := range d.SupportedIndicesMap.SortedKeys() {
-		binary.Write(h, binary.BigEndian, k.Ingress.Type)
+		_ = binary.Write(h, binary.BigEndian, k.Ingress.Type)
 		if k.Ingress.Type == Interface {
-			binary.Write(h, binary.BigEndian, k.Ingress.InterfaceId)
+			_ = binary.Write(h, binary.BigEndian, k.Ingress.InterfaceId)
 		} else if k.Ingress.Type == IPv4Range || k.Ingress.Type == IPv6Range {
-			binary.Write(h, binary.BigEndian, k.Ingress.Prefix)
-			binary.Write(h, binary.BigEndian, k.Ingress.IP)
+			_ = binary.Write(h, binary.BigEndian, k.Ingress.Prefix)
+			_ = binary.Write(h, binary.BigEndian, k.Ingress.IP)
 		}
 
-		binary.Write(h, binary.BigEndian, k.Egress.Type)
+		_ = binary.Write(h, binary.BigEndian, k.Egress.Type)
 		if k.Egress.Type == Interface {
-			binary.Write(h, binary.BigEndian, k.Egress.InterfaceId)
+			_ = binary.Write(h, binary.BigEndian, k.Egress.InterfaceId)
 		} else if k.Egress.Type == IPv4Range || k.Egress.Type == IPv6Range {
-			binary.Write(h, binary.BigEndian, k.Egress.Prefix)
-			binary.Write(h, binary.BigEndian, k.Egress.IP)
+			_ = binary.Write(h, binary.BigEndian, k.Egress.Prefix)
+			_ = binary.Write(h, binary.BigEndian, k.Egress.IP)
 		}
 		supported := d.SupportedIndicesMap[k]
 		sort.Slice(supported, func(i int, j int) bool {
 			return supported[i] < supported[j]
 		})
-		binary.Write(h, binary.BigEndian, supported)
+		_ = binary.Write(h, binary.BigEndian, supported)
 	}
 	return h.Sum(nil)[0:digest.DigestLength]
 }

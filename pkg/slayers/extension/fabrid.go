@@ -62,7 +62,7 @@ func (f *FabridHopfieldMetadata) DecodeFabridHopfieldMetadata(b []byte) error {
 }
 
 func (f *FabridHopfieldMetadata) decodeFabridHopfieldMetadata(b []byte) {
-	f.EncryptedPolicyID = uint8(b[0])
+	f.EncryptedPolicyID = b[0]
 	copy(f.HopValidationField[:], b[1:4])
 	if b[1]&0x80 > 0 {
 		f.FabridEnabled = true
@@ -83,7 +83,7 @@ func (f *FabridHopfieldMetadata) SerializeTo(b []byte) error {
 }
 
 func (f *FabridHopfieldMetadata) serializeTo(b []byte) {
-	b[0] = byte(f.EncryptedPolicyID)
+	b[0] = f.EncryptedPolicyID
 	copy(b[1:4], f.HopValidationField[:])
 	b[1] &= 0x3f // clear the first two (left) bits of the HVF
 	if f.FabridEnabled {
@@ -172,10 +172,13 @@ func FabridOptionLen(numHopfields uint8) uint8 {
 	return baseFabridLen + numHopfields*uint8(FabridMetadataLen)
 }
 
-func ParseFabridOptionFullExtension(o *slayers.HopByHopOption, numHfs uint8) (*FabridOption, error) {
+func ParseFabridOptionFullExtension(o *slayers.HopByHopOption, numHfs uint8) (
+	*FabridOption, error) {
+
 	if o.OptType != slayers.OptTypeFabrid {
 		return nil,
-			serrors.New("Wrong option type", "expected", slayers.OptTypeFabrid, "actual", o.OptType)
+			serrors.New("Wrong option type", "expected",
+				slayers.OptTypeFabrid, "actual", o.OptType)
 	}
 	f := &FabridOption{}
 	if err := f.DecodeFull(o.OptData, numHfs); err != nil {
@@ -184,7 +187,9 @@ func ParseFabridOptionFullExtension(o *slayers.HopByHopOption, numHfs uint8) (*F
 	return f, nil
 }
 
-func ParseFabridOptionCurrentHop(o *slayers.HopByHopOption, currHf uint8, numHfs uint8) (*FabridOption, error) {
+func ParseFabridOptionCurrentHop(o *slayers.HopByHopOption, currHf uint8, numHfs uint8) (
+	*FabridOption, error) {
+
 	if o.OptType != slayers.OptTypeFabrid {
 		return nil,
 			serrors.New("Wrong option type", "expected", slayers.OptTypeFabrid, "actual", o.OptType)

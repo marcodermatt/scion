@@ -85,7 +85,7 @@ func (c *Connector) AddExternalInterface(localIfID common.IFIDType, link control
 	intf := uint16(localIfID)
 	log.Debug("Adding external interface", "interface", localIfID,
 		"local_isd_as", link.Local.IA, "local_addr", link.Local.Addr,
-		"remote_isd_as", link.Remote.IA, "remote_addr", link.Remote.IA,
+		"remote_isd_as", link.Remote.IA, "remote_addr", link.Remote.Addr,
 		"owned", owned, "bfd", !link.BFD.Disable)
 
 	if !c.ia.Equal(link.Local.IA) {
@@ -141,7 +141,7 @@ func (c *Connector) AddExternalInterface(localIfID common.IFIDType, link control
 			return serrors.WrapStr("adding external BFD", err, "if_id", localIfID)
 		}
 	}
-	return c.DataPlane.AddExternalInterface(intf, connection, link.Remote.Addr)
+	return c.DataPlane.AddExternalInterface(intf, connection)
 }
 
 // AddSvc adds the service address for the given ISD-AS.
@@ -169,7 +169,7 @@ func (c *Connector) DelSvc(ia addr.IA, svc addr.SVC, ip net.IP) error {
 func (c *Connector) AddDRKeySecret(protocolID int32, sv control.SecretValue) error {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-	return c.DataPlane.AddDRKeySecret(protocolID, sv)
+	return c.DataPlane.drKeyProvider.AddSecret(protocolID, sv)
 }
 
 func (c *Connector) UpdateFabridPolicies(ipRangePolicies map[uint32][]*control.PolicyIPRange,

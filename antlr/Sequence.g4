@@ -17,11 +17,6 @@ OR: '|';
 LPAR: '(';
 RPAR: ')';
 
-MONKEYTAIL: '@';
-GLOBALPOLICY: 'G';
-LOCALPOLICY: 'L';
-WILDCARDPOLICY: 'A';
-
 start: sequence EOF;
 
 sequence
@@ -31,8 +26,6 @@ sequence
     | sequence OR sequence  # Or
     | sequence sequence     # Concatenation
     | LPAR sequence RPAR    # Parentheses
-    | onehop MONKEYTAIL onepolicy # OnePolicyHop
-    | onehop MONKEYTAIL LPAR policies RPAR # PoliciesHop
     | onehop                # Hop
     ;
 
@@ -57,22 +50,4 @@ as
 iface
     : ZERO # WildcardIFace
     | NUM  # IFace
-    ;
-
-policies
-    : policies OR policies # PoliciesOr
-    | policies COMMA policies # PoliciesConcatenation
-    | LPAR policies RPAR # PoliciesParentheses
-    | onepolicy # PoliciesPolicy
-    ;
-
-onepolicy
-    : GLOBALPOLICY policyindex # GlobalPolicy
-    | LOCALPOLICY policyindex # LocalPolicy
-    | WILDCARDPOLICY # WildcardPolicy
-    ;
-
-policyindex
-    : ZERO # PolicyIndexWildcard
-    | NUM # PolicyIndex
     ;
