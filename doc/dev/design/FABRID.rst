@@ -473,10 +473,11 @@ Example (cs1-ff00_0_110-1.toml)::
     connection = "gen-cache/cs1-ff00_0_110-1.drkey-secret.db"
 
     [drkey.delegation]
-    FABRID = [ "fd00:f00d:cafe::7f00:11", "fd00:f00d:cafe::7f00:12", "fd00:f00d:cafe::7f00:13"]
+    FABRID = ["fd00:f00d:cafe::7f00:11", "fd00:f00d:cafe::7f00:12", "fd00:f00d:cafe::7f00:13"]
 
-    [general]
-    fabrid_path = "gen/ASff00_0_110/fabrid/"
+    [fabrid]
+    enabled = true
+    path = "gen/ASff00_0_110/fabrid/"
 
 .. _fabrid_yaml_config:
 
@@ -557,7 +558,7 @@ For a router to query the DRKey secret value from the control service, this has 
 Example (br1-ff00_0_110-1.toml)::
 
     [router]
-    use_drkey = true
+    drkey = ["FABRID"]
 
 Considerations for future work
 --------------------------------
