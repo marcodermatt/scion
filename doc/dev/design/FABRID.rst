@@ -386,11 +386,11 @@ A custom language is used to make a selection out of the available paths and pol
 
 * **Concatenations**
 
-  Multiple identifiers can be combined by using a concatenation. Concatenations are created by the ``+`` symbol.
+  Multiple identifiers can be combined by using a concatenation. Concatenations are created by the ``|`` symbol.
 
   Example:
 
-  ``(1-0#0,0@G300 + 1-0#0,0@G200)`` applies both policy G300 and policy G200.
+  ``(1-0#0,0@G300 | 1-0#0,0@G200)`` applies either policy G300 or policy G200.
 
 * **Queries**
 
@@ -408,7 +408,7 @@ A custom language is used to make a selection out of the available paths and pol
 
   When an expression queries for ``1-0#0,0@G200`` using ``{1-0#0,0@G200 ? 1-0#0,0@G300 : 1-0#0,0@REJECT}``, the policies that are
   applied to the hops are only policy G300 for the last hop.
-  To also apply policy G200, the query has to be structured as ``{1-0#0,0@G200 ? (1-0#0,0@G300 + 1-0#0,0@G200) : 1-0#0,0@REJECT}``.
+  To apply policy G200 if G300 is not available, the query has to be structured as ``{1-0#0,0@G200 ? (1-0#0,0@G300 | 1-0#0,0@G200) : 1-0#0,0@REJECT}``.
 
   In general there are two ways to reject a path based on policies.
 
@@ -427,7 +427,7 @@ A custom language is used to make a selection out of the available paths and pol
   In this case the query ``{0-0#0,0@G150 ? 0-0#0,0@REJECT : 0-0#0,0@0}`` can be used.
   ``G150`` in this case is a blacklisted policy.
   (An alternative is a whitelist, where a user would specify all manufacturers that are allowed,
-  i.e. ``G151``, ``G152``, ``G153``: ``0-0#0,0@G151 + 0-0#0,0@G152 + 0-0#0,0@G153 + 0-0#0,0@REJECT}``)
+  i.e. ``G151``, ``G152``, ``G153``: ``0-0#0,0@G151 | 0-0#0,0@G152 | 0-0#0,0@G153 | 0-0#0,0@REJECT}``)
 
 **Evaluation Order**
 The language is evaluated left to right, for each hop only a single policy can be applied.
@@ -435,11 +435,11 @@ The first identifier match applies the policy, so the order of the query is impo
 
 Example:
 
-``(0-0#0,0@REJECT + 1-0#0,0@00)``
+``(0-0#0,0@REJECT | 1-0#0,0@00)``
 
 Will reject all paths, whereas
 
-``(1-0#0,0@0 + 0-0#0,0@REJECT)``
+``(1-0#0,0@0 | 0-0#0,0@REJECT)``
 
 Will reject all paths that are not within ISD 1.
 
