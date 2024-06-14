@@ -1193,7 +1193,16 @@ func (p *scionPacketProcessor) processHbhOptions(egressIF uint16) error {
 			if p.identifier != nil {
 				return serrors.New("Identifier HBH option provided multiple times")
 			}
-			p.identifier, err = extension.ParseIdentifierOption(opt, p.infoField.Timestamp)
+			// TODO(marcodermatt): Find cleaner solution for getting timestamp of first InfoField
+			baseTimestamp := p.infoField.Timestamp
+			if p.path.PathMeta.CurrINF > 0 {
+				firstInfoField, err := p.path.GetInfoField(0)
+				if err != nil {
+					return serrors.New("Failed to parse first InfoField")
+				}
+				baseTimestamp = firstInfoField.Timestamp
+			}
+			p.identifier, err = extension.ParseIdentifierOption(opt, baseTimestamp)
 			if err != nil {
 				return err
 			}

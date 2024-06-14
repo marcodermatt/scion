@@ -38,10 +38,16 @@ import (
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/daemon"
+	"github.com/scionproto/scion/pkg/drkey"
+	libfabrid "github.com/scionproto/scion/pkg/experimental/fabrid"
+	"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/private/util"
+	"github.com/scionproto/scion/pkg/slayers"
+	"github.com/scionproto/scion/pkg/slayers/extension"
+	"github.com/scionproto/scion/pkg/slayers/path/scion"
 	"github.com/scionproto/scion/pkg/snet"
 	"github.com/scionproto/scion/pkg/snet/metrics"
 	snetpath "github.com/scionproto/scion/pkg/snet/path"
@@ -76,6 +82,7 @@ var (
 	scionPacketConnMetrics = metrics.NewSCIONPacketConnMetrics()
 	scmpErrorsCounter      = scionPacketConnMetrics.SCMPErrors
 	epic                   bool
+	fabrid                 bool
 )
 
 func main() {
@@ -112,6 +119,7 @@ func addFlags() {
 	flag.Var(&remote, "remote", "(Mandatory for clients) address to connect to")
 	flag.Var(timeout, "timeout", "The timeout for each attempt")
 	flag.BoolVar(&epic, "epic", false, "Enable EPIC")
+	flag.BoolVar(&fabrid, "fabrid", false, "Enable FABRID")
 }
 
 func validateFlags() {
@@ -126,7 +134,10 @@ func validateFlags() {
 			integration.LogFatal("Invalid timeout provided", "timeout", timeout)
 		}
 	}
-	log.Info("Flags", "timeout", timeout, "epic", epic, "remote", remote)
+	if epic && fabrid {
+		integration.LogFatal("FABRID is incompatible with EPIC")
+	}
+	log.Info("Flags", "timeout", timeout, "epic", epic, "fabrid", fabrid, "remote", remote)
 }
 
 type server struct{}
@@ -172,6 +183,68 @@ func (s server) handlePing(conn snet.PacketConn) error {
 	if err := readFrom(conn, &p, &ov); err != nil {
 		return serrors.WrapStr("reading packet", err)
 	}
+
+	// If fabrid flag is set and packet is from remote IA, validate the FABRID path
+	if fabrid && p.Source.IA != integration.Local.IA {
+		if p.HbhExtension == nil {
+			return serrors.New("Missing HBH extension")
+		}
+
+		// Check extensions for relevant options
+		var identifierOption *extension.IdentifierOption
+		var fabridOption *extension.FabridOption
+		var err error
+
+		for _, opt := range p.HbhExtension.Options {
+			switch opt.OptType {
+			case slayers.OptTypeIdentifier:
+				decoded := scion.Decoded{}
+				err = decoded.DecodeFromBytes(p.Path.(snet.RawPath).Raw)
+				if err != nil {
+					return err
+				}
+				baseTimestamp := decoded.InfoFields[0].Timestamp
+				identifierOption, err = extension.ParseIdentifierOption(opt, baseTimestamp)
+				if err != nil {
+					return err
+				}
+			case slayers.OptTypeFabrid:
+				fabridOption, err = extension.ParseFabridOptionFullExtension(opt,
+					(opt.OptDataLen-4)/4)
+				if err != nil {
+					return err
+				}
+			}
+		}
+
+		if identifierOption == nil {
+			return serrors.New("Missing identifier option")
+		}
+
+		if fabridOption == nil {
+			return serrors.New("Missing FABRID option")
+		}
+
+		meta := drkey.HostHostMeta{
+			Validity: identifierOption.Timestamp,
+			SrcIA:    integration.Local.IA,
+			SrcHost:  integration.Local.Host.IP.String(),
+			DstIA:    p.Source.IA,
+			DstHost:  p.Source.Host.IP().String(),
+			ProtoId:  drkey.FABRID,
+		}
+		hostHostKey, err := integration.SDConn().DRKeyGetHostHostKey(context.Background(), meta)
+		if err != nil {
+			return err
+		}
+
+		tmpBuffer := make([]byte, (len(fabridOption.HopfieldMetadata)*3+15)&^15+16)
+		_, err = crypto.VerifyPathValidator(fabridOption, tmpBuffer, hostHostKey.Key[:])
+		if err != nil {
+			return err
+		}
+	}
+
 	udp, ok := p.Payload.(snet.UDPPayload)
 	if !ok {
 		return serrors.New("unexpected payload received",
@@ -231,6 +304,11 @@ func (s server) handlePing(conn snet.PacketConn) error {
 		SrcPort: udp.DstPort,
 		Payload: raw,
 	}
+
+	// Remove header extension for reverse path
+	p.HbhExtension = nil
+	p.E2eExtension = nil
+
 	// reverse path
 	rpath, ok := p.Path.(snet.RawPath)
 	if !ok {
@@ -302,6 +380,7 @@ func (c *client) attemptRequest(n int) bool {
 		logger.Error("Could not get remote", "err", err)
 		return false
 	}
+
 	span, ctx = tracing.StartSpanFromCtx(ctx, "attempt.ping")
 	defer span.Finish()
 	withTag := func(err error) error {
@@ -425,6 +504,32 @@ func (c *client) getRemote(ctx context.Context, n int) (snet.Path, error) {
 			return nil, err
 		}
 		remote.Path = epicPath
+	} else if fabrid {
+		// If the fabrid flag is set, try to create FABRID dataplane path.
+		scionPath, ok := path.Dataplane().(snetpath.SCION)
+		if !ok {
+			return nil, serrors.New("provided path must be of type scion")
+		}
+		fabridConfig := &snetpath.FabridConfig{
+			LocalIA:         integration.Local.IA,
+			LocalAddr:       integration.Local.Host.IP.String(),
+			DestinationIA:   remote.IA,
+			DestinationAddr: remote.Host.IP.String(),
+		}
+		hops := path.Metadata().Hops()
+		// Use ZERO policy for all hops, to just do path validation
+		policies := make([]*libfabrid.PolicyID, len(hops))
+		zeroPol := libfabrid.PolicyID(0)
+		for i := 0; i < len(hops); i++ {
+			policies[i] = &zeroPol
+		}
+		fabridPath, err := snetpath.NewFABRIDDataplanePath(scionPath, hops,
+			policies, fabridConfig)
+		if err != nil {
+			return nil, serrors.New("Error creating FABRID path", "err", err)
+		}
+		remote.Path = fabridPath
+		fabridPath.RegisterDRKeyFetcher(c.sdConn.FabridKeys)
 	} else {
 		remote.Path = path.Dataplane()
 	}
