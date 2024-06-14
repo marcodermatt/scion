@@ -44,10 +44,11 @@ var (
 	cmd         string
 	features    string
 	epic        bool
+	fabrid      bool
 )
 
 func getCmd() (string, bool) {
-	return cmd, strings.Contains(cmd, "end2end") || strings.Contains(cmd, "fabrid")
+	return cmd, strings.Contains(cmd, "end2end")
 }
 
 func main() {
@@ -76,10 +77,12 @@ func realMain() int {
 		"-local", integration.SrcAddrPattern + ":0",
 		"-remote", integration.DstAddrPattern + ":" + integration.ServerPortReplace,
 		fmt.Sprintf("-epic=%t", epic),
+		fmt.Sprintf("-fabrid=%t", fabrid),
 	}
 	serverArgs := []string{
 		"-mode", "server",
 		"-local", integration.DstAddrPattern + ":0",
+		fmt.Sprintf("-fabrid=%t", fabrid),
 	}
 	if len(features) != 0 {
 		clientArgs = append(clientArgs, "--features", features)
@@ -119,6 +122,7 @@ func addFlags() {
 	flag.StringVar(&features, "features", "",
 		fmt.Sprintf("enable development features (%v)", feature.String(&feature.Default{}, "|")))
 	flag.BoolVar(&epic, "epic", false, "Enable EPIC.")
+	flag.BoolVar(&fabrid, "fabrid", false, "Enable FABRID.")
 }
 
 // runTests runs the end2end tests for all pairs. In case of an error the
@@ -296,6 +300,7 @@ func clientTemplate(progressSock string) integration.Cmd {
 			"-local", integration.SrcAddrPattern + ":0",
 			"-remote", integration.DstAddrPattern + ":" + integration.ServerPortReplace,
 			fmt.Sprintf("-epic=%t", epic),
+			fmt.Sprintf("-fabrid=%t", fabrid),
 		},
 	}
 	if len(features) != 0 {
