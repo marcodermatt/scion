@@ -29,7 +29,7 @@ func TestAddExistingHop(t *testing.T) {
 	ml.StorePolicy(1, &fabridquery.Policy{
 		Type: fabridquery.STANDARD_POLICY_TYPE,
 		Policy: &fabrid.Policy{
-			Type:       fabrid.GlobalPolicy,
+			IsLocal:    false,
 			Identifier: 100,
 			Index:      fabrid.PolicyID(polIdx),
 		},
@@ -51,7 +51,7 @@ func TestRejectedHop(t *testing.T) {
 	ml.StorePolicy(1, &fabridquery.Policy{
 		Type: fabridquery.STANDARD_POLICY_TYPE,
 		Policy: &fabrid.Policy{
-			Type:       fabrid.GlobalPolicy,
+			IsLocal:    false,
 			Identifier: 100,
 			Index:      fabrid.PolicyID(polIdx),
 		},
@@ -66,7 +66,7 @@ func TestAcceptedHop(t *testing.T) {
 		ml.StorePolicy(i, &fabridquery.Policy{
 			Type: fabridquery.STANDARD_POLICY_TYPE,
 			Policy: &fabrid.Policy{
-				Type:       fabrid.GlobalPolicy,
+				IsLocal:    false,
 				Identifier: uint32(100 + i),
 				Index:      fabrid.PolicyID(200 + i),
 			},

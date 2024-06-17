@@ -195,15 +195,9 @@ func pathToPB(path snet.Path) *sdpb.Path {
 }
 
 func fabridPolicyToPB(fp *fabrid.Policy) *sdpb.FabridPolicy {
-	var policyType experimental.FABRIDPolicyType
-	if fp.Type == fabrid.GlobalPolicy {
-		policyType = experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_GLOBAL
-	} else if fp.Type == fabrid.LocalPolicy {
-		policyType = experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_LOCAL
-	}
 	return &sdpb.FabridPolicy{
 		PolicyIdentifier: &experimental.FABRIDPolicyIdentifier{
-			PolicyType:       policyType,
+			PolicyIsLocal:    fp.IsLocal,
 			PolicyIdentifier: fp.Identifier,
 		},
 		PolicyIndex: uint32(fp.Index),

@@ -426,7 +426,7 @@ func (g *Graph) FabridPolicy(a, b uint16) []*fabrid.Policy {
 	policies := make([]*fabrid.Policy, amtOfPols)
 	for i := 0; i < amtOfPols; i++ {
 		policies[i] = &fabrid.Policy{
-			Type:       fabrid.GlobalPolicy,
+			IsLocal:    false,
 			Identifier: (uint32(a)*uint32(b)*uint32(i)*39 + uint32(i) + 1) % 20000,
 			Index:      fabrid.PolicyID(a * b),
 		}

@@ -22,7 +22,6 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/scionproto/scion/control/config"
-	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	fabrid_ext "github.com/scionproto/scion/pkg/segment/extensions/fabrid"
@@ -113,13 +112,13 @@ func (f *FabridManager) addPolicy(pol *config.FABRIDPolicy) error {
 
 	if pol.IsLocalPolicy {
 		f.IndexIdentifierMap[policyIdx] = &fabrid_ext.PolicyIdentifier{
-			Type:       fabrid.LocalPolicy,
+			IsLocal:    true,
 			Identifier: pol.LocalIdentifier,
 		}
 		f.IdentifierDescriptionMap[pol.LocalIdentifier] = pol.LocalDescription
 	} else {
 		f.IndexIdentifierMap[policyIdx] = &fabrid_ext.PolicyIdentifier{
-			Type:       fabrid.GlobalPolicy,
+			IsLocal:    false,
 			Identifier: pol.GlobalIdentifier,
 		}
 	}

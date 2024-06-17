@@ -222,7 +222,7 @@ func (l *pathpolicyConstraintsListener) ExitGlobalPolicy(c *pathpolicyconstraint
 	l.push(Policy{
 		Type: STANDARD_POLICY_TYPE,
 		Policy: &fabrid.Policy{
-			Type:       fabrid.GlobalPolicy,
+			IsLocal:    false,
 			Identifier: uint32(n),
 		},
 	})
@@ -240,7 +240,7 @@ func (l *pathpolicyConstraintsListener) ExitLocalPolicy(c *pathpolicyconstraints
 	l.push(Policy{
 		Type: STANDARD_POLICY_TYPE,
 		Policy: &fabrid.Policy{
-			Type:       fabrid.LocalPolicy,
+			IsLocal:    true,
 			Identifier: uint32(n),
 		},
 	})
