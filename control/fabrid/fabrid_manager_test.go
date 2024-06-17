@@ -22,7 +22,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/scionproto/scion/control/config"
-	fabrid_defs "github.com/scionproto/scion/pkg/experimental/fabrid"
 	"github.com/scionproto/scion/pkg/segment/extensions/fabrid"
 )
 
@@ -127,8 +126,8 @@ func TestLoadPolicies(t *testing.T) {
 			}
 			policyIdx := uint8(0)
 			for k, v := range fm.IndexIdentifierMap {
-				if ((tc.Local && v.Type == fabrid_defs.LocalPolicy) || (!tc.Local && v.
-					Type == fabrid_defs.GlobalPolicy)) && v.Identifier == tc.Identifier {
+				if ((tc.Local && v.IsLocal) || (!tc.Local && !v.
+					IsLocal)) && v.Identifier == tc.Identifier {
 					policyIdx = k
 				}
 			}
@@ -250,11 +249,11 @@ func TestAddPolicy(t *testing.T) {
 			indexIdentifierMapEntry := fm.IndexIdentifierMap[uint8(oldIndex)]
 			if tc.Local {
 				require.Equal(t, tc.Policy.LocalIdentifier, indexIdentifierMapEntry.Identifier)
-				require.Equal(t, fabrid_defs.LocalPolicy, indexIdentifierMapEntry.Type)
+				require.True(t, indexIdentifierMapEntry.IsLocal)
 			} else {
 
 				require.Equal(t, tc.Policy.GlobalIdentifier, indexIdentifierMapEntry.Identifier)
-				require.Equal(t, fabrid_defs.GlobalPolicy, indexIdentifierMapEntry.Type)
+				require.False(t, indexIdentifierMapEntry.IsLocal)
 			}
 			//Check if the policy has been inserted correctly into the MPLS Maps:
 			cp1_mpls_key := 1<<31 + uint32(oldIndex) // IP

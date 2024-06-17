@@ -29,7 +29,6 @@ import (
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/ctrl/path_mgmt"
 	"github.com/scionproto/scion/pkg/private/serrors"
-	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	sdpb "github.com/scionproto/scion/pkg/proto/daemon"
 	dkpb "github.com/scionproto/scion/pkg/proto/drkey"
 	"github.com/scionproto/scion/pkg/scrypto/cppki"
@@ -365,21 +364,10 @@ func convertPath(p *sdpb.Path, dst addr.IA) (path.Path, error) {
 func fabridPoliciesFromPB(fpList *sdpb.FabridPolicies) []*fabrid.Policy {
 	pbPolicies := make([]*fabrid.Policy, len(fpList.Policies))
 	for i, fp := range fpList.Policies {
-		switch fp.PolicyIdentifier.PolicyType {
-		case experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_GLOBAL:
-			pbPolicies[i] = &fabrid.Policy{
-				Type:       fabrid.GlobalPolicy,
-				Identifier: fp.PolicyIdentifier.PolicyIdentifier,
-				Index:      fabrid.PolicyID(fp.PolicyIndex),
-			}
-		case experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_LOCAL:
-			pbPolicies[i] = &fabrid.Policy{
-				Type:       fabrid.LocalPolicy,
-				Identifier: fp.PolicyIdentifier.PolicyIdentifier,
-				Index:      fabrid.PolicyID(fp.PolicyIndex),
-			}
-		default:
-			continue
+		pbPolicies[i] = &fabrid.Policy{
+			IsLocal:    fp.PolicyIdentifier.PolicyIsLocal,
+			Identifier: fp.PolicyIdentifier.PolicyIdentifier,
+			Index:      fabrid.PolicyID(fp.PolicyIndex),
 		}
 	}
 	return pbPolicies

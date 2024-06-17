@@ -508,19 +508,11 @@ func getPoliciesForIntfs(ia addr.IA, ig, eg uint16, maps map[addr.IA]fabridMapEn
 				continue
 			}
 			log.Debug("PolicyAdded", "id", val.Identifier, "egIf", eg, "ig", ig)
-			if val.Type == fabrid.GlobalPolicy {
-				policies = append(policies, &fabrid.Policy{
-					Type:       fabrid.GlobalPolicy,
-					Identifier: val.Identifier,
-					Index:      fabrid.PolicyID(policy),
-				})
-			} else {
-				policies = append(policies, &fabrid.Policy{
-					Type:       fabrid.LocalPolicy,
-					Identifier: val.Identifier,
-					Index:      fabrid.PolicyID(policy),
-				})
-			}
+			policies = append(policies, &fabrid.Policy{
+				IsLocal:    val.IsLocal,
+				Identifier: val.Identifier,
+				Index:      fabrid.PolicyID(policy),
+			})
 
 		}
 	}

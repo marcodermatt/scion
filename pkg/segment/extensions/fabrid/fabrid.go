@@ -21,7 +21,6 @@ import (
 	"net"
 	"sort"
 
-	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	fabridpb "github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	"github.com/scionproto/scion/pkg/segment/extensions/digest"
 )
@@ -131,38 +130,22 @@ func (c *ConnectionPair) Matches(ingress, egress uint16, allowIpPolicies bool) b
 }
 
 type PolicyIdentifier struct {
-	Type       fabrid.PolicyType
+	IsLocal    bool
 	Identifier uint32
 }
 
 func PolicyIdentifierToPB(identifier *PolicyIdentifier) *fabridpb.FABRIDPolicyIdentifier {
-	if identifier.Type == fabrid.GlobalPolicy {
-		return &fabridpb.FABRIDPolicyIdentifier{
-			PolicyType:       fabridpb.FABRIDPolicyType_FABRID_POLICY_TYPE_GLOBAL,
-			PolicyIdentifier: identifier.Identifier,
-		}
-	} else if identifier.Type == fabrid.LocalPolicy {
-		return &fabridpb.FABRIDPolicyIdentifier{
-			PolicyType:       fabridpb.FABRIDPolicyType_FABRID_POLICY_TYPE_LOCAL,
-			PolicyIdentifier: identifier.Identifier,
-		}
+	return &fabridpb.FABRIDPolicyIdentifier{
+		PolicyIsLocal:    identifier.IsLocal,
+		PolicyIdentifier: identifier.Identifier,
 	}
-	return &fabridpb.FABRIDPolicyIdentifier{}
 }
 
 func PolicyIdentifierFromPB(identifier *fabridpb.FABRIDPolicyIdentifier) *PolicyIdentifier {
-	if identifier.PolicyType == fabridpb.FABRIDPolicyType_FABRID_POLICY_TYPE_GLOBAL {
-		return &PolicyIdentifier{
-			Type:       fabrid.GlobalPolicy,
-			Identifier: identifier.PolicyIdentifier,
-		}
-	} else if identifier.PolicyType == fabridpb.FABRIDPolicyType_FABRID_POLICY_TYPE_LOCAL {
-		return &PolicyIdentifier{
-			Type:       fabrid.LocalPolicy,
-			Identifier: identifier.PolicyIdentifier,
-		}
+	return &PolicyIdentifier{
+		IsLocal:    identifier.PolicyIsLocal,
+		Identifier: identifier.PolicyIdentifier,
 	}
-	return nil
 }
 
 func ConnectionPointToPB(point ConnectionPoint) *fabridpb.FABRIDConnectionPoint {
@@ -297,8 +280,8 @@ func DetachedFromPB(detached *fabridpb.FABRIDDetachedExtension) *Detached {
 func (d *Detached) String() string {
 	base := " indexIdentifierMap: ["
 	for _, k := range d.IndexIdentiferMap.SortedKeys() {
-		base += fmt.Sprintf("{ index: %d, type: %d, identifier: %d }", k,
-			d.IndexIdentiferMap[k].Type, d.IndexIdentiferMap[k].Identifier)
+		base += fmt.Sprintf("{ index: %d, is_local: %t, identifier: %d }", k,
+			d.IndexIdentiferMap[k].IsLocal, d.IndexIdentiferMap[k].Identifier)
 	}
 	base += "], supportedIndicesMap: ["
 
@@ -337,7 +320,7 @@ func (d *Detached) Hash() []byte {
 	h := sha256.New()
 	for _, k := range d.IndexIdentiferMap.SortedKeys() {
 		_ = binary.Write(h, binary.BigEndian, k)
-		_ = binary.Write(h, binary.BigEndian, d.IndexIdentiferMap[k].Type)
+		_ = binary.Write(h, binary.BigEndian, d.IndexIdentiferMap[k].IsLocal)
 		_ = binary.Write(h, binary.BigEndian, d.IndexIdentiferMap[k].Identifier)
 	}
 	for _, k := range d.SupportedIndicesMap.SortedKeys() {

@@ -136,7 +136,7 @@ func (i Identifier) Evaluate(pi []snet.HopInterface, ml *MatchList) (bool, *Matc
 		}
 		// Check if the query's policy matches a policy that is available for this hop.
 		for _, pol := range p.Policies {
-			if pol.Identifier == i.Policy.Identifier && i.Policy.Policy.Type == pol.Type {
+			if pol.Identifier == i.Policy.Identifier && i.Policy.Policy.IsLocal == pol.IsLocal {
 
 				ml.StorePolicy(idx, &Policy{
 					Type:   STANDARD_POLICY_TYPE,
