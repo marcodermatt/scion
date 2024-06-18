@@ -152,7 +152,7 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 		}
 		fabridOption.HopfieldMetadata[i] = meta
 	}
-	valNumber, pathValReply, err = crypto.InitValidators(fabridOption, identifierOption, s, f.tmpBuffer, f.pathKey.Key[:],
+	valNumber, pathValReply, err := crypto.InitValidators(fabridOption, identifierOption, s, f.tmpBuffer, f.pathKey.Key[:],
 		f.keys, nil, f.hops)
 	if err != nil {
 		return serrors.WrapStr("initializing validators failed", err)
@@ -231,7 +231,7 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 			p.E2eExtension = &slayers.EndToEndExtn{}
 		}
 		for i, replyOpt := range e2eOpts {
-			err = fabrid.InitFabridControlValidator(replyOpt, f.client.PathKey.Key[:])
+			err = crypto.InitFabridControlValidator(replyOpt, f.client.PathKey.Key[:])
 			if err != nil {
 				return err
 			}

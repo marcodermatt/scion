@@ -21,6 +21,7 @@ import (
 	drhelper "github.com/scionproto/scion/pkg/daemon/helper"
 	"github.com/scionproto/scion/pkg/drkey"
 	"github.com/scionproto/scion/pkg/drkey/specific"
+	"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	drpb "github.com/scionproto/scion/pkg/proto/control_plane"
@@ -41,7 +42,7 @@ type SimpleFabridConfig struct {
 	LocalIA           addr.IA
 	LocalAddr         string
 	ValidationRatio   uint8
-	Policy            snet.FabridPolicyIdentifier
+	Policy            Policy
 	ValidationHandler func(*PathState, *extension.FabridControlOption, bool) error
 }
 
@@ -209,7 +210,7 @@ func (s *Server) HandleFabridPacket(remote snet.UDPAddr, fabridOption *extension
 	}
 
 	client.Stats.TotalPackets++
-	validationNumber, validationReply, success, err := VerifyPathValidator(fabridOption, client.tmpBuffer, client.pathKey[:])
+	validationNumber, validationReply, success, err := crypto.VerifyPathValidator(fabridOption, client.tmpBuffer, client.pathKey[:])
 	if err != nil {
 		return nil, nil
 	}
@@ -220,7 +221,7 @@ func (s *Server) HandleFabridPacket(remote snet.UDPAddr, fabridOption *extension
 
 	var replyOpts []*extension.FabridControlOption
 	for _, controlOption := range controlOptions {
-		err := VerifyFabridControlValidator(controlOption, client.pathKey[:])
+		err := crypto.VerifyFabridControlValidator(controlOption, client.pathKey[:])
 		if err != nil {
 			return nil, err
 		}
@@ -285,7 +286,7 @@ func (s *Server) HandleFabridPacket(remote snet.UDPAddr, fabridOption *extension
 	if len(replyOpts) > 0 {
 		e2eExt := &slayers.EndToEndExtn{}
 		for i, replyOpt := range replyOpts {
-			err = InitFabridControlValidator(replyOpt, client.pathKey[:])
+			err = crypto.InitFabridControlValidator(replyOpt, client.pathKey[:])
 			if err != nil {
 				return nil, err
 			}
@@ -345,7 +346,7 @@ func (c *Client) fetchHostHostKey(t time.Time) (drkey.HostHostKey, error) {
 
 func (c *Client) HandleFabridControlOption(fp snet.PathFingerprint, controlOption *extension.FabridControlOption) error {
 
-	err := VerifyFabridControlValidator(controlOption, c.PathKey.Key[:])
+	err := crypto.VerifyFabridControlValidator(controlOption, c.PathKey.Key[:])
 	if err != nil {
 		return err
 	}
