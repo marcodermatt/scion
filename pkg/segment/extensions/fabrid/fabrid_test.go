@@ -20,7 +20,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 )
 
@@ -287,15 +286,15 @@ func TestDetachedToFromPB(t *testing.T) {
 				SupportedIndicesMap: SupportedIndicesMap{},
 				IndexIdentiferMap: IndexIdentifierMap{
 					2: &PolicyIdentifier{
-						Type:       fabrid.GlobalPolicy,
+						IsLocal:    false,
 						Identifier: 22,
 					},
 					8: &PolicyIdentifier{
-						Type:       fabrid.LocalPolicy,
+						IsLocal:    true,
 						Identifier: 1,
 					},
 					15: &PolicyIdentifier{
-						Type:       fabrid.GlobalPolicy,
+						IsLocal:    false,
 						Identifier: 50,
 					},
 				},
@@ -304,15 +303,15 @@ func TestDetachedToFromPB(t *testing.T) {
 				FABRIDDetachableMaps{
 				IndexIdentifierMap: map[uint32]*experimental.FABRIDPolicyIdentifier{
 					2: {
-						PolicyType:       experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_GLOBAL,
+						PolicyIsLocal:    false,
 						PolicyIdentifier: 22,
 					},
 					8: {
-						PolicyType:       experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_LOCAL,
+						PolicyIsLocal:    true,
 						PolicyIdentifier: 1,
 					},
 					15: {
-						PolicyType:       experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_GLOBAL,
+						PolicyIsLocal:    false,
 						PolicyIdentifier: 50,
 					},
 				},
@@ -356,15 +355,15 @@ func TestDetachedToFromPB(t *testing.T) {
 				},
 				IndexIdentiferMap: IndexIdentifierMap{
 					2: &PolicyIdentifier{
-						Type:       fabrid.GlobalPolicy,
+						IsLocal:    false,
 						Identifier: 22,
 					},
 					8: &PolicyIdentifier{
-						Type:       fabrid.LocalPolicy,
+						IsLocal:    true,
 						Identifier: 1,
 					},
 					15: &PolicyIdentifier{
-						Type:       fabrid.GlobalPolicy,
+						IsLocal:    false,
 						Identifier: 50,
 					},
 				},
@@ -420,15 +419,15 @@ func TestDetachedToFromPB(t *testing.T) {
 				},
 				IndexIdentifierMap: map[uint32]*experimental.FABRIDPolicyIdentifier{
 					2: {
-						PolicyType:       experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_GLOBAL,
+						PolicyIsLocal:    false,
 						PolicyIdentifier: 22,
 					},
 					8: {
-						PolicyType:       experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_LOCAL,
+						PolicyIsLocal:    true,
 						PolicyIdentifier: 1,
 					},
 					15: {
-						PolicyType:       experimental.FABRIDPolicyType_FABRID_POLICY_TYPE_GLOBAL,
+						PolicyIsLocal:    false,
 						PolicyIdentifier: 50,
 					},
 				},
@@ -481,15 +480,15 @@ func TestHash(t *testing.T) {
 		},
 		IndexIdentiferMap: IndexIdentifierMap{
 			2: &PolicyIdentifier{
-				Type:       fabrid.GlobalPolicy,
+				IsLocal:    false,
 				Identifier: 22,
 			},
 			8: &PolicyIdentifier{
-				Type:       fabrid.LocalPolicy,
+				IsLocal:    true,
 				Identifier: 1,
 			},
 			15: &PolicyIdentifier{
-				Type:       fabrid.GlobalPolicy,
+				IsLocal:    false,
 				Identifier: 50,
 			},
 		},
@@ -531,15 +530,15 @@ func TestHash(t *testing.T) {
 		},
 		IndexIdentiferMap: IndexIdentifierMap{
 			15: &PolicyIdentifier{
-				Type:       fabrid.GlobalPolicy,
+				IsLocal:    false,
 				Identifier: 50,
 			},
 			8: &PolicyIdentifier{
-				Type:       fabrid.LocalPolicy,
+				IsLocal:    true,
 				Identifier: 1,
 			},
 			2: &PolicyIdentifier{
-				Type:       fabrid.GlobalPolicy,
+				IsLocal:    false,
 				Identifier: 22,
 			},
 		},
@@ -581,15 +580,15 @@ func TestHash(t *testing.T) {
 		},
 		IndexIdentiferMap: IndexIdentifierMap{
 			15: &PolicyIdentifier{
-				Type:       fabrid.GlobalPolicy,
+				IsLocal:    false,
 				Identifier: 50,
 			},
 			8: &PolicyIdentifier{
-				Type:       fabrid.LocalPolicy,
+				IsLocal:    true,
 				Identifier: 1,
 			},
 			2: &PolicyIdentifier{
-				Type:       fabrid.GlobalPolicy,
+				IsLocal:    false,
 				Identifier: 22,
 			},
 		},

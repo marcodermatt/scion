@@ -28,17 +28,9 @@ message FABRIDDetachableMaps {
     map<uint32, FABRIDPolicyIdentifier> index_identifier_map = 2;
 }
 
-enum FABRIDPolicyType {
-    // The type of policy has not been specified
-    FABRID_POLICY_TYPE_UNSPECIFIED = 0;
-    // The policy is AS-local
-    FABRID_POLICY_TYPE_LOCAL = 1;
-    // The policy is global and present in the global policy description store.
-    FABRID_POLICY_TYPE_GLOBAL = 2;
-}
 message FABRIDPolicyIdentifier {
-    // The type of this policy, either local or global
-    FABRIDPolicyType policy_type = 1;
+    // Flag to specify local policies
+    bool policy_is_local = 1;
     // The identifier for the policy
     uint32 policy_identifier = 2;
 }

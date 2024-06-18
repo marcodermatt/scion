@@ -26,7 +26,6 @@ import (
 	"github.com/scionproto/scion/control/fabrid"
 	"github.com/scionproto/scion/control/fabrid/grpc/mock_grpc"
 	"github.com/scionproto/scion/pkg/addr"
-	fabrid_defs "github.com/scionproto/scion/pkg/experimental/fabrid"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/private/xtest"
 	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
@@ -165,15 +164,15 @@ func TestSupportedIndicesMap(t *testing.T) {
 func TestIndexIdentifierMap(t *testing.T) {
 	indexIdentifierMap := fabrid_ext.IndexIdentifierMap{
 		2: &fabrid_ext.PolicyIdentifier{
-			Type:       fabrid_defs.GlobalPolicy,
+			IsLocal:    false,
 			Identifier: 22,
 		},
 		8: &fabrid_ext.PolicyIdentifier{
-			Type:       fabrid_defs.LocalPolicy,
+			IsLocal:    true,
 			Identifier: 1,
 		},
 		15: &fabrid_ext.PolicyIdentifier{
-			Type:       fabrid_defs.GlobalPolicy,
+			IsLocal:    false,
 			Identifier: 50,
 		},
 	}

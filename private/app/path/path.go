@@ -323,10 +323,10 @@ func (cs ColorScheme) Policies(policies [][]*fabrid.Policy, idx int) string {
 	}
 	policyStr := make([]string, len(policies[idx]))
 	for i, v := range policies[idx] {
-		if v.Type == fabrid.GlobalPolicy {
-			policyStr[i] = cs.GlobalPolicy.Sprintf(v.String())
-		} else if v.Type == fabrid.LocalPolicy {
+		if v.IsLocal {
 			policyStr[i] = cs.LocalPolicy.Sprintf(v.String())
+		} else {
+			policyStr[i] = cs.GlobalPolicy.Sprintf(v.String())
 		}
 	}
 	return fmt.Sprintf("~%s~", strings.Join(policyStr, ","))
