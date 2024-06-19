@@ -137,6 +137,8 @@ func realMain(ctx context.Context) error {
 			defer log.HandlePanic()
 			fetcher.StartSecretUpdater(globalCfg.Router.DRKey)
 		}()
+	}
+	if globalCfg.Router.Fabrid {
 		go func() {
 			defer log.HandlePanic()
 			interfaces := make([]uint16, len(controlConfig.BR.IFIDs))

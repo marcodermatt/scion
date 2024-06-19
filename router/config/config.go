@@ -46,6 +46,7 @@ type RouterConfig struct {
 	NumSlowPathProcessors int      `toml:"num_slow_processors,omitempty"`
 	BatchSize             int      `toml:"batch_size,omitempty"`
 	DRKey                 []string `toml:"drkey,omitempty"`
+	Fabrid                bool     `toml:"fabrid,omitempty"`
 }
 
 func (cfg *RouterConfig) ConfigName() string {
@@ -67,6 +68,19 @@ func (cfg *RouterConfig) Validate() error {
 	}
 	if cfg.NumSlowPathProcessors < 1 {
 		return serrors.New("Provided router config is invalid. NumSlowPathProcessors < 1")
+	}
+	if cfg.Fabrid {
+		fabrid_drkey := false
+		for _, protocol := range cfg.DRKey {
+			if protocol == "FABRID" {
+				fabrid_drkey = true
+				break
+			}
+		}
+		if !fabrid_drkey {
+			return serrors.New("Provided router config is invalid." +
+				"Enabling FABRID requires adding it to the DRKey protocols.")
+		}
 	}
 
 	return nil
