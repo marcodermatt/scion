@@ -1,20 +1,35 @@
 load("//acceptance/common:raw.bzl", "raw_test")
+load("//tools/lint:py.bzl", "py_binary", "py_library")
+load("@com_github_scionproto_scion_python_deps//:requirements.bzl", "requirement")
 
-exports_files([
-    "conf",
-    "test.py",
-])
+exports_files(
+    [
+        "conf",
+        "test.py",
+        "conf/router.toml",
+        "conf/topology.json",
+        "conf/keys/master0.key",
+        "conf/keys/master1.key",
+    ],
+    visibility = ["//visibility:public"],
+)
 
 args = [
     "--executable",
     "brload:$(location //acceptance/router_benchmark/brload:brload)",
-    "--container-loader=posix-router:latest#$(location //docker:posix_router)",
+    "--executable",
+    "coremark:$(location //tools/coremark:coremark)",
+    "--executable",
+    "mmbm:$(location //tools/mmbm:mmbm)",
+    "--docker-image=$(location //docker:router.tarball)",
 ]
 
 data = [
     ":conf",
-    "//docker:posix_router",
+    "//docker:router.tarball",
     "//acceptance/router_benchmark/brload:brload",
+    "//tools/coremark:coremark",
+    "//tools/mmbm:mmbm",
 ]
 
 raw_test(
@@ -22,7 +37,25 @@ raw_test(
     src = "test.py",
     args = args,
     data = data,
-    homedir = "$(rootpath //docker:posix_router)",
+    homedir = "$(rootpath //docker:router.tarball)",
     # This test uses sudo and accesses /var/run/netns.
     local = True,
+    deps = ["benchmarklib"],
+)
+
+py_library(
+    name = "benchmarklib",
+    srcs = ["benchmarklib.py"],
+)
+
+# To ensure that the linter runs over this. Cannot actually be run with
+# bazel run; it is meant to be executed from the command line.
+py_binary(
+    name = "benchmark",
+    srcs = ["benchmark.py"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "benchmarklib",
+        requirement("plumbum"),
+    ],
 )

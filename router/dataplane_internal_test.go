@@ -43,7 +43,9 @@ import (
 	"github.com/scionproto/scion/router/mock_router"
 )
 
-var testKey = []byte("testkey_xxxxxxxx")
+var (
+	testKey = []byte("testkey_xxxxxxxx")
+)
 
 // TestReceiver sets up a mocked batchConn, starts the receiver that reads from
 // this batchConn and forwards it to the processing routines channels. We verify
@@ -77,7 +79,7 @@ func TestReceiver(t *testing.T) {
 		},
 	).Times(1)
 
-	_ = dp.AddInternalInterface(mInternal, net.IP{})
+	_ = dp.AddInternalInterface(mInternal, netip.Addr{})
 
 	runConfig := &RunConfig{
 		NumProcessors: 1,
@@ -169,7 +171,7 @@ func TestForwarder(t *testing.T) {
 
 				return len(ms), nil
 			}).AnyTimes()
-		_ = ret.AddInternalInterface(mInternal, net.IP{})
+		_ = ret.AddInternalInterface(mInternal, netip.Addr{})
 		return ret
 	}
 	dp := prepareDP(ctrl)
@@ -355,18 +357,25 @@ func TestFabridPolicies(t *testing.T) {
 }
 
 func TestComputeProcId(t *testing.T) {
-	randomValue := []byte{1, 2, 3, 4}
+	randomValueBytes := []byte{1, 2, 3, 4}
 	numProcs := 10000
 
-	// this function returns the procID by using the slayers.SCION serialization
-	// implementation
+	// ComputeProcID expects the per-receiver random number to be pre-hashed into the seed that we
+	// pass.
+	hashSeed := fnv1aOffset32
+	for _, c := range randomValueBytes {
+		hashSeed = hashFNV1a(hashSeed, c)
+	}
+
+	// this function returns the procID as we expect it by using the  slayers.SCION serialization
+	// implementation.
 	referenceHash := func(s *slayers.SCION) uint32 {
 		flowBuf := make([]byte, 4)
 		binary.BigEndian.PutUint32(flowBuf, s.FlowID)
 		flowBuf[0] &= 0xF
 		tmpBuffer := make([]byte, 100)
 		hasher := fnv.New32a()
-		hasher.Write(randomValue)
+		hasher.Write(randomValueBytes)
 		hasher.Write(flowBuf[1:4])
 		if err := s.SerializeAddrHdr(tmpBuffer); err != nil {
 			panic(err)
@@ -375,11 +384,9 @@ func TestComputeProcId(t *testing.T) {
 		return hasher.Sum32() % uint32(numProcs)
 	}
 
-	// this helper returns the procID by using the extraction
-	// from dataplane.computeProcID()
+	// this helper returns the procID as the router actually makes it by using the extraction
+	// from dataplane.computeProcID() along with hashFNV1a() for the seed.
 	computeProcIDHelper := func(payload []byte, s *slayers.SCION) (uint32, error) {
-		flowIdBuffer := make([]byte, 3)
-		hasher := fnv.New32a()
 		buffer := gopacket.NewSerializeBuffer()
 		err := gopacket.SerializeLayers(buffer,
 			gopacket.SerializeOptions{FixLengths: true},
@@ -387,7 +394,7 @@ func TestComputeProcId(t *testing.T) {
 		require.NoError(t, err)
 		raw := buffer.Bytes()
 
-		return computeProcID(raw, numProcs, randomValue, flowIdBuffer, hasher)
+		return computeProcID(raw, numProcs, hashSeed)
 	}
 	type ret struct {
 		payload []byte
@@ -547,9 +554,8 @@ func TestComputeProcIdErrorCases(t *testing.T) {
 	}
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			randomValue := []byte{1, 2, 3, 4}
-			flowIdBuffer := make([]byte, 3)
-			_, actualErr := computeProcID(tc.data, 10000, randomValue, flowIdBuffer, fnv.New32a())
+			randomValue := uint32(1234) // not a proper hash seed, but hash result is irrelevant.
+			_, actualErr := computeProcID(tc.data, 10000, randomValue)
 			if tc.expectedError != nil {
 				assert.Equal(t, tc.expectedError.Error(), actualErr.Error())
 			} else {

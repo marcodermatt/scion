@@ -17,6 +17,7 @@ package control
 import (
 	"crypto/sha256"
 	"net"
+	"net/netip"
 	"sort"
 
 	"golang.org/x/crypto/pbkdf2"
@@ -24,7 +25,6 @@ import (
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/serrors"
-	"github.com/scionproto/scion/pkg/snet"
 	"github.com/scionproto/scion/private/topology"
 )
 
@@ -32,15 +32,19 @@ import (
 // by this controller.
 type Dataplane interface {
 	CreateIACtx(ia addr.IA) error
-	AddInternalInterface(ia addr.IA, local net.UDPAddr) error
+	AddInternalInterface(ia addr.IA, local netip.AddrPort) error
 	AddExternalInterface(localIfID common.IFIDType, info LinkInfo, owned bool) error
-	AddSvc(ia addr.IA, svc addr.SVC, ip net.IP) error
-	DelSvc(ia addr.IA, svc addr.SVC, ip net.IP) error
+	AddSvc(ia addr.IA, svc addr.SVC, a *net.UDPAddr) error
+	DelSvc(ia addr.IA, svc addr.SVC, a *net.UDPAddr) error
 	SetKey(ia addr.IA, index int, key []byte) error
+	SetPortRange(start, end uint16)
 	AddDRKeySecret(protocolID int32, sv SecretValue) error
 	UpdateFabridPolicies(ipRangePolicies map[uint32][]*PolicyIPRange,
 		interfacePolicies map[uint64]uint32) error
 }
+
+// BFD is the configuration for the BFD sessions.
+type BFD topology.BFD
 
 // LinkInfo contains the information about a link between an internal and
 // external router.
@@ -128,10 +132,11 @@ func ConfigDataplane(dp Dataplane, cfg *Config) error {
 			return err
 		}
 	}
+
 	// Add internal interfaces
 	if cfg.BR != nil {
-		if cfg.BR.InternalAddr != nil {
-			if err := dp.AddInternalInterface(cfg.IA, *cfg.BR.InternalAddr); err != nil {
+		if cfg.BR.InternalAddr != (netip.AddrPort{}) {
+			if err := dp.AddInternalInterface(cfg.IA, cfg.BR.InternalAddr); err != nil {
 				return err
 			}
 		}
@@ -144,6 +149,8 @@ func ConfigDataplane(dp Dataplane, cfg *Config) error {
 	if err := confServices(dp, cfg); err != nil {
 		return err
 	}
+	// Set Endhost port range
+	dp.SetPortRange(cfg.Topo.PortRange())
 	return nil
 }
 
@@ -177,16 +184,16 @@ func confExternalInterfaces(dp Dataplane, cfg *Config) error {
 		linkInfo := LinkInfo{
 			Local: LinkEnd{
 				IA:   cfg.IA,
-				Addr: snet.CopyUDPAddr(iface.Local),
+				Addr: net.UDPAddrFromAddrPort(iface.Local),
 				IFID: iface.ID,
 			},
 			Remote: LinkEnd{
 				IA:   iface.IA,
-				Addr: snet.CopyUDPAddr(iface.Remote),
+				Addr: net.UDPAddrFromAddrPort(iface.Remote),
 				IFID: iface.RemoteIFID,
 			},
 			Instance: iface.BRName,
-			BFD:      WithDefaults(BFD(iface.BFD)),
+			BFD:      BFD(iface.BFD),
 			LinkTo:   iface.LinkType,
 			MTU:      iface.MTU,
 		}
@@ -198,11 +205,10 @@ func confExternalInterfaces(dp Dataplane, cfg *Config) error {
 			// When setting up external interfaces that belong to other routers in the AS, they
 			// are basically IP/UDP tunnels between the two border routers, and as such is
 			// configured in the data plane.
-			linkInfo.Local.Addr = snet.CopyUDPAddr(cfg.BR.InternalAddr)
-			linkInfo.Remote.Addr = snet.CopyUDPAddr(iface.InternalAddr)
-			// For internal BFD always use the default configuration, which can be modified with
-			// the env variables.
-			linkInfo.BFD = BFDDefaults
+			linkInfo.Local.Addr = net.UDPAddrFromAddrPort(cfg.BR.InternalAddr)
+			linkInfo.Remote.Addr = net.UDPAddrFromAddrPort(iface.InternalAddr)
+			// For internal BFD always use the default configuration.
+			linkInfo.BFD = BFD{}
 		}
 
 		if err := dp.AddExternalInterface(ifid, linkInfo, owned); err != nil {
@@ -223,7 +229,7 @@ func confServices(dp Dataplane, cfg *Config) error {
 		return nil
 	}
 	for _, svc := range svcTypes {
-		addrs, err := cfg.Topo.UnderlayMulticast(svc)
+		addrs, err := cfg.Topo.Multicast(svc)
 		if err != nil {
 			// XXX assumption is that any error means there are no addresses for the SVC type
 			continue
@@ -233,7 +239,7 @@ func confServices(dp Dataplane, cfg *Config) error {
 			return addrs[i].IP.String() < addrs[j].IP.String()
 		})
 		for _, a := range addrs {
-			if err := dp.AddSvc(cfg.IA, svc, a.IP); err != nil {
+			if err := dp.AddSvc(cfg.IA, svc, a); err != nil {
 				return err
 			}
 		}

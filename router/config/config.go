@@ -20,9 +20,11 @@ package config
 import (
 	"io"
 	"runtime"
+	"time"
 
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
+	"github.com/scionproto/scion/pkg/private/util"
 	"github.com/scionproto/scion/private/config"
 	"github.com/scionproto/scion/private/env"
 	api "github.com/scionproto/scion/private/mgmtapi"
@@ -47,6 +49,22 @@ type RouterConfig struct {
 	BatchSize             int      `toml:"batch_size,omitempty"`
 	DRKey                 []string `toml:"drkey,omitempty"`
 	Fabrid                bool     `toml:"fabrid,omitempty"`
+	BFD                   BFD      `toml:"bfd,omitempty"`
+	// TODO: These two values were introduced to override the port range for
+	// configured router in the context of acceptance tests. However, this
+	// introduces two sources for the port configuration. We should remove this
+	// and adapt the acceptance tests.
+	DispatchedPortStart *int `toml:"dispatched_port_start,omitempty"`
+	DispatchedPortEnd   *int `toml:"dispatched_port_end,omitempty"`
+}
+
+// BFD configuration. Unfortunately cannot be shared with topology.BFD
+// as one is toml and the other json. Eventhough the semantics are identical.
+type BFD struct {
+	Disable               bool         `toml:"disable,omitempty"`
+	DetectMult            uint8        `toml:"detect_mult,omitempty"`
+	DesiredMinTxInterval  util.DurWrap `toml:"desired_min_tx_interval,omitempty"`
+	RequiredMinRxInterval util.DurWrap `toml:"required_min_rx_interval,omitempty"`
 }
 
 func (cfg *RouterConfig) ConfigName() string {
@@ -82,7 +100,27 @@ func (cfg *RouterConfig) Validate() error {
 				"Enabling FABRID requires adding it to the DRKey protocols.")
 		}
 	}
-
+	if cfg.DispatchedPortStart != nil {
+		if cfg.DispatchedPortEnd == nil {
+			return serrors.New("provided router config is invalid. " +
+				"EndHostEndPort is nil; EndHostStartPort isn't")
+		}
+		if *cfg.DispatchedPortStart < 0 {
+			return serrors.New("provided router config is invalid. EndHostStartPort < 0")
+		}
+		if *cfg.DispatchedPortEnd >= (1 << 16) {
+			return serrors.New("provided router config is invalid. EndHostEndPort > 2**16 -1")
+		}
+		if *cfg.DispatchedPortStart > *cfg.DispatchedPortEnd {
+			return serrors.New("provided router config is invalid. " +
+				"EndHostStartPort > DispatchedPortEnd")
+		}
+	} else {
+		if cfg.DispatchedPortEnd != nil {
+			return serrors.New("provided router config is invalid. " +
+				"EndHostStartPort is nil; EndHostEndPort isn't")
+		}
+	}
 	return nil
 }
 
@@ -114,6 +152,15 @@ func (cfg *RouterConfig) InitDefaults() {
 	}
 	if cfg.BatchSize == 0 {
 		cfg.BatchSize = 256
+	}
+	if cfg.BFD.DetectMult == 0 {
+		cfg.BFD.DetectMult = 3
+	}
+	if cfg.BFD.DesiredMinTxInterval.Duration == 0 {
+		cfg.BFD.DesiredMinTxInterval = util.DurWrap{Duration: 200 * time.Millisecond}
+	}
+	if cfg.BFD.RequiredMinRxInterval.Duration == 0 {
+		cfg.BFD.RequiredMinRxInterval = util.DurWrap{Duration: 200 * time.Millisecond}
 	}
 }
 

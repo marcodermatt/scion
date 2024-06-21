@@ -40,6 +40,9 @@ type Topology interface {
 	Core() bool
 	// InterfaceIDs returns all interface IDS from the local AS.
 	InterfaceIDs() []common.IFIDType
+	// PortRange returns the first and last ports of the port range (both included),
+	// in which endhost listen for SCION/UDP application using the UDP/IP underlay.
+	PortRange() (uint16, uint16)
 
 	// PublicAddress gets the public address of a server with the requested type and name, and nil
 	// if no such server exists.
@@ -76,13 +79,6 @@ type Topology interface {
 	//
 	// XXX(scrye): Return value is a shallow copy.
 	IFInfoMap() IfInfoMap
-
-	// BRNames returns the names of all BRs in the topology.
-	//
-	// FIXME(scrye): Remove this, callers shouldn't care about names.
-	//
-	// XXX(scrye): Return value is a shallow copy.
-	BRNames() []string
 
 	// SVCNames returns the names of all servers in the topology for the specified service.
 	//
@@ -156,12 +152,16 @@ func (t *topologyS) InterfaceIDs() []common.IFIDType {
 	return intfs
 }
 
+func (t *topologyS) PortRange() (uint16, uint16) {
+	return t.Topology.DispatchedPortStart, t.Topology.DispatchedPortEnd
+}
+
 func (t *topologyS) UnderlayNextHop(ifid common.IFIDType) (*net.UDPAddr, bool) {
 	ifInfo, ok := t.Topology.IFInfoMap[ifid]
 	if !ok {
 		return nil, false
 	}
-	return copyUDPAddr(ifInfo.InternalAddr), true
+	return net.UDPAddrFromAddrPort(ifInfo.InternalAddr), true
 }
 
 func (t *topologyS) MakeHostInfos(st ServiceType) ([]*net.UDPAddr, error) {
@@ -341,10 +341,6 @@ func toServiceType(svc addr.SVC) (ServiceType, error) {
 
 func (t *topologyS) IFInfoMap() IfInfoMap {
 	return t.Topology.IFInfoMap
-}
-
-func (t *topologyS) BRNames() []string {
-	return t.Topology.BRNames
 }
 
 func (t *topologyS) SVCNames(svc addr.SVC) ServiceNames {

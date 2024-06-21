@@ -67,20 +67,6 @@ func (mr *MockTopologyMockRecorder) BR(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BR", reflect.TypeOf((*MockTopology)(nil).BR), arg0)
 }
 
-// BRNames mocks base method.
-func (m *MockTopology) BRNames() []string {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "BRNames")
-	ret0, _ := ret[0].([]string)
-	return ret0
-}
-
-// BRNames indicates an expected call of BRNames.
-func (mr *MockTopologyMockRecorder) BRNames() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BRNames", reflect.TypeOf((*MockTopology)(nil).BRNames))
-}
-
 // Core mocks base method.
 func (m *MockTopology) Core() bool {
 	m.ctrl.T.Helper()
@@ -194,6 +180,21 @@ func (m *MockTopology) Multicast(arg0 addr.SVC) ([]*net.UDPAddr, error) {
 func (mr *MockTopologyMockRecorder) Multicast(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Multicast", reflect.TypeOf((*MockTopology)(nil).Multicast), arg0)
+}
+
+// PortRange mocks base method.
+func (m *MockTopology) PortRange() (uint16, uint16) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PortRange")
+	ret0, _ := ret[0].(uint16)
+	ret1, _ := ret[1].(uint16)
+	return ret0, ret1
+}
+
+// PortRange indicates an expected call of PortRange.
+func (mr *MockTopologyMockRecorder) PortRange() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PortRange", reflect.TypeOf((*MockTopology)(nil).PortRange))
 }
 
 // PublicAddress mocks base method.

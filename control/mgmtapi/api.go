@@ -40,10 +40,12 @@ import (
 	segapi "github.com/scionproto/scion/private/mgmtapi/segments/api"
 	"github.com/scionproto/scion/private/storage"
 	beaconstorage "github.com/scionproto/scion/private/storage/beacon"
+	"github.com/scionproto/scion/private/trust"
 )
 
 type BeaconStore interface {
 	GetBeacons(context.Context, *beaconstorage.QueryParams) ([]beaconstorage.Beacon, error)
+	DeleteBeacon(ctx context.Context, idPrefix string) error
 }
 
 type Healther interface {
@@ -89,6 +91,9 @@ type Server struct {
 	Topology       http.HandlerFunc
 	TrustDB        storage.TrustDB
 	Healther       Healther
+
+	// nowProvider can be set during tests to control the current time.
+	nowProvider func() time.Time
 }
 
 // UnpackBeaconUsages extracts the Usage's bits as snake case string constants for the API.
@@ -378,6 +383,27 @@ func (s *Server) GetBeacon(w http.ResponseWriter, r *http.Request, segmentId Seg
 	}
 }
 
+func (s *Server) DeleteBeacon(w http.ResponseWriter, r *http.Request, segmentId SegmentID) {
+	if segmentId == "" {
+		ErrorResponse(w, Problem{
+			Status: http.StatusBadRequest,
+			Title:  "segment ID is required",
+			Type:   api.StringRef(api.BadRequest),
+		})
+		return
+	}
+	if err := s.Beacons.DeleteBeacon(r.Context(), segmentId); err != nil {
+		ErrorResponse(w, Problem{
+			Detail: api.StringRef(err.Error()),
+			Status: http.StatusInternalServerError,
+			Title:  "unable to delete beacon",
+			Type:   api.StringRef(api.InternalError),
+		})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) GetBeaconBlob(w http.ResponseWriter, r *http.Request, segmentId SegmentID) {
 	w.Header().Set("Content-Type", "application/x-pem-file")
 
@@ -469,6 +495,10 @@ func (s *Server) GetSegments(w http.ResponseWriter,
 
 func (s *Server) GetSegment(w http.ResponseWriter, r *http.Request, id SegmentID) {
 	s.SegmentsServer.GetSegment(w, r, id)
+}
+
+func (s *Server) DeleteSegment(w http.ResponseWriter, r *http.Request, id SegmentID) {
+	s.SegmentsServer.DeleteSegment(w, r, id)
 }
 
 func (s *Server) GetSegmentBlob(w http.ResponseWriter, r *http.Request, id SegmentID) {
@@ -597,12 +627,26 @@ func (s *Server) SetLogLevel(w http.ResponseWriter, r *http.Request) {
 // GetSigner generates the singer response content.
 func (s *Server) GetSigner(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	p, err := s.Signer.SignerGen.Generate(r.Context())
+	signers, err := s.Signer.SignerGen.Generate(r.Context())
 	if err != nil {
 		ErrorResponse(w, Problem{
 			Detail: api.StringRef(err.Error()),
 			Status: http.StatusInternalServerError,
 			Title:  "Unable to get signer",
+			Type:   api.StringRef(api.InternalError),
+		})
+		return
+	}
+	now := s.now()
+	p, err := trust.LastExpiring(signers, cppki.Validity{
+		NotBefore: now,
+		NotAfter:  now,
+	})
+	if err != nil {
+		ErrorResponse(w, Problem{
+			Detail: api.StringRef(err.Error()),
+			Status: http.StatusInternalServerError,
+			Title:  "No signer currently valid",
 			Type:   api.StringRef(api.InternalError),
 		})
 		return
@@ -641,12 +685,26 @@ func (s *Server) GetSigner(w http.ResponseWriter, r *http.Request) {
 
 // GetSignerChain generates a certificate chain blob response encoded as PEM.
 func (s *Server) GetSignerChain(w http.ResponseWriter, r *http.Request) {
-	p, err := s.Signer.SignerGen.Generate(r.Context())
+	signers, err := s.Signer.SignerGen.Generate(r.Context())
 	if err != nil {
 		ErrorResponse(w, Problem{
 			Detail: api.StringRef(err.Error()),
 			Status: http.StatusInternalServerError,
 			Title:  "unable to get signer",
+			Type:   api.StringRef(api.InternalError),
+		})
+		return
+	}
+	now := s.now()
+	p, err := trust.LastExpiring(signers, cppki.Validity{
+		NotBefore: now,
+		NotAfter:  now,
+	})
+	if err != nil {
+		ErrorResponse(w, Problem{
+			Detail: api.StringRef(err.Error()),
+			Status: http.StatusInternalServerError,
+			Title:  "no signer currently valid",
 			Type:   api.StringRef(api.InternalError),
 		})
 		return
@@ -777,6 +835,13 @@ func (s *Server) GetHealth(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+}
+
+func (s *Server) now() time.Time {
+	if s.nowProvider != nil {
+		return s.nowProvider()
+	}
+	return time.Now()
 }
 
 // Error creates an detailed error response.

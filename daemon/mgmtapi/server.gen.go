@@ -37,6 +37,9 @@ type ServerInterface interface {
 	// List the SCION path segments
 	// (GET /segments)
 	GetSegments(w http.ResponseWriter, r *http.Request, params GetSegmentsParams)
+	// Delete the SCION path segment
+	// (DELETE /segments/{segment-id})
+	DeleteSegment(w http.ResponseWriter, r *http.Request, segmentId SegmentID)
 	// Get the SCION path segment description
 	// (GET /segments/{segment-id})
 	GetSegment(w http.ResponseWriter, r *http.Request, segmentId SegmentID)
@@ -103,6 +106,12 @@ func (_ Unimplemented) SetLogLevel(w http.ResponseWriter, r *http.Request) {
 // List the SCION path segments
 // (GET /segments)
 func (_ Unimplemented) GetSegments(w http.ResponseWriter, r *http.Request, params GetSegmentsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete the SCION path segment
+// (DELETE /segments/{segment-id})
+func (_ Unimplemented) DeleteSegment(w http.ResponseWriter, r *http.Request, segmentId SegmentID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -198,7 +207,7 @@ func (siw *ServerInterfaceWrapper) GetCertificate(w http.ResponseWriter, r *http
 	// ------------- Path parameter "chain-id" -------------
 	var chainId ChainID
 
-	err = runtime.BindStyledParameterWithLocation("simple", false, "chain-id", runtime.ParamLocationPath, chi.URLParam(r, "chain-id"), &chainId)
+	err = runtime.BindStyledParameterWithOptions("simple", "chain-id", chi.URLParam(r, "chain-id"), &chainId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chain-id", Err: err})
 		return
@@ -224,7 +233,7 @@ func (siw *ServerInterfaceWrapper) GetCertificateBlob(w http.ResponseWriter, r *
 	// ------------- Path parameter "chain-id" -------------
 	var chainId ChainID
 
-	err = runtime.BindStyledParameterWithLocation("simple", false, "chain-id", runtime.ParamLocationPath, chi.URLParam(r, "chain-id"), &chainId)
+	err = runtime.BindStyledParameterWithOptions("simple", "chain-id", chi.URLParam(r, "chain-id"), &chainId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chain-id", Err: err})
 		return
@@ -337,6 +346,32 @@ func (siw *ServerInterfaceWrapper) GetSegments(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r.WithContext(ctx))
 }
 
+// DeleteSegment operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSegment(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// ------------- Path parameter "segment-id" -------------
+	var segmentId SegmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "segment-id", chi.URLParam(r, "segment-id"), &segmentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "segment-id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteSegment(w, r, segmentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
 // GetSegment operation middleware
 func (siw *ServerInterfaceWrapper) GetSegment(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -346,7 +381,7 @@ func (siw *ServerInterfaceWrapper) GetSegment(w http.ResponseWriter, r *http.Req
 	// ------------- Path parameter "segment-id" -------------
 	var segmentId SegmentID
 
-	err = runtime.BindStyledParameterWithLocation("simple", false, "segment-id", runtime.ParamLocationPath, chi.URLParam(r, "segment-id"), &segmentId)
+	err = runtime.BindStyledParameterWithOptions("simple", "segment-id", chi.URLParam(r, "segment-id"), &segmentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "segment-id", Err: err})
 		return
@@ -372,7 +407,7 @@ func (siw *ServerInterfaceWrapper) GetSegmentBlob(w http.ResponseWriter, r *http
 	// ------------- Path parameter "segment-id" -------------
 	var segmentId SegmentID
 
-	err = runtime.BindStyledParameterWithLocation("simple", false, "segment-id", runtime.ParamLocationPath, chi.URLParam(r, "segment-id"), &segmentId)
+	err = runtime.BindStyledParameterWithOptions("simple", "segment-id", chi.URLParam(r, "segment-id"), &segmentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "segment-id", Err: err})
 		return
@@ -434,7 +469,7 @@ func (siw *ServerInterfaceWrapper) GetTrc(w http.ResponseWriter, r *http.Request
 	// ------------- Path parameter "isd" -------------
 	var isd int
 
-	err = runtime.BindStyledParameterWithLocation("simple", false, "isd", runtime.ParamLocationPath, chi.URLParam(r, "isd"), &isd)
+	err = runtime.BindStyledParameterWithOptions("simple", "isd", chi.URLParam(r, "isd"), &isd, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "isd", Err: err})
 		return
@@ -443,7 +478,7 @@ func (siw *ServerInterfaceWrapper) GetTrc(w http.ResponseWriter, r *http.Request
 	// ------------- Path parameter "base" -------------
 	var base int
 
-	err = runtime.BindStyledParameterWithLocation("simple", false, "base", runtime.ParamLocationPath, chi.URLParam(r, "base"), &base)
+	err = runtime.BindStyledParameterWithOptions("simple", "base", chi.URLParam(r, "base"), &base, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "base", Err: err})
 		return
@@ -452,7 +487,7 @@ func (siw *ServerInterfaceWrapper) GetTrc(w http.ResponseWriter, r *http.Request
 	// ------------- Path parameter "serial" -------------
 	var serial int
 
-	err = runtime.BindStyledParameterWithLocation("simple", false, "serial", runtime.ParamLocationPath, chi.URLParam(r, "serial"), &serial)
+	err = runtime.BindStyledParameterWithOptions("simple", "serial", chi.URLParam(r, "serial"), &serial, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "serial", Err: err})
 		return
@@ -478,7 +513,7 @@ func (siw *ServerInterfaceWrapper) GetTrcBlob(w http.ResponseWriter, r *http.Req
 	// ------------- Path parameter "isd" -------------
 	var isd int
 
-	err = runtime.BindStyledParameterWithLocation("simple", false, "isd", runtime.ParamLocationPath, chi.URLParam(r, "isd"), &isd)
+	err = runtime.BindStyledParameterWithOptions("simple", "isd", chi.URLParam(r, "isd"), &isd, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "isd", Err: err})
 		return
@@ -487,7 +522,7 @@ func (siw *ServerInterfaceWrapper) GetTrcBlob(w http.ResponseWriter, r *http.Req
 	// ------------- Path parameter "base" -------------
 	var base int
 
-	err = runtime.BindStyledParameterWithLocation("simple", false, "base", runtime.ParamLocationPath, chi.URLParam(r, "base"), &base)
+	err = runtime.BindStyledParameterWithOptions("simple", "base", chi.URLParam(r, "base"), &base, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "base", Err: err})
 		return
@@ -496,7 +531,7 @@ func (siw *ServerInterfaceWrapper) GetTrcBlob(w http.ResponseWriter, r *http.Req
 	// ------------- Path parameter "serial" -------------
 	var serial int
 
-	err = runtime.BindStyledParameterWithLocation("simple", false, "serial", runtime.ParamLocationPath, chi.URLParam(r, "serial"), &serial)
+	err = runtime.BindStyledParameterWithOptions("simple", "serial", chi.URLParam(r, "serial"), &serial, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "serial", Err: err})
 		return
@@ -649,6 +684,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/segments", wrapper.GetSegments)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/segments/{segment-id}", wrapper.DeleteSegment)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/segments/{segment-id}", wrapper.GetSegment)

@@ -1,4 +1,4 @@
-.PHONY: all build build-dev dist-deb antlr clean docker-images gazelle go.mod licenses mocks protobuf scion-topo test test-integration write_all_source_files
+.PHONY: all build build-dev dist-deb antlr clean docker-images gazelle go.mod licenses mocks protobuf scion-topo test test-integration write_all_source_files git-version
 
 build-dev:
 	rm -f bin/*
@@ -11,20 +11,25 @@ build:
 	bazel build //:scion
 	tar -kxf bazel-bin/scion.tar -C bin
 
+# BFLAGS is optional. It may contain additional command line flags for CI builds. Currently this is:
+# "--file_name_version=$(tools/git-version)" to include the git version in the artifacts names.
 dist-deb:
-	bazel build //dist:deb_all
-	mkdir -p deb; rm -f deb/*;
-	@ # Bazel cannot include the version in the filename, if we want to set it automatically from the git tag.
-	@ # Extract the version from the .deb "control" manifest and expand the "__" in the filename to "_<version>_".
-	@ #   See e.g. https://en.wikipedia.org/wiki/Deb_(file_format)#Control_archive
-	@for f in `bazel cquery //dist:deb_all --output=files 2>/dev/null`; do \
-		if [ -f "$$f" ]; then \
-			bf=`basename $$f`; \
-			v="$$(ar p $$f control.tar.gz | tar -xz --to-stdout ./control | sed -n 's/Version: //p')"; \
-			bfv=$${bf%%__*}_$${v}_$${bf#*__}; \
-			cp -v "$$f" deb/$$bfv; \
-		fi \
-	done
+	bazel build //dist:deb_all $(BFLAGS)
+	@ # These artefacts have unique names but varied locations. Link them somewhere convenient.
+	@ mkdir -p installables
+	@ cd installables ; ln -sfv ../bazel-out/*/bin/dist/*.deb .
+
+dist-openwrt:
+	bazel build //dist:openwrt_all $(BFLAGS)
+	@ # These artefacts have unique names but varied locations. Link them somewhere convenient.
+	@ mkdir -p installables
+	@ cd installables ; ln -sfv ../bazel-out/*/bin/dist/*.ipk .
+
+dist-openwrt-testing:
+	bazel build //dist:openwrt_testing_all $(BFLAGS)
+	@ # These artefacts have unique names but varied locations. Link them somewhere convenient.
+	@ mkdir -p installables
+	@ cd installables ; ln -sfv ../bazel-out/*/bin/dist/*.ipk .
 
 # all: performs the code-generation steps and then builds; the generated code
 # is git controlled, and therefore this is only necessary when changing the
@@ -37,10 +42,12 @@ all: go_deps.bzl protobuf mocks gazelle build-dev antlr write_all_source_files l
 clean:
 	bazel clean
 	rm -f bin/*
+	docker image ls --filter label=org.scion -q | xargs --no-run-if-empty docker image rm
 
 scrub:
 	bazel clean --expunge
 	rm -f bin/*
+	rm -f installables/*
 
 test:
 	bazel test --config=unit_all
@@ -57,10 +64,10 @@ go_deps.bzl: go.mod
 	@sed -e '/def go_deps/,$${/^$$/d}' -i go_deps.bzl
 
 docker-images:
-	@echo "Build perapp images"
-	bazel run //docker:prod
-	@echo "Build scion tester"
-	bazel run //docker:test
+	@echo "Build images"
+	bazel build //docker:prod //docker:test
+	@echo "Load images"
+	@bazel cquery '//docker:prod union //docker:test' --output=files 2>/dev/null | xargs -I{} docker load --input {}
 
 scion-topo:
 	bazel build //:scion-topo
@@ -89,7 +96,7 @@ antlr:
 write_all_source_files:
 	bazel run //:write_all_source_files
 
-.PHONY: lint lint-bazel lint-bazel-buildifier lint-doc lint-doc-mdlint lint-go lint-go-bazel lint-go-gazelle lint-go-golangci lint-go-semgrep lint-openapi lint-openapi-spectral lint-protobuf lint-protobuf-buf
+.PHONY: lint lint-bazel lint-bazel-buildifier lint-doc lint-doc-mdlint lint-doc-sphinx lint-go lint-go-bazel lint-go-gazelle lint-go-golangci lint-go-semgrep lint-openapi lint-openapi-spectral lint-protobuf lint-protobuf-buf
 
 # Enable --keep-going if all goals specified on the command line match the pattern "lint%"
 ifeq ($(filter-out lint%, $(MAKECMDGOALS)), )
@@ -106,7 +113,7 @@ lint-go-gazelle:
 
 lint-go-bazel:
 	$(info ==> $@)
-	@tools/quiet bazel test --config lint
+	@tools/quiet bazel test --config lint //...
 
 GO_BUILD_TAGS_ARG=$(shell bazel build --ui_event_filters=-stdout,-stderr --announce_rc --noshow_progress :dummy_setting 2>&1 | grep "'build' options" | sed -n "s/^.*--define gotags=\(\S*\).*/--build-tags \1/p" )
 
@@ -142,9 +149,13 @@ lint-openapi-spectral:
 	$(info ==> $@)
 	@tools/quiet bazel run --config=quiet //:spectral -- lint --ruleset ${PWD}/spec/.spectral.yml ${PWD}/spec/*.gen.yml
 
-lint-doc: lint-doc-mdlint
+lint-doc: lint-doc-mdlint lint-doc-sphinx
 
 lint-doc-mdlint:
 	$(info ==> $@)
-	@FILES=$$(find -type f -iname '*.md' -not -path "./private/mgmtapi/tools/node_modules/*" -not -path "./.github/**/*" | grep -vf tools/md/skipped); \
-		docker run --rm -v ${PWD}:/data -v ${PWD}/tools/md/mdlintstyle.rb:/style.rb $$(docker build -q tools/md) $${FILES} -s /style.rb
+	@if [ -t 1 ]; then tty=true; else tty=false; fi; \
+		tools/quiet docker run --tty=$$tty --rm -v ${PWD}:/workdir davidanson/markdownlint-cli2:v0.12.1
+
+lint-doc-sphinx:
+	$(info ==> $@)
+	@tools/quiet bazel test --config=lint //doc:sphinx_lint_test
