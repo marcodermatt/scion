@@ -80,8 +80,9 @@ func (d *DRKeyProvider) AddSecret(protocolID int32, sv SecretValue) error {
 
 func (d *DRKeyProvider) getSecret(protocolID int32, t time.Time) (*SecretValue, error) {
 	secrets := d.drKeySecrets[protocolID]
-	if time.Since(t) > pastValidity {
-		return nil, errTimestampBehind
+	since := time.Since(t)
+	if since > pastValidity {
+		return nil, serrors.New("time after validity window", "t", t, "since", since, "validityPeriod", pastValidity)
 	}
 	for _, sv := range secrets {
 		if t.After(sv.EpochBegin) && sv.EpochEnd.After(t) {

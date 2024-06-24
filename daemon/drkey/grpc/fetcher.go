@@ -16,6 +16,7 @@ package grpc
 
 import (
 	"context"
+	"net"
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
@@ -23,11 +24,44 @@ import (
 	"github.com/scionproto/scion/pkg/private/serrors"
 	cppb "github.com/scionproto/scion/pkg/proto/control_plane"
 	"github.com/scionproto/scion/pkg/snet"
+	"google.golang.org/grpc"
 )
 
 // Fetcher obtains end-host key from the local CS.
 type Fetcher struct {
 	Dialer sc_grpc.Dialer
+}
+
+func SetupFetcher(csAddr *net.TCPAddr, localAddr *net.TCPAddr) *Fetcher {
+	return &Fetcher{
+		Dialer: &CustomDialer{
+			CsAddr:    csAddr,
+			LocalAddr: localAddr,
+		},
+	}
+}
+
+type CustomDialer struct {
+	CsAddr    *net.TCPAddr
+	LocalAddr *net.TCPAddr
+}
+
+// This custom dialer is used for communication with the local control service. Therefore
+// the destination address is already configured during the setup and any passed
+// address will be ignored.
+func (d *CustomDialer) Dial(ctx context.Context, _ net.Addr) (*grpc.ClientConn, error) {
+	// this custom dialer modifies its local address. Otherwise in the local setup
+	// grpc might use 127.0.0.1 as local address and therefore the control service
+	// would reject the drkey request
+	dialer := func(ctx context.Context, addr string) (net.Conn, error) {
+		return net.DialTCP("tcp", d.LocalAddr, d.CsAddr)
+	}
+	return grpc.DialContext(ctx, d.CsAddr.String(),
+		grpc.WithInsecure(),
+		grpc.WithContextDialer(dialer),
+		sc_grpc.UnaryClientInterceptor(),
+		sc_grpc.StreamClientInterceptor(),
+	)
 }
 
 func (f *Fetcher) ASHostKey(

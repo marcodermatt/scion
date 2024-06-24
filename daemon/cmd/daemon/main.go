@@ -202,10 +202,20 @@ func realMain(ctx context.Context) error {
 			},
 		}
 		defer level2DB.Close()
-
-		drkeyFetcher := &sd_grpc.Fetcher{
-			Dialer: dialer,
+		csAddr, err := net.ResolveTCPAddr("tcp", topo.ControlServiceAddresses()[0].String())
+		if err != nil {
+			return serrors.WrapStr("resolve control service address", err)
 		}
+		localAddrIPString, _, err := net.SplitHostPort(globalCfg.SD.Address)
+		if err != nil {
+			return serrors.WrapStr("resolve local address", err)
+		}
+		localAddrIP := net.ParseIP(localAddrIPString)
+		localAddr := &net.TCPAddr{
+			IP:   localAddrIP,
+			Port: 0,
+		}
+		drkeyFetcher := sd_grpc.SetupFetcher(csAddr, localAddr)
 		drkeyClientEngine = &sd_drkey.ClientEngine{
 			IA:      topo.IA(),
 			DB:      level2DB,
