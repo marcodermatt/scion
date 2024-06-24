@@ -176,18 +176,17 @@ On other errors, ping will exit with code 2.
 					DestinationIA:   remote.IA,
 					DestinationAddr: remote.Host.IP.String(),
 				}
-				//TODO(jvanbommel): @rohrerj I get why we have this, but would be nice if we didn't
-				//need to hard specify our IP and drkey would just take it from our request. Or?
 				if localIP == nil {
-					target := remote.Host.IP
-					if remote.NextHop != nil {
-						target = remote.NextHop.IP
+					daemonIPString, _, err := net.SplitHostPort(daemonAddr)
+					if err != nil {
+						return err
 					}
-					if localIP, err = addrutil.ResolveLocal(target); err != nil {
-						return serrors.WrapStr("resolving local address", err)
+					daemonIP, err := net.ResolveIPAddr("ip", daemonIPString)
+					if err != nil {
+						return serrors.New("resolving daemon ip", "daemonIP", daemonIPString)
 					}
-					printf("Resolved local address:\n  %s\n", localIP)
-					cfg.LocalAddr = localIP.String()
+					localIP = daemonIP.IP
+					cfg.LocalAddr = daemonIPString
 				}
 				opts = append(opts, path.WithFABRID(&path.FABRIDQuery{
 					Query:        flags.fabridQuery,
