@@ -37,6 +37,7 @@ import (
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/daemon"
+
 	//"github.com/scionproto/scion/pkg/drkey"
 	libfabrid "github.com/scionproto/scion/pkg/experimental/fabrid"
 	//"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
@@ -44,6 +45,7 @@ import (
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/private/util"
+
 	//"github.com/scionproto/scion/pkg/slayers"
 	//"github.com/scionproto/scion/pkg/slayers/extension"
 	//"github.com/scionproto/scion/pkg/slayers/path/scion"
