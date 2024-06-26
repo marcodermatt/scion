@@ -125,7 +125,7 @@ func (i Identifier) Evaluate(pi []snet.HopInterface, ml *MatchList) (bool, *Matc
 		}
 		// If so and the query sets a wildcard or reject policy, assign this and continue evaluating
 		// the query
-		if (i.Policy.Type == WILDCARD_POLICY_TYPE && len(p.Policies) > 0) || i.Policy.
+		if (i.Policy.Type == WILDCARD_POLICY_TYPE && p.FabridEnabled) || i.Policy.
 			Type == REJECT_POLICY_TYPE {
 			ml.StorePolicy(idx, &i.Policy)
 		}

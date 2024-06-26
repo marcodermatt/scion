@@ -117,9 +117,11 @@ message Path {
     // Entry i describes the carbon intensity between interface i and i+1.
     // Consequently, there are N-1 entries for N interfaces.
     repeated int64 carbon_intensity = 13;
+    // FabridEnabled describes which hops support Fabrid.
+    repeated bool fabrid_enabled = 14;
     // FabridPolicies contains the fabrid policy identifiers that are supported for an interface
     // Entry i describes the policies between interfaces i and i+1.
-    repeated FabridPolicies fabrid_policies = 14;
+    repeated FabridPolicies fabrid_policies = 15;
 }
 
 message FabridPolicies {

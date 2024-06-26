@@ -45,6 +45,7 @@ func (p PathProvider) GetHops(src, dst addr.IA) [][]snet.HopInterface {
 	paths := p.g.GetPaths(src.String(), dst.String())
 	for _, ifids := range paths {
 		pathIntfs := make([]snet.PathInterface, 0, len(ifids))
+		fabridEnabled := make([]bool, 0, len(ifids)/2+1)
 		fabridPols := make([][]*fabrid.Policy, 0, len(ifids)/2+1)
 		for _, ifid := range ifids {
 			ia := p.g.GetParent(ifid)
@@ -54,15 +55,19 @@ func (p PathProvider) GetHops(src, dst addr.IA) [][]snet.HopInterface {
 			})
 		}
 
+		fabridEnabled = append(fabridEnabled, true)
 		fabridPols = append(fabridPols, []*fabrid.Policy{})
 		for i := 1; i < len(pathIntfs)-1; i += 2 {
+			fabridEnabled = append(fabridEnabled, true)
 			fabridPols = append(fabridPols, p.g.FabridPolicy(uint16(pathIntfs[i].ID),
 				uint16(pathIntfs[i+1].ID)))
 		}
+		fabridEnabled = append(fabridEnabled, true)
 		fabridPols = append(fabridPols, p.g.FabridPolicy(uint16(pathIntfs[len(
 			pathIntfs)-1].ID), 0))
 		metadata := snet.PathMetadata{
 			Interfaces:     pathIntfs,
+			FabridEnabled:  fabridEnabled,
 			FabridPolicies: fabridPols,
 		}
 		result = append(result, metadata.Hops())
@@ -89,7 +94,7 @@ func TestParseFabridQuery(t *testing.T) {
 				fabrid.PolicyID(0),
 				fabrid.PolicyID(0),
 			},
-			NilPolicies: []bool{true, false, false},
+			NilPolicies: []bool{false, false, false},
 			Accept:      true,
 			ExpectError: false,
 		},

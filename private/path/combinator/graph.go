@@ -439,7 +439,7 @@ func (solution *pathSolution) Path() Path {
 	interfaces := segments.Interfaces()
 	asEntries := segments.ASEntries()
 	staticInfo := collectMetadata(interfaces, asEntries)
-	policies := collectFabridPolicies(interfaces, fabridMaps)
+	fabridEnabled, policies := collectFabridPolicies(interfaces, fabridMaps)
 	path := Path{
 		SCIONPath: segments.ScionPath(),
 		Metadata: snet.PathMetadata{
@@ -453,6 +453,7 @@ func (solution *pathSolution) Path() Path {
 			LinkType:        staticInfo.LinkType,
 			InternalHops:    staticInfo.InternalHops,
 			Notes:           staticInfo.Notes,
+			FabridEnabled:   fabridEnabled,
 			FabridPolicies:  policies,
 		},
 		Weight: solution.cost,
@@ -469,34 +470,37 @@ func (solution *pathSolution) Path() Path {
 }
 
 func collectFabridPolicies(ifaces []snet.PathInterface,
-	maps map[addr.IA]fabridMapEntry) [][]*fabrid.Policy {
+	maps map[addr.IA]fabridMapEntry) ([]bool, [][]*fabrid.Policy) {
 
 	switch {
 	case len(ifaces)%2 != 0:
-		return nil
+		return nil, nil
 	case len(ifaces) == 0:
-		return nil
+		return nil, nil
 	default:
-		hops := make([][]*fabrid.Policy, 0, len(ifaces)/2+1)
+		enabled := make([]bool, len(ifaces)/2+1)
+		hops := make([][]*fabrid.Policy, len(ifaces)/2+1)
 
-		hops = append(hops, getPoliciesForIntfs(ifaces[0].IA, 0, uint16(ifaces[0].ID), maps,
-			false))
+		enabled[0], hops[0] = getPoliciesForIntfs(ifaces[0].IA, 0, uint16(ifaces[0].ID), maps,
+			false)
 		for i := 1; i < len(ifaces)-1; i += 2 {
-			hops = append(hops, getPoliciesForIntfs(ifaces[i].IA, uint16(ifaces[i].ID),
-				uint16(ifaces[i+1].ID), maps, false))
+			asIdx := (i + 1) / 2
+			enabled[asIdx], hops[asIdx] = getPoliciesForIntfs(ifaces[i].IA, 0, uint16(ifaces[i].ID),
+				maps, false)
 		}
-		hops = append(hops, getPoliciesForIntfs(ifaces[len(ifaces)-1].IA,
-			uint16(ifaces[len(ifaces)-1].ID), 0, maps, true))
-		return hops
+		asIdx := len(ifaces) / 2
+		enabled[asIdx], hops[asIdx] = getPoliciesForIntfs(ifaces[len(ifaces)-1].IA,
+			uint16(ifaces[len(ifaces)-1].ID), 0, maps, true)
+		return enabled, hops
 	}
 }
 
 func getPoliciesForIntfs(ia addr.IA, ig, eg uint16, maps map[addr.IA]fabridMapEntry,
-	allowIpPolicies bool) []*fabrid.Policy {
+	allowIpPolicies bool) (bool, []*fabrid.Policy) {
 	policies := make([]*fabrid.Policy, 0)
 	fabridMap, exist := maps[ia]
 	if !exist || fabridMap.Map == nil {
-		return policies
+		return false, policies
 	}
 	for k, v := range fabridMap.Map.SupportedIndicesMap {
 		if !k.Matches(ig, eg, allowIpPolicies) {
@@ -517,7 +521,7 @@ func getPoliciesForIntfs(ia addr.IA, ig, eg uint16, maps map[addr.IA]fabridMapEn
 		}
 	}
 
-	return policies
+	return true, policies
 }
 
 func getAuth(a *seg.ASEntry) []byte {

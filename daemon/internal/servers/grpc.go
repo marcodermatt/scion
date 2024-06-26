@@ -192,6 +192,7 @@ func pathToPB(path snet.Path) *sdpb.Path {
 		InternalHops:    meta.InternalHops,
 		Notes:           meta.Notes,
 		EpicAuths:       epicAuths,
+		FabridEnabled:   meta.FabridEnabled,
 		FabridPolicies:  fabridPolicies,
 	}
 }

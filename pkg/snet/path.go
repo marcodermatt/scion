@@ -94,6 +94,8 @@ type HopInterface struct {
 	EgIf common.IFIDType
 	// IA is the ISD AS identifier of the hop.
 	IA addr.IA
+	// FabridEnabled indicates whether FABRID is enabled on this hop.
+	FabridEnabled bool
 	// Policies are the FABRID Policies that are supported by this hop.
 	Policies []*fabrid.Policy
 }
@@ -167,12 +169,16 @@ type PathMetadata struct {
 	// EpicAuths contains the EPIC authenticators.
 	EpicAuths EpicAuths
 
+	// FabridEnabled contains a boolean for each AS, indicating whether it supports FABRID.
+	FabridEnabled []bool
+
 	// FabridPolicies Contains the policy identifiers of interfaces on the path
 	FabridPolicies [][]*fabrid.Policy
 }
 
 func (pm *PathMetadata) Hops() []HopInterface {
 	ifaces := pm.Interfaces
+	fabridEnabled := pm.FabridEnabled
 	fabridPolicies := pm.FabridPolicies
 	switch {
 	case len(ifaces)%2 != 0 || (len(fabridPolicies) != len(ifaces)/2+1):
@@ -182,23 +188,26 @@ func (pm *PathMetadata) Hops() []HopInterface {
 	default:
 		hops := make([]HopInterface, 0, len(ifaces)/2+1)
 		hops = append(hops, HopInterface{
-			IA:       ifaces[0].IA,
-			IgIf:     0,
-			EgIf:     ifaces[0].ID,
-			Policies: fabridPolicies[0]})
+			IA:            ifaces[0].IA,
+			IgIf:          0,
+			EgIf:          ifaces[0].ID,
+			FabridEnabled: fabridEnabled[0],
+			Policies:      fabridPolicies[0]})
 		for i := 1; i < len(ifaces)-1; i += 2 {
 			hops = append(hops, HopInterface{
-				IA:       ifaces[i].IA,
-				IgIf:     ifaces[i].ID,
-				EgIf:     ifaces[i+1].ID,
-				Policies: fabridPolicies[(i+1)/2],
+				IA:            ifaces[i].IA,
+				IgIf:          ifaces[i].ID,
+				EgIf:          ifaces[i+1].ID,
+				FabridEnabled: fabridEnabled[(i+1)/2],
+				Policies:      fabridPolicies[(i+1)/2],
 			})
 		}
 		hops = append(hops, HopInterface{
-			IA:       ifaces[len(ifaces)-1].IA,
-			IgIf:     ifaces[len(ifaces)-1].ID,
-			EgIf:     0,
-			Policies: fabridPolicies[len(ifaces)/2],
+			IA:            ifaces[len(ifaces)-1].IA,
+			IgIf:          ifaces[len(ifaces)-1].ID,
+			EgIf:          0,
+			FabridEnabled: fabridEnabled[len(ifaces)/2],
+			Policies:      fabridPolicies[len(ifaces)/2],
 		})
 		return hops
 	}
@@ -224,6 +233,7 @@ func (pm *PathMetadata) Copy() *PathMetadata {
 		LinkType:        append(pm.LinkType[:0:0], pm.LinkType...),
 		InternalHops:    append(pm.InternalHops[:0:0], pm.InternalHops...),
 		Notes:           append(pm.Notes[:0:0], pm.Notes...),
+		FabridEnabled:   append(pm.FabridEnabled[:0:0], pm.FabridEnabled...),
 		FabridPolicies:  fabridPoliciesCopy,
 
 		EpicAuths: EpicAuths{
