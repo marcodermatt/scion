@@ -404,6 +404,14 @@ func (solution *pathSolution) Path() Path {
 					Ts:  solEdge.segment.Info.Timestamp,
 				}
 			}
+			if (!exists || fabridMap.Map == nil) && asEntry.Extensions.Digests != nil && asEntry.Extensions.Digests.Fabrid.Digest != nil && asEntry.UnsignedExtensions.FabridDetached == nil {
+				fabridMaps[asEntry.Local] = struct {
+					Map *fabrid_ext.Detached
+					Ts  time.Time
+				}{
+					Ts: solEdge.segment.Info.Timestamp,
+				}
+			}
 
 			mtu = minUint16(mtu, uint16(asEntry.MTU))
 			if forwardingLinkMtu != 0 {
