@@ -278,6 +278,9 @@ func DetachedFromPB(detached *fabridpb.FABRIDDetachedExtension) *Detached {
 }
 
 func (d *Detached) String() string {
+	if d == nil {
+		return "<nil>"
+	}
 	base := " indexIdentifierMap: ["
 	for _, k := range d.IndexIdentiferMap.SortedKeys() {
 		base += fmt.Sprintf("{ index: %d, is_local: %t, identifier: %d }", k,

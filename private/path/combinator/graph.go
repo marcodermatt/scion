@@ -394,6 +394,7 @@ func (solution *pathSolution) Path() Path {
 			epicSegAuths = append(epicSegAuths, epicAuth)
 
 			fabridMap, exists := fabridMaps[asEntry.Local]
+			log.Debug("segment-to-path", "as", asEntry.Local, "extension", asEntry.Extensions, "unsigned extension fabrid", asEntry.UnsignedExtensions.FabridDetached.String())
 			if (!exists || fabridMap.Map == nil) && asEntry.UnsignedExtensions.
 				FabridDetached != nil || fabridMap.Ts.Before(solEdge.segment.Info.Timestamp) {
 				fabridMaps[asEntry.Local] = struct {
@@ -402,14 +403,6 @@ func (solution *pathSolution) Path() Path {
 				}{
 					Map: asEntry.UnsignedExtensions.FabridDetached,
 					Ts:  solEdge.segment.Info.Timestamp,
-				}
-			}
-			if (!exists || fabridMap.Map == nil) && asEntry.Extensions.Digests != nil && asEntry.Extensions.Digests.Fabrid.Digest != nil && asEntry.UnsignedExtensions.FabridDetached == nil {
-				fabridMaps[asEntry.Local] = struct {
-					Map *fabrid_ext.Detached
-					Ts  time.Time
-				}{
-					Ts: solEdge.segment.Info.Timestamp,
 				}
 			}
 
