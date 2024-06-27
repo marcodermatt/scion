@@ -58,7 +58,7 @@ func (l CryptoLoader) Chains(ctx context.Context,
 	}
 	for f, reason := range r.Ignored {
 		if errors.Is(reason, trust.ErrAlreadyExists) {
-			log.FromCtx(ctx).Debug("Ignoring existing certificate chain", "file", f)
+			//log.FromCtx(ctx).Debug("Ignoring existing certificate chain", "file", f)
 			continue
 		}
 		if errors.Is(reason, trust.ErrOutsideValidity) {
@@ -90,7 +90,7 @@ func (l CryptoLoader) loadTRCsFromDir(ctx context.Context, dir string) error {
 	}
 	for f, reason := range r.Ignored {
 		if errors.Is(reason, trust.ErrAlreadyExists) {
-			log.FromCtx(ctx).Debug("Ignoring existing TRC", "file", f)
+			//log.FromCtx(ctx).Debug("Ignoring existing TRC", "file", f)
 			continue
 		}
 		log.FromCtx(ctx).Info("Ignoring TRC", "file", f, "reason", reason)

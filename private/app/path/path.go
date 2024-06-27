@@ -316,9 +316,18 @@ func (cs ColorScheme) KeyValues(kv ...string) []string {
 	}
 	return entries
 }
-func (cs ColorScheme) Policies(policies [][]*fabrid.Policy, idx int) string {
+func (cs ColorScheme) Policies(fabridEnabled []bool, policies [][]*fabrid.Policy, idx int) string {
+	if len(fabridEnabled) < idx {
+		return ""
+	}
+	if !fabridEnabled[idx] {
+		return ""
+	}
 	if len(policies) < idx {
 		return ""
+	}
+	if len(policies[idx]) == 0 {
+		return fmt.Sprintf("~%s~", cs.GlobalPolicy.Sprintf("ZERO"))
 	}
 	policyStr := make([]string, len(policies[idx]))
 	for i, v := range policies[idx] {
@@ -337,6 +346,7 @@ func (cs ColorScheme) Path(path snet.Path) string {
 		return ""
 	}
 	intfs := path.Metadata().Interfaces
+	fabridEnabled := path.Metadata().FabridEnabled
 	policies := path.Metadata().FabridPolicies
 	if len(intfs) == 0 {
 		return ""
@@ -345,7 +355,7 @@ func (cs ColorScheme) Path(path snet.Path) string {
 	intf := intfs[0]
 	hops = append(hops, cs.Values.Sprintf("%s %s %s",
 		cs.Values.Sprint(intf.IA),
-		cs.Policies(policies, 0),
+		cs.Policies(fabridEnabled, policies, 0),
 		cs.Intf.Sprint(intf.ID),
 	))
 	for i := 1; i < len(intfs)-1; i += 2 {
@@ -354,7 +364,7 @@ func (cs ColorScheme) Path(path snet.Path) string {
 		hops = append(hops, cs.Values.Sprintf("%s %s %s %s",
 			cs.Intf.Sprint(inIntf.ID),
 			cs.Values.Sprint(inIntf.IA),
-			cs.Policies(policies, (i+1)/2),
+			cs.Policies(fabridEnabled, policies, (i+1)/2),
 			cs.Intf.Sprint(outIntf.ID),
 		))
 	}
@@ -362,7 +372,7 @@ func (cs ColorScheme) Path(path snet.Path) string {
 	hops = append(hops, cs.Values.Sprintf("%s %s %s",
 		cs.Intf.Sprint(intf.ID),
 		cs.Values.Sprint(intf.IA),
-		cs.Policies(policies, len(intfs)/2),
+		cs.Policies(fabridEnabled, policies, len(intfs)/2),
 	))
 	return fmt.Sprintf("[%s]", strings.Join(hops, cs.Link.Sprintf(">")))
 }
