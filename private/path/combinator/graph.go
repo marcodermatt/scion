@@ -329,6 +329,7 @@ func (solution *pathSolution) Path() Path {
 	fabridMaps := make(map[addr.IA]fabridMapEntry)
 	var epicPathAuths [][]byte
 	for _, solEdge := range solution.edges {
+		log.Debug("solution-segment", "type", solEdge.segment.Type, "src", solEdge.src, "dst", solEdge.dst)
 		var hops []path.HopField
 		var intfs []snet.PathInterface
 		var pathASEntries []seg.ASEntry // ASEntries that on the path, eventually in path order.
