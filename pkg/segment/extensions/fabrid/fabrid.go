@@ -30,7 +30,7 @@ type SupportedIndicesMap map[ConnectionPair][]uint8
 type IndexIdentifierMap map[uint8]*PolicyIdentifier
 
 type Detached struct {
-	SupportedIndicesMap SupportedIndicesMap
+	SupportedIndicesMap SupportedIndicesMap `json:"-"`
 	IndexIdentiferMap   IndexIdentifierMap
 }
 

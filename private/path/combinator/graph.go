@@ -440,6 +440,8 @@ func (solution *pathSolution) Path() Path {
 
 	interfaces := segments.Interfaces()
 	asEntries := segments.ASEntries()
+	log.Debug("DEBUG-segments", "segments", segments)
+	log.Debug("DEBUG-interfaces", "interfaces", interfaces)
 	staticInfo := collectMetadata(interfaces, asEntries)
 	fabridEnabled, policies := collectFabridPolicies(interfaces, fabridMaps)
 	path := Path{
