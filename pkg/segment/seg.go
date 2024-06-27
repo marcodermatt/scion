@@ -398,18 +398,21 @@ func (ps *PathSegment) GetLoggingID() string {
 func (ps *PathSegment) getHopsDescription() string {
 	description := []string{}
 	for _, as := range ps.ASEntries {
-		description = append(description, getHopDescription(as.Local, as.HopEntry.HopField))
+		description = append(description, getHopDescription(as.Local, as.HopEntry.HopField, as.UnsignedExtensions))
 	}
 	// TODO(shitz): Add extensions.
 	return strings.Join(description, ">")
 }
 
-func getHopDescription(ia addr.IA, hop HopField) string {
+func getHopDescription(ia addr.IA, hop HopField, ext UnsignedExtensions) string {
 	desc := []string{}
 	if hop.ConsIngress > 0 {
 		desc = append(desc, fmt.Sprintf("%v ", hop.ConsIngress))
 	}
 	desc = append(desc, ia.String())
+	if ext.FabridDetached != nil {
+		desc = append(desc, " [FABRID_EXT]")
+	}
 	if hop.ConsEgress > 0 {
 		desc = append(desc, fmt.Sprintf(" %v", hop.ConsEgress))
 	}
