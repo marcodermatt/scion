@@ -63,7 +63,110 @@ func generateRandomBytes(len int) []byte {
 }
 
 func TestFailedValidation(t *testing.T) {
-	//TODO: implement
+	type test struct {
+		name    string
+		runTest func(t *testing.T)
+	}
+	tests := []test{
+		{
+			name: "manipulated hopfield leads to failed path validator",
+			runTest: func(t *testing.T) {
+				unixNow := uint32(time.Now().Unix())
+				tmpBuffer := make([]byte, (extension.MaxSupportedFabridHops*3+15)&^15+16)
+				id := &extension.IdentifierOption{
+					Timestamp:     time.Unix(int64(unixNow), 10*int64(time.Millisecond)),
+					PacketID:      rand.Uint32(),
+					BaseTimestamp: unixNow,
+				}
+				s := &slayers.SCION{
+					RawSrcAddr: generateRandomBytes(4),
+					SrcIA:      addr.MustIAFrom(1, 1),
+				}
+				f := &extension.FabridOption{}
+				f.HopfieldMetadata = append(f.HopfieldMetadata,
+					&extension.FabridHopfieldMetadata{
+						EncryptedPolicyID: uint8(rand.Uint32()),
+						FabridEnabled:     true,
+						ASLevelKey:        rand.Intn(2) == 0,
+					})
+				pathKey := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+				asHostKeys := make(map[addr.IA]*drkey.FabridKey)
+				asAsKeys := make(map[addr.IA]drkey.FabridKey)
+				hops := make([]snet.HopInterface, len(f.HopfieldMetadata))
+
+				for i := 0; i < len(f.HopfieldMetadata); i++ {
+					hops[i] = snet.HopInterface{
+						IgIf:     common.IFIDType(rand.Int()),
+						EgIf:     common.IFIDType(rand.Int()),
+						Policies: nil,
+					}
+					if i == 0 {
+						hops[i].IA = addr.MustIAFrom(1, 1)
+					} else {
+						hops[i].IA = addr.IA(rand.Int())
+					}
+					keyBytes := drkey.Key{16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1}
+					if f.HopfieldMetadata[i].ASLevelKey {
+						asAsKeys[hops[i].IA] = drkey.FabridKey{Key: keyBytes}
+					} else {
+						asHostKeys[hops[i].IA] = &drkey.FabridKey{Key: keyBytes}
+					}
+				}
+
+				err := crypto.InitValidators(f, id, s, tmpBuffer, pathKey, asHostKeys,
+					asAsKeys, hops)
+				assert.NoError(t, err)
+
+				for i, meta := range f.HopfieldMetadata {
+					if meta.FabridEnabled {
+						if meta.ASLevelKey {
+							key := asAsKeys[hops[i].IA]
+							err = crypto.VerifyAndUpdate(meta, id, s, tmpBuffer, key.Key[:],
+								uint16(hops[i].IgIf), uint16(hops[i].EgIf))
+						} else {
+							key := asHostKeys[hops[i].IA]
+							err = crypto.VerifyAndUpdate(meta, id, s, tmpBuffer, key.Key[:],
+								uint16(hops[i].IgIf), uint16(hops[i].EgIf),
+							)
+						}
+
+						assert.NoError(t, err)
+					}
+				}
+				_, err = crypto.VerifyPathValidator(f, tmpBuffer, pathKey)
+				assert.NoError(t, err)
+				// until now we are in the success case. But now we modify a HVF to simulate
+				// adversarial actions and make sure that the path validator fails
+				f.HopfieldMetadata[0].HopValidationField = [3]byte{0, 0, 0}
+				_, err = crypto.VerifyPathValidator(f, tmpBuffer, pathKey)
+				assert.ErrorContains(t, err, "Path validator is not valid")
+			},
+		},
+		{
+			name: "verify hopfield fails for wrong value",
+			runTest: func(t *testing.T) {
+				f := &extension.FabridOption{
+					HopfieldMetadata: []*extension.FabridHopfieldMetadata{
+						{
+							FabridEnabled:      true,
+							HopValidationField: [3]byte{1, 2, 3},
+						},
+					},
+				}
+				id := &extension.IdentifierOption{}
+				s := &slayers.SCION{}
+				tmpBuffer := make([]byte, 128)
+				hfKey := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+				err := crypto.VerifyAndUpdate(f.HopfieldMetadata[0], id, s, tmpBuffer, hfKey, 1, 2)
+				assert.ErrorContains(t, err, "HVF is not valid")
+			},
+		},
+	}
+	for _, tc := range tests {
+		func(tc test) {
+			t.Run(tc.name, tc.runTest)
+		}(tc)
+	}
 }
 
 func TestSuccessfullValidators(t *testing.T) {
