@@ -383,7 +383,7 @@ func (p *Packet) Decode() error {
 		slayers.LayerTypeSCION, &scionLayer, &hbhLayer, &e2eLayer, &udpLayer, &scmpLayer,
 	)
 	parser.IgnoreUnsupported = true
-	decoded := make([]gopacket.LayerType, 0, 4)
+	decoded := make([]gopacket.LayerType, 0, 6)
 	if err := parser.DecodeLayers(p.Bytes, &decoded); err != nil {
 		return err
 	}
