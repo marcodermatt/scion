@@ -114,8 +114,7 @@ func (f *FabridOption) validate(b []byte, currHf uint8, numHfs uint8) error {
 	return nil
 }
 
-// DecodeForCurrentHop uses the scion meta header to determine the current hop
-// and decodes only the metadata of the current hop and stores it in f.HopfieldMetadata[0].
+// DecodeForHF decodes only the metadata of the current hop and stores it in f.HopfieldMetadata[0].
 // The PathValidator will not be decoded.
 func (f *FabridOption) DecodeForHF(b []byte, currHf uint8, numHfs uint8) error {
 	if err := f.validate(b, currHf, numHfs); err != nil {
