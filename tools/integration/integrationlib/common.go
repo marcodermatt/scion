@@ -62,32 +62,6 @@ func Setup() error {
 		return serrors.WrapStr("adding flags", err)
 	}
 	validateFlags()
-	// this is a temporary solution to make sure that the local IP = daemon IP
-	// TODO: remove once a proper solution has been established
-	if Mode == ModeClient {
-		daemonAddrString, _, err := net.SplitHostPort(daemonAddr)
-		if err != nil {
-			return serrors.WrapStr("SplitHostPort", err)
-		}
-		fmt.Println(daemonAddrString)
-		var newLocalAddr *net.UDPAddr
-		if daemonAddr[0] == '[' {
-			newLocalAddr, err = net.ResolveUDPAddr("udp", "["+daemonAddrString+"]:0")
-		} else {
-			newLocalAddr, err = net.ResolveUDPAddr("udp", daemonAddrString+":0")
-		}
-
-		if err != nil {
-			return serrors.WrapStr("ResolveUDPAddr", err, "daemonAddrString", daemonAddrString)
-		}
-		Local = snet.UDPAddr{
-			IA:      Local.IA,
-			Path:    Local.Path,
-			NextHop: Local.NextHop,
-			Host:    newLocalAddr,
-		}
-	}
-	// end of temporary solution
 
 	return nil
 }

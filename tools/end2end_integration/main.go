@@ -94,7 +94,13 @@ func realMain() int {
 	}
 
 	in := integration.NewBinaryIntegration(name, cmd, clientArgs, serverArgs)
-	pairs, err := getPairs()
+	var pairs []integration.IAPair
+	var err error
+	if fabrid {
+		pairs, err = getPairs(integration.SDAddr)
+	} else {
+		pairs, err = getPairs(integration.CSAddr)
+	}
 	if err != nil {
 		log.Error("Error selecting tests", "err", err)
 		return 1
@@ -324,8 +330,8 @@ func clientTemplate(progressSock string) integration.Cmd {
 // This implies that IFF role1 == role2, then h1:h2 pairs are mirrored with h2:h1 and, unless
 // remote[ISD/AS] is specified, h2:h2 and h1:h1. Not all combinations yield something useful...
 // caveat emptor.
-func getPairs() ([]integration.IAPair, error) {
-	pairs := integration.IAPairs(integration.CSAddr)
+func getPairs(hostAddr integration.HostAddr) ([]integration.IAPair, error) {
+	pairs := integration.IAPairs(hostAddr)
 	if subset == "all" {
 		return pairs, nil
 	}
