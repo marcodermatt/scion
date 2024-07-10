@@ -166,7 +166,7 @@ func (c *Connector) DelSvc(ia addr.IA, svc addr.SVC, a *net.UDPAddr) error {
 func (c *Connector) AddDRKeySecret(protocolID int32, sv control.SecretValue) error {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-	return c.DataPlane.drKeyProvider.AddSecret(protocolID, sv)
+	return c.DataPlane.DRKeyProvider.AddSecret(protocolID, sv)
 }
 
 func (c *Connector) UpdateFabridPolicies(ipRangePolicies map[uint32][]*control.PolicyIPRange,

@@ -109,7 +109,7 @@ type DataPlane struct {
 	mtx                      sync.Mutex
 	running                  bool
 	Metrics                  *Metrics
-	drKeyProvider            *control.DRKeyProvider
+	DRKeyProvider            *control.DRKeyProvider
 	fabridPolicyIPRangeMap   map[uint32][]*control.PolicyIPRange
 	fabridPolicyInterfaceMap map[uint64]uint32
 	forwardingMetrics        map[uint16]interfaceMetrics
@@ -518,11 +518,6 @@ func (d *DataPlane) Run(ctx context.Context, cfg *RunConfig) error {
 	d.mtx.Lock()
 	d.running = true
 	d.initMetrics()
-
-	if d.drKeyProvider == nil {
-		d.drKeyProvider = &control.DRKeyProvider{}
-		d.drKeyProvider.Init()
-	}
 
 	processorQueueSize := max(
 		len(d.interfaces)*cfg.BatchSize/cfg.NumProcessors,
@@ -1096,10 +1091,10 @@ func (p *scionPacketProcessor) processFabrid(egressIF uint16) error {
 	}
 	var key [16]byte
 	if p.fabrid.HopfieldMetadata[0].ASLevelKey {
-		key, err = p.d.drKeyProvider.DeriveASASKey(int32(drkey.FABRID), p.identifier.Timestamp,
+		key, err = p.d.DRKeyProvider.DeriveASASKey(int32(drkey.FABRID), p.identifier.Timestamp,
 			p.scionLayer.SrcIA)
 	} else {
-		key, err = p.d.drKeyProvider.DeriveASHostKey(int32(drkey.FABRID), p.identifier.Timestamp,
+		key, err = p.d.DRKeyProvider.DeriveASHostKey(int32(drkey.FABRID), p.identifier.Timestamp,
 			p.scionLayer.SrcIA, src.String())
 	}
 	if err != nil {

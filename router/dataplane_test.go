@@ -243,7 +243,8 @@ func TestDataPlaneRun(t *testing.T) {
 	}{
 		"fabrid basic": {
 			prepareDP: func(ctrl *gomock.Controller, done chan<- struct{}) *router.DataPlane {
-				ret := &router.DataPlane{Metrics: metrics}
+				ret := &router.DataPlane{Metrics: metrics, DRKeyProvider: &control.DRKeyProvider{}}
+				ret.DRKeyProvider.Init()
 				key := []byte("testkey_xxxxxxxx")
 				dstIA := xtest.MustParseIA("4-ff00:0:411")
 				dstAddr := addr.MustParseHost("2.2.2.2")
@@ -256,7 +257,7 @@ func TestDataPlaneRun(t *testing.T) {
 					0x88, 0x99, 0xaa, 0xbb,
 					0xcc, 0xdd, 0xee, 0xff,
 				}
-				_ = ret.AddDRKeySecret(int32(drkey.FABRID),
+				ret.DRKeyProvider.AddSecret(int32(drkey.FABRID),
 					control.SecretValue{
 						Key:        asDRKey,
 						EpochBegin: time.Now().Add(-time.Second),
@@ -283,7 +284,7 @@ func TestDataPlaneRun(t *testing.T) {
 				}, nil)
 				assert.NoError(t, err)
 
-				asToHostKey, err := ret.DeriveASToHostKey(int32(drkey.FABRID), now,
+				asToHostKey, err := ret.DRKeyProvider.DeriveASHostKey(int32(drkey.FABRID), now,
 					srcIA, srcAddr.String())
 				assert.NoError(t, err)
 				encPolicyID, err := crypto.EncryptPolicyID(policyID, &identifier, asToHostKey[:])
@@ -473,7 +474,8 @@ func TestDataPlaneRun(t *testing.T) {
 		},
 		"fabrid mpls ingress egress different router": {
 			prepareDP: func(c1 *gomock.Controller, done chan<- struct{}) *router.DataPlane {
-				ret := &router.DataPlane{Metrics: metrics}
+				ret := &router.DataPlane{Metrics: metrics, DRKeyProvider: &control.DRKeyProvider{}}
+				ret.DRKeyProvider.Init()
 				key := []byte("testkey_xxxxxxxx")
 				dstIA := xtest.MustParseIA("4-ff00:0:411")
 				dstAddr := addr.MustParseHost("2.2.2.2")
@@ -486,7 +488,7 @@ func TestDataPlaneRun(t *testing.T) {
 					0x88, 0x99, 0xaa, 0xbb,
 					0xcc, 0xdd, 0xee, 0xff,
 				}
-				_ = ret.AddDRKeySecret(int32(drkey.FABRID),
+				_ = ret.DRKeyProvider.AddSecret(int32(drkey.FABRID),
 					control.SecretValue{
 						Key:        asDRKey,
 						EpochBegin: time.Now().Add(-time.Second),
@@ -507,7 +509,7 @@ func TestDataPlaneRun(t *testing.T) {
 					})
 				assert.NoError(t, err)
 
-				asToHostKey, err := ret.DeriveASToHostKey(int32(drkey.FABRID), now,
+				asToHostKey, err := ret.DRKeyProvider.DeriveASHostKey(int32(drkey.FABRID), now,
 					srcIA, srcAddr.String())
 				assert.NoError(t, err)
 				encPolicyID, err := crypto.EncryptPolicyID(policyID, &identifier, asToHostKey[:])
@@ -695,7 +697,8 @@ func TestDataPlaneRun(t *testing.T) {
 		},
 		"fabrid mpls internal traffic": {
 			prepareDP: func(c1 *gomock.Controller, done chan<- struct{}) *router.DataPlane {
-				ret := &router.DataPlane{Metrics: metrics}
+				ret := &router.DataPlane{Metrics: metrics, DRKeyProvider: &control.DRKeyProvider{}}
+				ret.DRKeyProvider.Init()
 				key := []byte("testkey_xxxxxxxx")
 				dstIA := xtest.MustParseIA("4-ff00:0:411")
 				dstAddr := addr.MustParseHost("2.2.2.2")
@@ -708,7 +711,7 @@ func TestDataPlaneRun(t *testing.T) {
 					0x88, 0x99, 0xaa, 0xbb,
 					0xcc, 0xdd, 0xee, 0xff,
 				}
-				_ = ret.AddDRKeySecret(int32(drkey.FABRID),
+				_ = ret.DRKeyProvider.AddSecret(int32(drkey.FABRID),
 					control.SecretValue{
 						Key:        asDRKey,
 						EpochBegin: time.Now().Add(-time.Second),
@@ -736,7 +739,7 @@ func TestDataPlaneRun(t *testing.T) {
 
 				assert.NoError(t, err)
 
-				asToHostKey, err := ret.DeriveASToHostKey(int32(drkey.FABRID), now,
+				asToHostKey, err := ret.DRKeyProvider.DeriveASHostKey(int32(drkey.FABRID), now,
 					srcIA, srcAddr.String())
 				assert.NoError(t, err)
 				encPolicyID, err := crypto.EncryptPolicyID(policyID, &identifier, asToHostKey[:])

@@ -62,6 +62,7 @@ func realMain(ctx context.Context) error {
 		DataPlane: router.DataPlane{
 			Metrics:                        metrics,
 			ExperimentalSCMPAuthentication: globalCfg.Features.ExperimentalSCMPAuthentication,
+			DRKeyProvider:                  &control.DRKeyProvider{},
 		},
 		ReceiveBufferSize:   globalCfg.Router.ReceiveBufferSize,
 		SendBufferSize:      globalCfg.Router.SendBufferSize,
@@ -127,6 +128,7 @@ func realMain(ctx context.Context) error {
 		defer log.HandlePanic()
 		return globalCfg.Metrics.ServePrometheus(errCtx)
 	})
+	dp.DataPlane.DRKeyProvider.Init()
 	controlServiceAddr, err := controlConfig.Topo.Anycast(addr.SvcCS)
 	if err != nil {
 		return err
