@@ -41,6 +41,7 @@ type RemotePolicyDescription struct {
 
 type FabridManager struct {
 	autoIncrIndex            int
+	asInterfaceIDs           []uint16
 	SupportedIndicesMap      fabrid_ext.SupportedIndicesMap
 	IndexIdentifierMap       fabrid_ext.IndexIdentifierMap
 	IdentifierDescriptionMap map[uint32]string
@@ -49,7 +50,7 @@ type FabridManager struct {
 	RemoteCacheValidity      time.Duration
 }
 
-func NewFabridManager(remoteCacheValidity time.Duration) *FabridManager {
+func NewFabridManager(asInterfaceIDs []uint16, remoteCacheValidity time.Duration) *FabridManager {
 	fb := &FabridManager{
 		SupportedIndicesMap:      map[fabrid_ext.ConnectionPair][]uint8{},
 		IndexIdentifierMap:       map[uint8]*fabrid_ext.PolicyIdentifier{},
@@ -58,6 +59,7 @@ func NewFabridManager(remoteCacheValidity time.Duration) *FabridManager {
 		RemotePolicyCache:        map[RemotePolicyIdentifier]RemotePolicyDescription{},
 		RemoteCacheValidity:      remoteCacheValidity,
 		autoIncrIndex:            1,
+		asInterfaceIDs:           asInterfaceIDs,
 	}
 	return fb
 }
@@ -99,7 +101,7 @@ func (f *FabridManager) parseAndAdd(path string, fi os.FileInfo, err error) erro
 		return serrors.WrapStr("Unable to parse policy", err)
 	}
 
-	if err := pol.Validate(); err != nil {
+	if err := pol.Validate(f.asInterfaceIDs); err != nil {
 		return serrors.WrapStr("Unable to validate policy", err, "path", path)
 	}
 

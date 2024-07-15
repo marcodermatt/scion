@@ -26,9 +26,15 @@ import (
 )
 
 func TestLoadInvalidPolicies(t *testing.T) {
-	fm := NewFabridManager(5 * time.Second)
+	fm := NewFabridManager([]uint16{1, 2}, 5*time.Second)
 	err := fm.Load("testdata/mixed")
-	require.Error(t, err)
+	require.ErrorContains(t, err, "Unable to parse policy")
+}
+
+func TestLoadPolicyWithNonExistingInterfaces(t *testing.T) {
+	fm := NewFabridManager([]uint16{1}, 5*time.Second)
+	err := fm.Load("testdata/correct")
+	require.ErrorContains(t, err, "Interfaces do not exist")
 }
 
 func TestLoadPolicies(t *testing.T) {
@@ -112,7 +118,7 @@ func TestLoadPolicies(t *testing.T) {
 		},
 	}
 
-	fm := NewFabridManager(5 * time.Second)
+	fm := NewFabridManager([]uint16{1, 2}, 5*time.Second)
 	fm.autoIncrIndex = 1
 	err := fm.Load("testdata/correct")
 	require.NoError(t, err)
@@ -233,7 +239,7 @@ func TestAddPolicy(t *testing.T) {
 	}
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			fm := NewFabridManager(5 * time.Second)
+			fm := NewFabridManager([]uint16{3, 5, 7}, 5*time.Second)
 			oldIndex := fm.autoIncrIndex
 			err := fm.addPolicy(&tc.Policy)
 			newIndex := fm.autoIncrIndex

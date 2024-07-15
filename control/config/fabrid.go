@@ -16,6 +16,7 @@ package config
 
 import (
 	"io"
+	"net"
 	"strings"
 
 	"github.com/scionproto/scion/pkg/private/serrors"
@@ -32,11 +33,13 @@ type FABRIDPolicy struct {
 }
 
 // Validate validates that all values are parsable.
-func (cfg *FABRIDPolicy) Validate() error {
+func (cfg *FABRIDPolicy) Validate(asInterfaceIDs []uint16) error {
 	for _, connectionPoint := range cfg.SupportedBy {
+		connectionPoint.asInterfaceIDs = asInterfaceIDs
 		if err := config.ValidateAll(&connectionPoint); err != nil {
 			return serrors.WrapStr("Validating supported interfaces failed", err)
 		}
+		connectionPoint.asInterfaceIDs = nil
 	}
 	if cfg.IsLocalPolicy && (cfg.LocalIdentifier == 0 || cfg.LocalDescription == "") {
 		return serrors.New("Local policy configuration must not be empty.")
@@ -56,10 +59,31 @@ type FABRIDConnectionPoints struct {
 	Ingress   FABRIDConnectionPoint `yaml:"ingress,omitempty"`
 	Egress    FABRIDConnectionPoint `yaml:"egress,omitempty"`
 	MPLSLabel uint32                `yaml:"mpls_label,omitempty"`
+	// asInterfaceIDs is manually set to verify that both the provided
+	// ingress and egress actually belong to valid AS interfaces if their
+	// type is interface
+	asInterfaceIDs []uint16
 }
 
 // Validate validates that all values are parsable.
 func (cfg *FABRIDConnectionPoints) Validate() error {
+	doInterfacesExist := func(connectionPoints ...*FABRIDConnectionPoint) bool {
+		for _, cp := range connectionPoints {
+			if cp.Type == fabrid.Interface {
+				found := cp.Interface == 0
+				for i := 0; i < len(cfg.asInterfaceIDs); i++ {
+					if cp.Interface == cfg.asInterfaceIDs[i] {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return false
+				}
+			}
+		}
+		return true
+	}
 	if cfg.Ingress.Type != fabrid.Interface && cfg.Ingress.Type != fabrid.Wildcard {
 		return serrors.New("FABRID policies are only supported from an interface to an IP" +
 			" range or other interface.")
@@ -69,6 +93,10 @@ func (cfg *FABRIDConnectionPoints) Validate() error {
 		Ingress.Interface == cfg.Egress.Interface {
 		return serrors.New("Interfaces should be distinct")
 	}
+	if !doInterfacesExist(&cfg.Ingress, &cfg.Egress) {
+		return serrors.New("Interfaces do not exist")
+	}
+
 	return config.ValidateAll(&cfg.Ingress, &cfg.Egress)
 }
 
@@ -95,10 +123,11 @@ func (cfg *FABRIDConnectionPoint) Validate() error {
 	default:
 		return serrors.New("unknown FABRID connection point", "type", cfg.Type)
 	}
-	if cfg.Type == fabrid.IPv6Range && (cfg.IPAddress == "" || cfg.Prefix > 128) {
-		return serrors.New("Invalid IPv6 Address range for connection point")
-	} else if cfg.Type == fabrid.IPv4Range && (cfg.IPAddress == "" || cfg.Prefix > 32) {
-		return serrors.New("Invalid IPv4 Address range for connection point")
+
+	if cfg.Type == fabrid.IPv6Range && (net.ParseIP(cfg.IPAddress) == nil || cfg.Prefix > 128) {
+		return serrors.New("Invalid IPv6 Address range for connection point", "ip", cfg.IPAddress, "prefix", cfg.Prefix)
+	} else if cfg.Type == fabrid.IPv4Range && (net.ParseIP(cfg.IPAddress) == nil || cfg.Prefix > 32) {
+		return serrors.New("Invalid IPv4 Address range for connection point", "ip", cfg.IPAddress, "prefix", cfg.Prefix)
 	}
 	return nil
 }

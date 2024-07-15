@@ -24,6 +24,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/scionproto/scion/control/config"
+	"github.com/scionproto/scion/pkg/segment/extensions/fabrid"
 )
 
 func TestFabridSample(t *testing.T) {
@@ -33,8 +34,18 @@ func TestFabridSample(t *testing.T) {
 	err := yaml.UnmarshalStrict(sample.Bytes(), pol)
 	fmt.Println(sample.String())
 	assert.NoError(t, err)
-	err = pol.Validate()
+	err = pol.Validate([]uint16{1})
 	assert.NoError(t, err)
+}
+
+func TestIPRangePolicyWithInvalidIP(t *testing.T) {
+	cp := config.FABRIDConnectionPoint{
+		Type:      fabrid.IPv4Range,
+		IPAddress: "192.168.5",
+		Prefix:    24,
+	}
+	err := cp.Validate()
+	assert.ErrorContains(t, err, "Invalid IPv4 Address range for connection point")
 }
 
 func TestFabridPolicyValidation(t *testing.T) {
@@ -118,7 +129,7 @@ local_description: Fabrid Example Policy`,
 			pol := &config.FABRIDPolicy{}
 			err := yaml.UnmarshalStrict([]byte(tc.Policy), pol)
 			require.NoError(t, err)
-			err = pol.Validate()
+			err = pol.Validate([]uint16{1})
 			tc.assert(t, err)
 		})
 	}
