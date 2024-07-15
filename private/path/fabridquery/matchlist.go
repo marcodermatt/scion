@@ -24,7 +24,7 @@ type MatchList struct {
 	SelectedPolicies []*Policy
 }
 
-// Copy creates a deep copy of the MatchList object, including the list of selected policies.
+// Copy creates a copy of the MatchList object, including the list of selected policies.
 func (ml MatchList) Copy() *MatchList {
 	duplicate := make([]*Policy, len(ml.SelectedPolicies))
 	copy(duplicate, ml.SelectedPolicies)
