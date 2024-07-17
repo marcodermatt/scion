@@ -37,6 +37,7 @@ go_test(
     deps = [
         "//pkg/drkey:go_default_library",
         "//pkg/log/logtest:go_default_library",
+        "//pkg/segment/extensions/fabrid:go_default_library",
         "//private/env/envtest:go_default_library",
         "//private/mgmtapi/jwtauth:go_default_library",
         "//private/mgmtapi/mgmtapitest:go_default_library",

@@ -125,9 +125,12 @@ func (cfg *FABRIDConnectionPoint) Validate() error {
 	}
 
 	if cfg.Type == fabrid.IPv6Range && (net.ParseIP(cfg.IPAddress) == nil || cfg.Prefix > 128) {
-		return serrors.New("Invalid IPv6 Address range for connection point", "ip", cfg.IPAddress, "prefix", cfg.Prefix)
-	} else if cfg.Type == fabrid.IPv4Range && (net.ParseIP(cfg.IPAddress) == nil || cfg.Prefix > 32) {
-		return serrors.New("Invalid IPv4 Address range for connection point", "ip", cfg.IPAddress, "prefix", cfg.Prefix)
+		return serrors.New("Invalid IPv6 Address range for connection point",
+			"ip", cfg.IPAddress, "prefix", cfg.Prefix)
+	} else if cfg.Type == fabrid.IPv4Range &&
+		(net.ParseIP(cfg.IPAddress) == nil || cfg.Prefix > 32) {
+		return serrors.New("Invalid IPv4 Address range for connection point",
+			"ip", cfg.IPAddress, "prefix", cfg.Prefix)
 	}
 	return nil
 }

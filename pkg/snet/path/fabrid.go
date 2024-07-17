@@ -59,9 +59,6 @@ func NewFABRIDDataplanePath(p SCION, hops []snet.HopInterface, policyIDs []*fabr
 	if err := decoded.DecodeFromBytes(p.Raw); err != nil {
 		return nil, serrors.WrapStr("decoding path", err)
 	}
-	//TODO(jvanbommel) How was this remove hops introduced by crossovers even supposed to work?
-	// Decreasing the numHops would still add the hops to ingresses and egresses of crossovers
-	// in the middle of the path, and even cut out the end of the path. What did I miss?
 	keys := make(map[addr.IA]*drkey.FabridKey)
 	if len(policyIDs) == 0 { // If no policies are provided, use empty policy for all hops
 		policyIDs = make([]*fabrid.PolicyID, numHops)

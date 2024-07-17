@@ -48,8 +48,9 @@ func (ml MatchList) Accepted() bool {
 	return true
 }
 
-// Policies returns a slice of PolicyIDs representing the policies used in each hop of the MatchList object.
-// A zero PolicyID is used for a nil selected policy, and a zero or reject PolicyID is used when a wildcard or reject policy is selected.
+// Policies returns a slice of PolicyIDs representing the policies used in each hop of
+// the MatchList object. A zero PolicyID is used for a nil selected policy, and a zero
+// or reject PolicyID is used when a wildcard or reject policy is selected.
 // For other policies, the PolicyID is obtained from the selected policy's Policy.Index field.
 // It also prints the index and policy details of each hop to console.
 // The returned slice has the same length as the MatchList.SelectedPolicies slice.

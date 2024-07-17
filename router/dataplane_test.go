@@ -257,12 +257,13 @@ func TestDataPlaneRun(t *testing.T) {
 					0x88, 0x99, 0xaa, 0xbb,
 					0xcc, 0xdd, 0xee, 0xff,
 				}
-				ret.DRKeyProvider.AddSecret(int32(drkey.FABRID),
+				err := ret.DRKeyProvider.AddSecret(int32(drkey.FABRID),
 					control.SecretValue{
 						Key:        asDRKey,
 						EpochBegin: time.Now().Add(-time.Second),
 						EpochEnd:   time.Now().AddDate(1, 0, 0),
 					})
+				assert.NoError(t, err)
 				local := xtest.MustParseIA("1-ff00:0:110")
 				now := time.Now().Truncate(time.Millisecond)
 				identifier := extension.IdentifierOption{
@@ -273,7 +274,7 @@ func TestDataPlaneRun(t *testing.T) {
 
 				policyID := fabrid.PolicyID(0x0f)
 				_, ipPrefix, _ := net.ParseCIDR("0.0.0.0/0")
-				err := ret.UpdateFabridPolicies(map[uint32][]*control.PolicyIPRange{
+				err = ret.UpdateFabridPolicies(map[uint32][]*control.PolicyIPRange{
 					// ingress 3 with policy index 0x0f
 					(3<<8 + 0x0f): {
 						{

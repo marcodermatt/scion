@@ -29,7 +29,6 @@ import (
 const pastValidity time.Duration = time.Second * 5
 
 var errDRKeySecretInvalid = errors.New("no valid drkey secret for provided time period")
-var errTimestampBehind = errors.New("packet timestamp behind pastValidity")
 var errDRKeyNotInitialized = errors.New("drkey not initialized")
 
 var nullByte = [16]byte{}
@@ -82,7 +81,8 @@ func (d *DRKeyProvider) getSecret(protocolID int32, t time.Time) (*SecretValue, 
 	secrets := d.drKeySecrets[protocolID]
 	since := time.Since(t)
 	if since > pastValidity {
-		return nil, serrors.New("time after validity window", "t", t, "since", since, "validityPeriod", pastValidity)
+		return nil, serrors.New("time after validity window", "t", t, "since", since,
+			"validityPeriod", pastValidity)
 	}
 	for _, sv := range secrets {
 		if t.After(sv.EpochBegin) && sv.EpochEnd.After(t) {

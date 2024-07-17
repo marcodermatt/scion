@@ -18,13 +18,14 @@ import (
 	"context"
 	"net"
 
+	"google.golang.org/grpc"
+
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
 	sc_grpc "github.com/scionproto/scion/pkg/grpc"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	cppb "github.com/scionproto/scion/pkg/proto/control_plane"
 	"github.com/scionproto/scion/pkg/snet"
-	"google.golang.org/grpc"
 )
 
 // Fetcher obtains end-host key from the local CS.

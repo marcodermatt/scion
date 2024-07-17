@@ -37,7 +37,6 @@ import (
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/daemon"
-
 	"github.com/scionproto/scion/pkg/drkey"
 	libfabrid "github.com/scionproto/scion/pkg/experimental/fabrid"
 	"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
