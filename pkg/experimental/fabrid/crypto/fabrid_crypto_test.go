@@ -89,7 +89,9 @@ func TestFailedValidation(t *testing.T) {
 						FabridEnabled:     true,
 						ASLevelKey:        rand.Intn(2) == 0,
 					})
-				pathKey := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+				pathKey := &drkey.FabridKey{
+					Key: drkey.Key{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+				}
 				asHostKeys := make(map[addr.IA]*drkey.FabridKey)
 				asAsKeys := make(map[addr.IA]drkey.FabridKey)
 				hops := make([]snet.HopInterface, len(f.HopfieldMetadata))
@@ -133,12 +135,12 @@ func TestFailedValidation(t *testing.T) {
 						assert.NoError(t, err)
 					}
 				}
-				_, err = crypto.VerifyPathValidator(f, tmpBuffer, pathKey)
+				_, err = crypto.VerifyPathValidator(f, tmpBuffer, pathKey.Key[:])
 				assert.NoError(t, err)
 				// until now we are in the success case. But now we modify a HVF to simulate
 				// adversarial actions and make sure that the path validator fails
 				f.HopfieldMetadata[0].HopValidationField = [3]byte{0, 0, 0}
-				_, err = crypto.VerifyPathValidator(f, tmpBuffer, pathKey)
+				_, err = crypto.VerifyPathValidator(f, tmpBuffer, pathKey.Key[:])
 				assert.ErrorContains(t, err, "Path validator is not valid")
 			},
 		},
@@ -221,7 +223,9 @@ func TestSuccessfullValidators(t *testing.T) {
 							FabridEnabled:     rand.Intn(2) == 0,
 							ASLevelKey:        rand.Intn(2) == 0,
 						})
-					pathKey := generateRandomBytes(16)
+					keyBytes := drkey.Key{}
+					copy(keyBytes[:], generateRandomBytes(16))
+					pathKey := &drkey.FabridKey{Key: keyBytes}
 					asHostKeys := make(map[addr.IA]*drkey.FabridKey)
 					asAsKeys := make(map[addr.IA]drkey.FabridKey)
 					hops := make([]snet.HopInterface, len(f.HopfieldMetadata))
@@ -239,7 +243,7 @@ func TestSuccessfullValidators(t *testing.T) {
 						} else {
 							hops[i].IA = addr.IA(rand.Int())
 						}
-						keyBytes := drkey.Key{}
+						keyBytes = drkey.Key{}
 						copy(keyBytes[:], generateRandomBytes(16))
 						if f.HopfieldMetadata[i].ASLevelKey {
 							asAsKeys[hops[i].IA] = drkey.FabridKey{Key: keyBytes}
@@ -269,7 +273,7 @@ func TestSuccessfullValidators(t *testing.T) {
 							assert.NoError(t, err)
 						}
 					}
-					_, err = crypto.VerifyPathValidator(f, tmpBuffer, pathKey)
+					_, err = crypto.VerifyPathValidator(f, tmpBuffer, pathKey.Key[:])
 					assert.NoError(t, err)
 				}
 			})

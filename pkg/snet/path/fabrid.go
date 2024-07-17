@@ -39,7 +39,7 @@ type FabridConfig struct {
 type FABRID struct {
 	Raw              []byte
 	keys             map[addr.IA]*drkey.FabridKey
-	pathKey          drkey.FabridKey
+	pathKey          *drkey.FabridKey
 	getFabridKeys    func(context.Context, drkey.FabridKeysMeta) (drkey.FabridKeysResponse, error)
 	conf             *FabridConfig
 	counter          uint32
@@ -69,11 +69,16 @@ func NewFABRIDDataplanePath(p SCION, hops []snet.HopInterface, policyIDs []*fabr
 		return nil, serrors.New("Amount of policy ids does not match the amount of hops in " +
 			"the path.")
 	}
+	var pathKey *drkey.FabridKey
+	if hops[numHops-1].FabridEnabled {
+		pathKey = &drkey.FabridKey{}
+	}
 	f := &FABRID{
 		hops:             hops,
 		numHops:          numHops,
 		conf:             conf,
 		keys:             keys,
+		pathKey:          pathKey,
 		tmpBuffer:        make([]byte, 64),
 		identifierBuffer: make([]byte, 8),
 		fabridBuffer:     make([]byte, 8+4*numHops),
@@ -144,7 +149,7 @@ func (f *FABRID) SetExtensions(s *slayers.SCION, p *snet.PacketInfo) error {
 		}
 		fabridOption.HopfieldMetadata[i] = meta
 	}
-	err = crypto.InitValidators(fabridOption, identifierOption, s, f.tmpBuffer, f.pathKey.Key[:],
+	err = crypto.InitValidators(fabridOption, identifierOption, s, f.tmpBuffer, f.pathKey,
 		f.keys, nil, f.hops)
 	if err != nil {
 		return serrors.WrapStr("initializing validators failed", err)
@@ -188,7 +193,10 @@ func (f *FABRID) renewExpiredKeys(t time.Time) error {
 			expiredAses = append(expiredAses, ia)
 		}
 	}
-	isPathKeyExpired := f.pathKey.Epoch.NotAfter.Before(t)
+	isPathKeyExpired := false
+	if f.pathKey != nil {
+		isPathKeyExpired = f.pathKey.Epoch.NotAfter.Before(t)
+	}
 	if expiredAses != nil || isPathKeyExpired {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -206,7 +214,7 @@ func (f *FABRID) renewExpiredKeys(t time.Time) error {
 			return err
 		}
 		if isPathKeyExpired {
-			f.pathKey = keys.PathKey
+			f.pathKey = &keys.PathKey
 		}
 		for i := range keys.ASHostKeys {
 			f.keys[keys.ASHostKeys[i].AS] = &keys.ASHostKeys[i]

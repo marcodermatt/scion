@@ -178,12 +178,16 @@ func VerifyPathValidator(f *ext.FabridOption, tmpBuffer []byte, pathKey []byte) 
 // InitValidators sets all HVFs of the FABRID option and computes the
 // path validator.
 func InitValidators(f *ext.FabridOption, id *ext.IdentifierOption, s *slayers.SCION,
-	tmpBuffer []byte, pathKey []byte, asHostKeys map[addr.IA]*drkey.FabridKey,
+	tmpBuffer []byte, pathKey *drkey.FabridKey, asHostKeys map[addr.IA]*drkey.FabridKey,
 	asAsKeys map[addr.IA]drkey.FabridKey, hops []snet.HopInterface) error {
 
 	outBuffer := make([]byte, 16)
-	pathValInputLength := 3 * len(f.HopfieldMetadata)
-	pathValBuffer := make([]byte, (pathValInputLength+15)&^15)
+	var pathValInputLength int
+	var pathValBuffer []byte
+	if pathKey != nil {
+		pathValInputLength = 3 * len(f.HopfieldMetadata)
+		pathValBuffer = make([]byte, (pathValInputLength+15)&^15)
+	}
 	for i, meta := range f.HopfieldMetadata {
 		if meta.FabridEnabled {
 			var key drkey.Key
@@ -211,14 +215,19 @@ func InitValidators(f *ext.FabridOption, id *ext.IdentifierOption, s *slayers.SC
 			outBuffer[0] &= 0x3f // ignore first two (left) bits
 			outBuffer[3] &= 0x3f // ignore first two (left) bits
 			copy(meta.HopValidationField[:3], outBuffer[:3])
-			copy(pathValBuffer[i*3:(i+1)*3], outBuffer[3:6])
+			if pathKey != nil {
+				copy(pathValBuffer[i*3:(i+1)*3], outBuffer[3:6])
+			}
 		}
 	}
-	err := macBlock(pathKey, tmpBuffer[:16], pathValBuffer[:pathValInputLength], pathValBuffer)
-	if err != nil {
-		return err
+	if pathKey != nil {
+		err := macBlock(pathKey.Key[:], tmpBuffer[:16], pathValBuffer[:pathValInputLength],
+			pathValBuffer)
+		if err != nil {
+			return err
+		}
+		copy(f.PathValidator[:4], pathValBuffer[:4])
 	}
-	copy(f.PathValidator[:4], pathValBuffer[:4])
 	return nil
 }
 
