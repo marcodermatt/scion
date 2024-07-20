@@ -246,14 +246,20 @@ var CSAddr HostAddr = func(ia addr.IA) *snet.UDPAddr {
 	return &snet.UDPAddr{IA: ia, Host: cs.SCIONAddress}
 }
 
-// SDAddr reads the SD host Addr from the topology for the specified IA.
-// If the address cannot be found, the CS address is returned.
+// SDAddr reads the endhost (dockerized) or scion daemon (normal) host Addr from the topology
+// for the specified IA. If the address cannot be found, the CS address is returned.
 var SDAddr HostAddr = func(ia addr.IA) *snet.UDPAddr {
 	if a := loadAddr(ia); a != nil {
 		return a
 	}
+	var name string
+	if *Docker {
+		name = "endhost_"
+	} else {
+		name = "sd"
+	}
 	if raw, err := os.ReadFile(GenFile("networks.conf")); err == nil {
-		pattern := fmt.Sprintf("sd%s = (.*)", addr.FormatIA(ia, addr.WithFileSeparator()))
+		pattern := fmt.Sprintf("%s%s = (.*)", name, addr.FormatIA(ia, addr.WithFileSeparator()))
 		matches := regexp.MustCompile(pattern).FindSubmatch(raw)
 		if len(matches) == 2 {
 			return &snet.UDPAddr{IA: ia, Host: &net.UDPAddr{IP: net.ParseIP(string(matches[1]))}}

@@ -92,8 +92,12 @@ func realMain() int {
 		clientArgs = append(clientArgs, "-sciond", integration.Daemon)
 		serverArgs = append(serverArgs, "-sciond", integration.Daemon)
 	}
-
-	in := integration.NewBinaryIntegration(name, cmd, clientArgs, serverArgs)
+	var in integration.Integration
+	if fabrid {
+		in = integration.NewBinaryEndhostIntegration(name, cmd, clientArgs, serverArgs)
+	} else {
+		in = integration.NewBinaryIntegration(name, cmd, clientArgs, serverArgs)
+	}
 	var pairs []integration.IAPair
 	var err error
 	if fabrid {
@@ -255,6 +259,9 @@ func runTests(in integration.Integration, pairs []integration.IAPair) error {
 				var tester string
 				if *integration.Docker {
 					tester = integration.TesterID(src)
+					if fabrid {
+						tester = integration.EndhostID(src)
+					}
 				}
 				logFile := fmt.Sprintf("%s/client_%s.log",
 					logDir(),

@@ -51,6 +51,9 @@ def add_arguments(parser):
                         to be built manually e.g. when running acceptance tests)')
     parser.add_argument('--fabrid', action='store_true',
                         help='Enables FABRID and DRKey on all CSes, BRs and SDs')
+    parser.add_argument('--endhosts', action='store_true',
+                        help='Generates an endhost per AS that contains a scion daemon.\
+                            Requires the daemon flag.')
     parser.add_argument('--features', help='Feature flags to enable, a comma separated list\
                         e.g. foo,bar enables foo and bar feature.')
     return parser
