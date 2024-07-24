@@ -79,7 +79,8 @@ class ConfigGenerator(object):
             logging.critical("Cannot generate endhosts without the daemon flag!")
             sys.exit(1)
         if self.args.fabrid and not self.args.endhosts:
-            logging.critical("Cannot generate dockerized fabrid topologies without the endhosts flag!")
+            logging.critical(
+                "Cannot generate dockerized fabrid topologies without the endhosts flag!")
             sys.exit(1)
         self.default_mtu = None
         self._read_defaults(self.args.network)

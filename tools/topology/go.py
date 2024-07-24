@@ -166,7 +166,7 @@ class GoGenerator(object):
             base = topo_id.base_dir(self.args.output_dir)
             sciond_conf = self._build_endhost_sciond_conf(topo_id, topo["isd_as"], base)
             write_file(os.path.join(base, "endhost.toml"), toml.dumps(sciond_conf))
-    
+
     def _build_endhost_sciond_conf(self, topo_id, ia, base):
         name = 'endhost_%s' % topo_id.file_fmt()
         config_dir = '/etc/scion' if self.args.docker else base

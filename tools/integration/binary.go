@@ -104,7 +104,8 @@ func NewBinaryIntegration(name string, cmd string, clientArgs, serverArgs []stri
 	return dockerize(bi)
 }
 
-func NewBinaryEndhostIntegration(name string, cmd string, clientArgs, serverArgs []string) Integration {
+func NewBinaryEndhostIntegration(name string, cmd string, clientArgs,
+	serverArgs []string) Integration {
 	logDir := filepath.Join(LogDir(), name)
 	err := os.Mkdir(logDir, os.ModePerm)
 	if err != nil && !os.IsExist(err) {

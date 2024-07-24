@@ -71,9 +71,11 @@ func dockerizeEndhost(bi *binaryIntegration) Integration {
 }
 
 // StartServer starts a server and blocks until the ReadySignal is received on Stdout.
-func (di *dockerizedEndhostIntegration) StartServer(ctx context.Context, dst *snet.UDPAddr) (Waiter, error) {
+func (di *dockerizedEndhostIntegration) StartServer(ctx context.Context, dst *snet.UDPAddr) (Waiter,
+	error) {
 	bi := *di.binaryIntegration
-	bi.serverArgs = append(dockerArgs, append([]string{EndhostID(dst), bi.cmd}, bi.serverArgs...)...)
+	bi.serverArgs = append(dockerArgs,
+		append([]string{EndhostID(dst), bi.cmd}, bi.serverArgs...)...)
 	bi.cmd = dockerCmd
 	log.Debug(fmt.Sprintf("Starting server for %s in a docker container",
 		addr.FormatIA(dst.IA, addr.WithFileSeparator())),
@@ -84,7 +86,8 @@ func (di *dockerizedEndhostIntegration) StartServer(ctx context.Context, dst *sn
 func (di *dockerizedEndhostIntegration) StartClient(ctx context.Context,
 	src, dst *snet.UDPAddr) (*BinaryWaiter, error) {
 	bi := *di.binaryIntegration
-	bi.clientArgs = append(dockerArgs, append([]string{EndhostID(src), bi.cmd}, bi.clientArgs...)...)
+	bi.clientArgs = append(dockerArgs,
+		append([]string{EndhostID(src), bi.cmd}, bi.clientArgs...)...)
 	bi.cmd = dockerCmd
 	log.Debug(fmt.Sprintf("Starting client for %s in a docker container",
 		addr.FormatIA(src.IA, addr.WithFileSeparator())),

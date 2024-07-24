@@ -184,7 +184,7 @@ class TopoGenerator(object):
     def _register_endhost(self, topo_id, as_conf):
         addr_type = addr_type_from_underlay(as_conf.get('underlay', DEFAULT_UNDERLAY))
         self._reg_addr(topo_id, "endhost_" + topo_id.file_fmt(), addr_type)
-    
+
     def _register_sciond(self, topo_id, as_conf):
         addr_type = addr_type_from_underlay(as_conf.get('underlay', DEFAULT_UNDERLAY))
         self._reg_addr(topo_id, "sd" + topo_id.file_fmt(), addr_type)
