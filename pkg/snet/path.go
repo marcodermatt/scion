@@ -176,6 +176,43 @@ type PathMetadata struct {
 	FabridPolicies [][]*fabrid.Policy
 }
 
+func (pm *PathMetadata) Hops() []HopInterface {
+	ifaces := pm.Interfaces
+	fabridEnabled := pm.FabridEnabled
+	fabridPolicies := pm.FabridPolicies
+	switch {
+	case len(ifaces)%2 != 0 || (len(fabridPolicies) != len(ifaces)/2+1):
+		return []HopInterface{}
+	case len(ifaces) == 0 || len(fabridPolicies) == 0:
+		return []HopInterface{}
+	default:
+		hops := make([]HopInterface, 0, len(ifaces)/2+1)
+		hops = append(hops, HopInterface{
+			IA:            ifaces[0].IA,
+			IgIf:          0,
+			EgIf:          ifaces[0].ID,
+			FabridEnabled: fabridEnabled[0],
+			Policies:      fabridPolicies[0]})
+		for i := 1; i < len(ifaces)-1; i += 2 {
+			hops = append(hops, HopInterface{
+				IA:            ifaces[i].IA,
+				IgIf:          ifaces[i].ID,
+				EgIf:          ifaces[i+1].ID,
+				FabridEnabled: fabridEnabled[(i+1)/2],
+				Policies:      fabridPolicies[(i+1)/2],
+			})
+		}
+		hops = append(hops, HopInterface{
+			IA:            ifaces[len(ifaces)-1].IA,
+			IgIf:          ifaces[len(ifaces)-1].ID,
+			EgIf:          0,
+			FabridEnabled: fabridEnabled[len(ifaces)/2],
+			Policies:      fabridPolicies[len(ifaces)/2],
+		})
+		return hops
+	}
+}
+
 func (pm *PathMetadata) Copy() *PathMetadata {
 	if pm == nil {
 		return nil
