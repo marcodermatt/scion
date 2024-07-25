@@ -86,6 +86,20 @@ func (iface PathInterface) String() string {
 	return fmt.Sprintf("%s#%d", iface.IA, iface.ID)
 }
 
+// HopInterface represents a single hop on the path
+type HopInterface struct {
+	// IgIf represents the ingress interface ID for a hop in the path.
+	IgIf common.IFIDType
+	// EgIf represents the ingress interface ID for a hop in the path.
+	EgIf common.IFIDType
+	// IA is the ISD AS identifier of the hop.
+	IA addr.IA
+	// FabridEnabled indicates whether FABRID is enabled on this hop.
+	FabridEnabled bool
+	// Policies are the FABRID Policies that are supported by this hop.
+	Policies []*fabrid.Policy
+}
+
 // EpicAuths is a container for the EPIC hop authenticators.
 type EpicAuths struct {
 	// AuthPHVF is the authenticator for the penultimate hop.
