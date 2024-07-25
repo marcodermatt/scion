@@ -33,6 +33,7 @@ import (
 const (
 	Generic = Protocol(pb.Protocol_PROTOCOL_GENERIC_UNSPECIFIED)
 	SCMP    = Protocol(pb.Protocol_PROTOCOL_SCMP)
+	FABRID  = Protocol(pb.Protocol_PROTOCOL_FABRID)
 )
 
 // Epoch represents a validity period.
@@ -197,4 +198,25 @@ type HostHostKey struct {
 	SrcHost string
 	DstHost string
 	Key     Key
+}
+
+type FabridKeysMeta struct {
+	SrcAS   addr.IA
+	SrcHost string
+	// ASes on the path. Don't have to be in order
+	PathASes []addr.IA
+	// Field is optional. If DstHost is nil, no path-key will be fetched
+	DstHost *string
+	DstAS   addr.IA
+}
+
+type FabridKey struct {
+	Epoch Epoch
+	AS    addr.IA
+	Key   Key
+}
+
+type FabridKeysResponse struct {
+	ASHostKeys []FabridKey
+	PathKey    FabridKey
 }
