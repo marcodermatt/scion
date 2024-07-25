@@ -38,12 +38,14 @@ import (
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
 	libepic "github.com/scionproto/scion/pkg/experimental/epic"
+	"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/processmetrics"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/private/util"
 	"github.com/scionproto/scion/pkg/scrypto"
 	"github.com/scionproto/scion/pkg/slayers"
+	"github.com/scionproto/scion/pkg/slayers/extension"
 	"github.com/scionproto/scion/pkg/slayers/path"
 	"github.com/scionproto/scion/pkg/slayers/path/empty"
 	"github.com/scionproto/scion/pkg/slayers/path/epic"
@@ -91,24 +93,27 @@ type BatchConn interface {
 // from multiple sockets, performs routing, and sends them to their destinations
 // (after updating the path, if that is needed).
 type DataPlane struct {
-	interfaces          map[uint16]BatchConn
-	external            map[uint16]BatchConn
-	linkTypes           map[uint16]topology.LinkType
-	neighborIAs         map[uint16]addr.IA
-	peerInterfaces      map[uint16]uint16
-	internal            BatchConn
-	internalIP          netip.Addr
-	internalNextHops    map[uint16]*net.UDPAddr
-	svc                 *services
-	macFactory          func() hash.Hash
-	bfdSessions         map[uint16]bfdSession
-	localIA             addr.IA
-	mtx                 sync.Mutex
-	running             bool
-	Metrics             *Metrics
-	forwardingMetrics   map[uint16]interfaceMetrics
-	dispatchedPortStart uint16
-	dispatchedPortEnd   uint16
+	interfaces               map[uint16]BatchConn
+	external                 map[uint16]BatchConn
+	linkTypes                map[uint16]topology.LinkType
+	neighborIAs              map[uint16]addr.IA
+	peerInterfaces           map[uint16]uint16
+	internal                 BatchConn
+	internalIP               netip.Addr
+	internalNextHops         map[uint16]*net.UDPAddr
+	svc                      *services
+	macFactory               func() hash.Hash
+	bfdSessions              map[uint16]bfdSession
+	localIA                  addr.IA
+	mtx                      sync.Mutex
+	running                  bool
+	Metrics                  *Metrics
+	DRKeyProvider            *control.DRKeyProvider
+	fabridPolicyIPRangeMap   map[uint32][]*control.PolicyIPRange
+	fabridPolicyInterfaceMap map[uint64]uint32
+	forwardingMetrics        map[uint16]interfaceMetrics
+	dispatchedPortStart      uint16
+	dispatchedPortEnd        uint16
 
 	ExperimentalSCMPAuthentication bool
 
@@ -485,6 +490,17 @@ func (d *DataPlane) addNextHopBFD(ifID uint16, src, dst *net.UDPAddr, cfg contro
 	return d.addBFDController(ifID, s, cfg, m)
 }
 
+func (d *DataPlane) UpdateFabridPolicies(ipRangePolicies map[uint32][]*control.PolicyIPRange,
+	interfacePolicies map[uint64]uint32) error {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	// TODO(rohrerj): check for concurrency issues
+	// when an update happens during reading
+	d.fabridPolicyIPRangeMap = ipRangePolicies
+	d.fabridPolicyInterfaceMap = interfacePolicies
+	return nil
+}
+
 func max(a int, b int) int {
 	if a > b {
 		return a
@@ -595,6 +611,7 @@ type packet struct {
 	trafficType trafficType
 	// The goods
 	rawPacket []byte
+	mplsLabel uint8
 }
 
 type slowPacket struct {
@@ -747,6 +764,7 @@ func (d *DataPlane) runProcessor(id int, q <-chan packet,
 		}
 		p.rawPacket = result.OutPkt
 		p.dstAddr = result.OutAddr
+		p.mplsLabel = uint8(processor.mplsLabel)
 		p.trafficType = result.TrafficType
 		select {
 		case fwCh <- p:
@@ -1023,10 +1041,11 @@ func readUpTo(c <-chan packet, n int, needsBlocking bool, pkts []packet) int {
 
 func newPacketProcessor(d *DataPlane) *scionPacketProcessor {
 	p := &scionPacketProcessor{
-		d:              d,
-		buffer:         gopacket.NewSerializeBuffer(),
-		mac:            d.macFactory(),
-		macInputBuffer: make([]byte, max(path.MACBufferSize, libepic.MACBufferSize)),
+		d:                 d,
+		buffer:            gopacket.NewSerializeBuffer(),
+		mac:               d.macFactory(),
+		macInputBuffer:    make([]byte, max(path.MACBufferSize, libepic.MACBufferSize)),
+		fabridInputBuffer: make([]byte, crypto.FabridMacInputSize),
 	}
 	p.scionLayer.RecyclePaths()
 	return p
@@ -1048,10 +1067,183 @@ func (p *scionPacketProcessor) reset() error {
 	p.mac.Reset()
 	p.cachedMac = nil
 	// Reset hbh layer
-	p.hbhLayer = slayers.HopByHopExtnSkipper{}
+	p.hbhLayer = slayers.HopByHopExtn{}
 	// Reset e2e layer
 	p.e2eLayer = slayers.EndToEndExtnSkipper{}
+	p.identifier = nil
+	p.fabrid = nil
+	p.mplsLabel = 0
+	p.nextHop = nil
 	return nil
+}
+
+func (p *scionPacketProcessor) processFabrid(egressIF uint16) error {
+	meta := p.fabrid.HopfieldMetadata[0]
+	src, err := p.scionLayer.SrcAddr()
+	if err != nil {
+		return err
+	}
+	var key [16]byte
+	if p.fabrid.HopfieldMetadata[0].ASLevelKey {
+		key, err = p.d.DRKeyProvider.DeriveASASKey(int32(drkey.FABRID), p.identifier.Timestamp,
+			p.scionLayer.SrcIA)
+	} else {
+		key, err = p.d.DRKeyProvider.DeriveASHostKey(int32(drkey.FABRID), p.identifier.Timestamp,
+			p.scionLayer.SrcIA, src.String())
+	}
+	if err != nil {
+		return err
+	}
+	policyID, err := crypto.ComputePolicyID(meta, p.identifier, key[:])
+	if err != nil {
+		return err
+	}
+	err = crypto.VerifyAndUpdate(meta, p.identifier, &p.scionLayer, p.fabridInputBuffer, key[:],
+		p.ingressID, egressIF)
+	if err != nil {
+		return err
+	}
+	// Check / set MPLS label only if policy ID != 0
+	// and only if the packet will be sent within the AS or to another router of the local AS
+	if policyID != 0 {
+		var mplsLabel uint32
+		switch p.transitType {
+		case ingressEgressDifferentRouter:
+			mplsLabel, err = p.d.getFabridMplsLabelForInterface(uint32(p.ingressID),
+				uint32(policyID), uint32(egressIF))
+		case internalTraffic:
+			mplsLabel, err = p.d.getFabridMplsLabel(uint32(p.ingressID), uint32(policyID),
+				p.nextHop.IP)
+			if err != nil {
+				mplsLabel, err = p.d.getFabridMplsLabelForInterface(uint32(p.ingressID),
+					uint32(policyID), 0)
+			}
+		case ingressEgressSameRouter:
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		p.mplsLabel = mplsLabel
+	}
+	return nil
+}
+
+func (d *DataPlane) getFabridMplsLabelForInterface(ingressID uint32, policyIndex uint32,
+	egressID uint32) (uint32, error) {
+
+	policyMapKey := uint64(ingressID)<<24 + uint64(egressID)<<8 + uint64(policyIndex)
+	mplsLabel, found := d.fabridPolicyInterfaceMap[policyMapKey]
+	if !found {
+		//lookup default (instead of using the ingressID as part of the key, use a 1 bit as MSB):
+		policyMapKey = 1<<63 + uint64(egressID)<<8 + uint64(policyIndex)
+		mplsLabel, found = d.fabridPolicyInterfaceMap[policyMapKey]
+		if !found {
+			return 0, serrors.New("Provided policyID is invalid",
+				"ingress", ingressID, "index", policyIndex, "egress", egressID)
+		}
+	}
+	return mplsLabel, nil
+}
+
+func (d *DataPlane) getFabridMplsLabel(ingressID uint32, policyIndex uint32,
+	nextHopIP net.IP) (uint32, error) {
+
+	policyMapKey := ingressID<<8 + policyIndex
+	ipRanges, found := d.fabridPolicyIPRangeMap[policyMapKey]
+	if !found {
+		//lookup default (instead of using the ingressID as part of the key, use a 1 bit as MSB):
+		policyMapKey = 1<<31 + policyIndex
+		ipRanges, found = d.fabridPolicyIPRangeMap[policyMapKey]
+		if !found {
+			return 0, serrors.New("Provided policyID is invalid",
+				"ingress", ingressID, "index", policyIndex)
+		}
+	}
+	var bestRange *control.PolicyIPRange
+	for _, r := range ipRanges {
+		if r.IPPrefix.Contains(nextHopIP) {
+			if bestRange == nil {
+				bestRange = r
+			} else {
+				bestPrefixLength, _ := bestRange.IPPrefix.Mask.Size()
+				currentPrefixLength, _ := r.IPPrefix.Mask.Size()
+				if currentPrefixLength > bestPrefixLength {
+					bestRange = r
+				}
+			}
+		}
+	}
+	if bestRange == nil {
+		return 0, serrors.New("Provided policy index is not valid for nexthop.",
+			"index", policyIndex, "next hop IP", nextHopIP)
+	}
+	return bestRange.MPLSLabel, nil
+}
+
+func (p *scionPacketProcessor) processHbhOptions(egressIF uint16) error {
+	var err error
+	for _, opt := range p.hbhLayer.Options {
+		switch opt.OptType {
+		case slayers.OptTypeIdentifier:
+			if p.identifier != nil {
+				return serrors.New("Identifier HBH option provided multiple times")
+			}
+			// TODO(marcodermatt): Find cleaner solution for getting timestamp of first InfoField
+			baseTimestamp := p.infoField.Timestamp
+			if p.path.PathMeta.CurrINF > 0 {
+				firstInfoField, err := p.path.GetInfoField(0)
+				if err != nil {
+					return serrors.New("Failed to parse first InfoField")
+				}
+				baseTimestamp = firstInfoField.Timestamp
+			}
+			p.identifier, err = extension.ParseIdentifierOption(opt, baseTimestamp)
+			if err != nil {
+				return err
+			}
+		case slayers.OptTypeFabrid:
+			if p.fabrid != nil {
+				return serrors.New("FABRID HBH option provided multiple times")
+			}
+			if p.identifier == nil {
+				return serrors.New("Identifier HBH option must be present when using FABRID")
+			}
+
+			// Calculate FABRID hop index
+			currHop := p.path.PathMeta.CurrHF
+			if !p.infoField.Peer {
+				currHop -= p.path.PathMeta.CurrINF
+			}
+
+			// Skip if this is an intermediary egress router
+			if p.ingressID == 0 && currHop != 0 {
+				return nil
+			}
+
+			// Calculate number of FABRID hops
+			numHFs := p.path.NumHops - p.path.NumINF + 1
+			if p.infoField.Peer {
+				numHFs++
+			}
+			fabrid, err := extension.ParseFabridOptionCurrentHop(opt, currHop, uint8(numHFs))
+			if err != nil {
+				return err
+			}
+			if fabrid.HopfieldMetadata[0].FabridEnabled {
+				p.fabrid = fabrid
+				if err = p.processFabrid(egressIF); err != nil {
+					return err
+				}
+				if err = fabrid.HopfieldMetadata[0].SerializeTo(opt.
+					OptData[currHop*4:]); err != nil {
+					return err
+				}
+			}
+		default:
+		}
+	}
+	return err
 }
 
 func (p *scionPacketProcessor) processPkt(rawPkt []byte,
@@ -1222,7 +1414,7 @@ type scionPacketProcessor struct {
 
 	// scionLayer is the SCION gopacket layer.
 	scionLayer slayers.SCION
-	hbhLayer   slayers.HopByHopExtnSkipper
+	hbhLayer   slayers.HopByHopExtn
 	e2eLayer   slayers.EndToEndExtnSkipper
 	// last is the last parsed layer, i.e. either &scionLayer, &hbhLayer or &e2eLayer
 	lastLayer gopacket.DecodingLayer
@@ -1246,7 +1438,23 @@ type scionPacketProcessor struct {
 
 	// bfdLayer is reusable buffer for parsing BFD messages
 	bfdLayer layers.BFD
+
+	identifier        *extension.IdentifierOption
+	fabrid            *extension.FabridOption
+	fabridInputBuffer []byte
+	mplsLabel         uint32
+	// IP of the next hop. Only valid for the inbound or AS transit cases
+	nextHop     *net.UDPAddr
+	transitType transitType
 }
+
+type transitType int
+
+const (
+	ingressEgressSameRouter transitType = iota
+	ingressEgressDifferentRouter
+	internalTraffic
+)
 
 type slowPathType int
 
@@ -1835,6 +2043,12 @@ func (p *scionPacketProcessor) process() (processResult, error) {
 		if err != nil {
 			return r, err
 		}
+
+		p.transitType = internalTraffic
+		p.nextHop = a
+		if err := p.processHbhOptions(0); err != nil {
+			return processResult{}, err
+		}
 		return processResult{OutAddr: a, OutPkt: p.rawPkt, TrafficType: ttIn}, nil
 	}
 
@@ -1873,6 +2087,10 @@ func (p *scionPacketProcessor) process() (processResult, error) {
 	}
 	egressID := p.egressInterface()
 	if _, ok := p.d.external[egressID]; ok {
+		p.transitType = ingressEgressSameRouter
+		if err := p.processHbhOptions(egressID); err != nil {
+			return processResult{}, err
+		}
 		// Not ASTransit in
 		if err := p.processEgress(); err != nil {
 			return processResult{}, err
@@ -1893,6 +2111,11 @@ func (p *scionPacketProcessor) process() (processResult, error) {
 	}
 	// ASTransit in: pkt leaving this AS through another BR.
 	if a, ok := p.d.internalNextHops[egressID]; ok {
+		p.transitType = ingressEgressDifferentRouter
+		p.nextHop = a
+		if err := p.processHbhOptions(egressID); err != nil {
+			return processResult{}, err
+		}
 		return processResult{OutAddr: a, OutPkt: p.rawPkt, TrafficType: ttInTransit}, nil
 	}
 	errCode := slayers.SCMPCodeUnknownHopFieldEgress
@@ -2370,17 +2593,14 @@ func (p *slowPathPacketProcessor) prepareSCMP(
 	scmpH := slayers.SCMP{TypeCode: typeCode}
 	scmpH.SetNetworkLayerForChecksum(&scionL)
 
-	needsAuth := false
-	if p.d.ExperimentalSCMPAuthentication {
-		// Error messages must be authenticated.
-		// Traceroute are OPTIONALLY authenticated ONLY IF the request
-		// was authenticated.
-		// TODO(JordiSubira): Reuse the key computed in p.hasValidAuth
-		// if SCMPTypeTracerouteReply to create the response.
-		needsAuth = cause != nil ||
-			(scmpH.TypeCode.Type() == slayers.SCMPTypeTracerouteReply &&
-				p.hasValidAuth(time.Now()))
-	}
+	// Error messages must be authenticated.
+	// Traceroute are OPTIONALLY authenticated ONLY IF the request
+	// was authenticated.
+	// TODO(JordiSubira): Reuse the key computed in p.hasValidAuth
+	// if SCMPTypeTracerouteReply to create the response.
+	needsAuth := cause != nil ||
+		(scmpH.TypeCode.Type() == slayers.SCMPTypeTracerouteReply &&
+			p.hasValidAuth(time.Now()))
 
 	var quote []byte
 	if cause != nil {
@@ -2572,6 +2792,8 @@ func nextHdr(layer gopacket.DecodingLayer) slayers.L4ProtocolType {
 	case *slayers.SCION:
 		return v.NextHdr
 	case *slayers.EndToEndExtnSkipper:
+		return v.NextHdr
+	case *slayers.HopByHopExtn:
 		return v.NextHdr
 	case *slayers.HopByHopExtnSkipper:
 		return v.NextHdr
