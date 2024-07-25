@@ -34,6 +34,27 @@ type FabridMapEntry struct {
 	Digest []byte
 }
 
+func collectFabridPolicies(ifaces []snet.PathInterface,
+	maps map[addr.IA]FabridMapEntry) []snet.FabridInfo {
+
+	switch {
+	case len(ifaces)%2 != 0:
+		return []snet.FabridInfo{}
+	case len(ifaces) == 0:
+		return []snet.FabridInfo{}
+	default:
+		fabridInfo := make([]snet.FabridInfo, len(ifaces)/2+1)
+		fabridInfo[0] = *GetFabridInfoForIntfs(ifaces[0].IA, 0, uint16(ifaces[0].ID), maps, false)
+		for i := 1; i < len(ifaces)-1; i += 2 {
+			fabridInfo[(i+1)/2] = *GetFabridInfoForIntfs(ifaces[i].IA, uint16(ifaces[i].ID),
+				uint16(ifaces[i+1].ID), maps, false)
+		}
+		fabridInfo[len(ifaces)/2] = *GetFabridInfoForIntfs(ifaces[len(ifaces)-1].IA,
+			uint16(ifaces[len(ifaces)-1].ID), 0, maps, true)
+		return fabridInfo
+	}
+}
+
 func GetFabridInfoForIntfs(ia addr.IA, ig, eg uint16, maps map[addr.IA]FabridMapEntry,
 	allowIpPolicies bool) *snet.FabridInfo {
 	policies := make([]*fabrid.Policy, 0)

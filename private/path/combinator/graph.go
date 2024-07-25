@@ -310,9 +310,11 @@ type pathSolution struct {
 
 // Path builds the forwarding path with metadata by extracting it from a path
 // between source and destination in the DMG.
+
 func (solution *pathSolution) Path() Path {
 	mtu := ^uint16(0)
 	var segments segmentList
+	fabridMaps := make(map[addr.IA]FabridMapEntry)
 	var epicPathAuths [][]byte
 	for _, solEdge := range solution.edges {
 		var hops []path.HopField
@@ -379,6 +381,16 @@ func (solution *pathSolution) Path() Path {
 			pathASEntries = append(pathASEntries, asEntry)
 			epicSegAuths = append(epicSegAuths, epicAuth)
 
+			fabridMap, exists := fabridMaps[asEntry.Local]
+			if (!exists || fabridMap.Ts.Before(solEdge.segment.Info.Timestamp)) && asEntry.
+				Extensions.Digests != nil {
+				fabridMaps[asEntry.Local] = FabridMapEntry{
+					Map:    asEntry.UnsignedExtensions.FabridDetached,
+					Digest: asEntry.Extensions.Digests.Fabrid.Digest,
+					Ts:     solEdge.segment.Info.Timestamp,
+				}
+			}
+
 			mtu = minUint16(mtu, uint16(asEntry.MTU))
 			if forwardingLinkMtu != 0 {
 				// The first HE in a segment has MTU 0, so we ignore those
@@ -413,7 +425,7 @@ func (solution *pathSolution) Path() Path {
 	interfaces := segments.Interfaces()
 	asEntries := segments.ASEntries()
 	staticInfo := collectMetadata(interfaces, asEntries)
-
+	fabridInfo := collectFabridPolicies(interfaces, fabridMaps)
 	path := Path{
 		SCIONPath: segments.ScionPath(),
 		Metadata: snet.PathMetadata{
@@ -427,6 +439,7 @@ func (solution *pathSolution) Path() Path {
 			LinkType:        staticInfo.LinkType,
 			InternalHops:    staticInfo.InternalHops,
 			Notes:           staticInfo.Notes,
+			FabridInfo:      fabridInfo,
 		},
 		Weight: solution.cost,
 	}
@@ -462,7 +475,6 @@ func getAuthPeer(a *seg.ASEntry, i int) []byte {
 	copy(auth[6:16], a.UnsignedExtensions.EpicDetached.AuthPeerEntries[i])
 	return auth
 }
-
 func isEpicAvailable(epicPathAuths [][]byte) ([]byte, []byte, bool) {
 	l := len(epicPathAuths)
 	if l < 2 {

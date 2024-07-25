@@ -62,7 +62,7 @@ func (p Path) Destination() addr.IA {
 }
 
 func (p Path) Metadata() *snet.PathMetadata {
-	return p.Meta.Copy()
+	return &p.Meta
 }
 
 func (p Path) String() string {
