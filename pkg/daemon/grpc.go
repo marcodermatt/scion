@@ -26,6 +26,7 @@ import (
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	libgrpc "github.com/scionproto/scion/pkg/grpc"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/ctrl/path_mgmt"
@@ -281,6 +282,11 @@ func convertPath(p *sdpb.Path, dst addr.IA) (path.Path, error) {
 		linkType[i] = linkTypeFromPB(v)
 	}
 
+	policyIdentifiers := make([][]*fabrid.Policy, len(p.FabridPolicies))
+	for i, v := range p.FabridPolicies {
+		policyIdentifiers[i] = fabridPoliciesFromPB(v)
+	}
+
 	res := path.Path{
 		Src: interfaces[0].IA,
 		Dst: dst,
@@ -299,6 +305,8 @@ func convertPath(p *sdpb.Path, dst addr.IA) (path.Path, error) {
 			LinkType:        linkType,
 			InternalHops:    p.InternalHops,
 			Notes:           p.Notes,
+			FabridEnabled:   p.FabridEnabled,
+			FabridPolicies:  policyIdentifiers,
 		},
 	}
 
@@ -310,6 +318,18 @@ func convertPath(p *sdpb.Path, dst addr.IA) (path.Path, error) {
 		AuthLHVF: append([]byte(nil), p.EpicAuths.AuthLhvf...),
 	}
 	return res, nil
+}
+
+func fabridPoliciesFromPB(fpList *sdpb.FabridPolicies) []*fabrid.Policy {
+	pbPolicies := make([]*fabrid.Policy, len(fpList.Policies))
+	for i, fp := range fpList.Policies {
+		pbPolicies[i] = &fabrid.Policy{
+			IsLocal:    fp.PolicyIdentifier.PolicyIsLocal,
+			Identifier: fp.PolicyIdentifier.PolicyIdentifier,
+			Index:      fabrid.PolicyID(fp.PolicyIndex),
+		}
+	}
+	return pbPolicies
 }
 
 func linkTypeFromPB(lt sdpb.LinkType) snet.LinkType {

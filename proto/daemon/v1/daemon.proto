@@ -22,6 +22,7 @@ import "google/protobuf/timestamp.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/empty.proto";
 import "proto/drkey/v1/drkey.proto";
+import "proto/control_plane/experimental/v1/fabrid_extensions.proto";
 
 service DaemonService {
     // Return a set of paths to the requested destination.
@@ -114,6 +115,22 @@ message Path {
     // Entry i describes the carbon intensity between interface i and i+1.
     // Consequently, there are N-1 entries for N interfaces.
     repeated int64 carbon_intensity = 13;
+    // FabridEnabled describes which hops support Fabrid.
+    repeated bool fabrid_enabled = 14;
+    // FabridPolicies contains the fabrid policy identifiers that are supported for an interface
+    // Entry i describes the policies between interfaces i and i+1.
+    repeated FabridPolicies fabrid_policies = 15;
+}
+
+message FabridPolicies {
+    // A list of policies for a specific interface
+    repeated FabridPolicy policies = 1;
+}
+message FabridPolicy {
+    // The identifier for the policy, either local or global:
+    proto.control_plane.experimental.v1.FABRIDPolicyIdentifier policy_identifier = 1;
+    // The local index, this may differ between similar policy identifiers, as it is specific to a hop.
+    uint32 policy_index = 2;
 }
 
 message EpicAuths {

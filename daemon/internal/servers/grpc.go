@@ -30,6 +30,7 @@ import (
 	"github.com/scionproto/scion/daemon/fetcher"
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
+	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/ctrl/path_mgmt"
@@ -37,6 +38,7 @@ import (
 	"github.com/scionproto/scion/pkg/private/prom"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/private/util"
+	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	pb_daemon "github.com/scionproto/scion/pkg/proto/daemon"
 	sdpb "github.com/scionproto/scion/pkg/proto/daemon"
 	"github.com/scionproto/scion/pkg/snet"
@@ -165,7 +167,10 @@ func pathToPB(path snet.Path) *sdpb.Path {
 	if nextHop := path.UnderlayNextHop(); nextHop != nil {
 		nextHopStr = nextHop.String()
 	}
-
+	fabridPolicies := make([]*sdpb.FabridPolicies, len(meta.FabridPolicies))
+	for i, v := range meta.FabridPolicies {
+		fabridPolicies[i] = fabridPoliciesToPB(v)
+	}
 	epicAuths := &sdpb.EpicAuths{
 		AuthPhvf: append([]byte(nil), meta.EpicAuths.AuthPHVF...),
 		AuthLhvf: append([]byte(nil), meta.EpicAuths.AuthLHVF...),
@@ -187,10 +192,30 @@ func pathToPB(path snet.Path) *sdpb.Path {
 		InternalHops:    meta.InternalHops,
 		Notes:           meta.Notes,
 		EpicAuths:       epicAuths,
+		FabridEnabled:   meta.FabridEnabled,
+		FabridPolicies:  fabridPolicies,
 	}
-
 }
 
+func fabridPolicyToPB(fp *fabrid.Policy) *sdpb.FabridPolicy {
+	return &sdpb.FabridPolicy{
+		PolicyIdentifier: &experimental.FABRIDPolicyIdentifier{
+			PolicyIsLocal:    fp.IsLocal,
+			PolicyIdentifier: fp.Identifier,
+		},
+		PolicyIndex: uint32(fp.Index),
+	}
+}
+
+func fabridPoliciesToPB(fpList []*fabrid.Policy) *sdpb.FabridPolicies {
+	pbPolicies := make([]*sdpb.FabridPolicy, len(fpList))
+	for i, fp := range fpList {
+		pbPolicies[i] = fabridPolicyToPB(fp)
+	}
+	return &sdpb.FabridPolicies{
+		Policies: pbPolicies,
+	}
+}
 func linkTypeToPB(lt snet.LinkType) sdpb.LinkType {
 	switch lt {
 	case snet.LinkTypeDirect:
