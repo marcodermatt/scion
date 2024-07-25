@@ -30,6 +30,7 @@ from topology.common import (
     prom_addr,
     prom_addr_dispatcher,
     sciond_ip,
+    endhost_ip,
     sciond_name,
     translate_features,
     SD_API_PORT,
@@ -158,6 +159,46 @@ class GoGenerator(object):
 
         if ca:
             raw_entry['ca'] = {'mode': 'in-process'}
+        return raw_entry
+
+    def generate_endhost(self):
+        for topo_id, topo in self.args.topo_dicts.items():
+            base = topo_id.base_dir(self.args.output_dir)
+            sciond_conf = self._build_endhost_sciond_conf(topo_id, topo["isd_as"], base)
+            write_file(os.path.join(base, "endhost.toml"), toml.dumps(sciond_conf))
+
+    def _build_endhost_sciond_conf(self, topo_id, ia, base):
+        name = 'endhost_%s' % topo_id.file_fmt()
+        config_dir = '/etc/scion' if self.args.docker else base
+        ip = endhost_ip(self.args.docker, topo_id, self.args.networks)
+        raw_entry = {
+            'general': {
+                'id': name,
+                'config_dir': config_dir,
+            },
+            'log': self._log_entry(name),
+            'trust_db': {
+                'connection': os.path.join(self.db_dir, '%s.trust.db' % name),
+            },
+            'path_db': {
+                'connection': os.path.join(self.db_dir, '%s.path.db' % name),
+            },
+            'sd': {
+                'address': socket_address_str(ip, SD_API_PORT),
+            },
+            'tracing': self._tracing_entry(),
+            'metrics': {
+                'prometheus': socket_address_str(ip, SCIOND_PROM_PORT)
+            },
+            'features': translate_features(self.args.features),
+            'api': {
+                'addr': socket_address_str(ip, SD_API_PORT+700),
+            },
+        }
+        if self.args.fabrid:
+            raw_entry['drkey_level2_db'] = {
+                'connection': os.path.join(self.db_dir, '%s.drkey_level2.db' % name),
+            }
         return raw_entry
 
     def generate_sciond(self):
