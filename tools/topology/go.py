@@ -129,6 +129,12 @@ class GoGenerator(object):
             'api': self._api_entry(infra_elem, CS_PROM_PORT+700),
             'features': translate_features(self.args.features),
         }
+        if self.args.fabrid:
+            fabrid_path = os.path.join(config_dir, 'fabrid-policies')
+            raw_entry['fabrid'] = {
+                'enabled': True,
+                'path': fabrid_path,
+            }
         if ca:
             raw_entry['ca'] = {'mode': 'in-process'}
         return raw_entry
