@@ -42,12 +42,14 @@ type Config struct {
 }
 
 type RouterConfig struct {
-	ReceiveBufferSize     int `toml:"receive_buffer_size,omitempty"`
-	SendBufferSize        int `toml:"send_buffer_size,omitempty"`
-	NumProcessors         int `toml:"num_processors,omitempty"`
-	NumSlowPathProcessors int `toml:"num_slow_processors,omitempty"`
-	BatchSize             int `toml:"batch_size,omitempty"`
-	BFD                   BFD `toml:"bfd,omitempty"`
+	ReceiveBufferSize     int      `toml:"receive_buffer_size,omitempty"`
+	SendBufferSize        int      `toml:"send_buffer_size,omitempty"`
+	NumProcessors         int      `toml:"num_processors,omitempty"`
+	NumSlowPathProcessors int      `toml:"num_slow_processors,omitempty"`
+	BatchSize             int      `toml:"batch_size,omitempty"`
+	DRKey                 []string `toml:"drkey,omitempty"`
+	Fabrid                bool     `toml:"fabrid,omitempty"`
+	BFD                   BFD      `toml:"bfd,omitempty"`
 	// TODO: These two values were introduced to override the port range for
 	// configured router in the context of acceptance tests. However, this
 	// introduces two sources for the port configuration. We should remove this
@@ -84,6 +86,19 @@ func (cfg *RouterConfig) Validate() error {
 	}
 	if cfg.NumSlowPathProcessors < 1 {
 		return serrors.New("Provided router config is invalid. NumSlowPathProcessors < 1")
+	}
+	if cfg.Fabrid {
+		fabrid_drkey := false
+		for _, protocol := range cfg.DRKey {
+			if protocol == "FABRID" {
+				fabrid_drkey = true
+				break
+			}
+		}
+		if !fabrid_drkey {
+			return serrors.New("Provided router config is invalid." +
+				"Enabling FABRID requires adding it to the DRKey protocols.")
+		}
 	}
 	if cfg.DispatchedPortStart != nil {
 		if cfg.DispatchedPortEnd == nil {
