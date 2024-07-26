@@ -59,6 +59,9 @@ message PathsRequest {
     bool refresh = 3;
     // Request hidden paths instead of standard paths.
     bool hidden = 4;
+    // Choose to have the daemon fetch any detached fabrid maps to fill the policies attribute in
+    // the metadata.
+    bool fetch_fabrid_detached_maps = 5;
 }
 
 message PathsResponse {
@@ -117,17 +120,24 @@ message Path {
     // Entry i describes the carbon intensity between interface i and i+1.
     // Consequently, there are N-1 entries for N interfaces.
     repeated int64 carbon_intensity = 13;
-    // FabridEnabled describes which hops support Fabrid.
-    repeated bool fabrid_enabled = 14;
-    // FabridPolicies contains the fabrid policy identifiers that are supported for an interface
-    // Entry i describes the policies between interfaces i and i+1.
-    repeated FabridPolicies fabrid_policies = 15;
+    // FabridInfo contains the FABRID-specific information for each hop on the path, specifically
+    // whether the AS in the hop supports FABRID, the possible policies, and whether the AS's FABRID
+    // maps were detached during beaconing (requiring manual fetching by the end host to fill the
+    // missing policies list).
+    repeated FabridInfo fabrid_info = 14;
 }
 
-message FabridPolicies {
-    // A list of policies for a specific interface
-    repeated FabridPolicy policies = 1;
+message FabridInfo {
+    // Enabled describes whether the hop supports Fabrid.
+    bool enabled = 1;
+    // Digest contains the digest for the FABRID map of this hop.
+    bytes digest = 2;
+    // Policies contains the fabrid policy identifiers that are supported for this hop.
+    repeated FabridPolicy policies = 3;
+    // Detached indicates whether the FABRID map has been detached for this hop.
+    bool detached = 4;
 }
+
 message FabridPolicy {
     // The identifier for the policy, either local or global:
     proto.control_plane.experimental.v1.FABRIDPolicyIdentifier policy_identifier = 1;

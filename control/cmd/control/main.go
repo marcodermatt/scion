@@ -349,7 +349,7 @@ func realMain(ctx context.Context) error {
 	})
 	// Handle fabrid map and policy requests
 	if globalCfg.Fabrid.Enabled {
-		polFetcher := fabridgrpc.BasicPolicyFetcher{
+		polFetcher := fabridgrpc.BasicFabridControlPlaneFetcher{
 			Dialer: &libgrpc.QUICDialer{
 				Rewriter: nc.AddressRewriter(),
 				Dialer:   quicStack.Dialer,

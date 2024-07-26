@@ -285,6 +285,7 @@ func realMain(ctx context.Context) error {
 					Cfg:        globalCfg.SD,
 				},
 			),
+			Dialer:      dialer,
 			Engine:      engine,
 			RevCache:    revCache,
 			DRKeyClient: drkeyClientEngine,

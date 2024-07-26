@@ -95,7 +95,7 @@ func TestRemotePolicyDescription(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			fetcher := mock_grpc.NewMockPolicyFetcher(ctrl)
+			fetcher := mock_grpc.NewMockFabridControlPlaneFetcher(ctrl)
 			fetcher.EXPECT().GetRemotePolicy(gomock.Any(), ia,
 				tc.PolicyIdentifier).Times(tc.ExpectedFetcherCalls).DoAndReturn(
 				func(ctx context.Context,
@@ -131,6 +131,139 @@ func TestRemotePolicyDescription(t *testing.T) {
 			}
 		})
 	}
+}
+func TestRemoteMaps_ExistingCacheEntry(t *testing.T) {
+	ia := xtest.MustParseIA("1-ff00:00:100")
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	fetcher := mock_grpc.NewMockFabridControlPlaneFetcher(ctrl)
+	manager := &fabrid.FabridManager{
+		RemoteMapsCache: make(map[addr.IA]fabrid.RemoteMap),
+	}
+	server := Server{Fetcher: fetcher, FabridManager: manager}
+	expectedMaps := fabrid_ext.Detached{
+		SupportedIndicesMap: fabrid_ext.SupportedIndicesMap{
+			fabrid_ext.ConnectionPair{
+				Ingress: fabrid_ext.ConnectionPoint{
+					Type:   fabrid_ext.IPv4Range,
+					IP:     "192.168.2.0",
+					Prefix: 24,
+				},
+				Egress: fabrid_ext.ConnectionPoint{
+					Type:        fabrid_ext.Interface,
+					InterfaceId: 5,
+				},
+			}: []uint8{2, 8, 15}},
+		IndexIdentiferMap: fabrid_ext.IndexIdentifierMap{
+			2: &fabrid_ext.PolicyIdentifier{
+				IsLocal:    false,
+				Identifier: 22,
+			},
+			8: &fabrid_ext.PolicyIdentifier{
+				IsLocal:    true,
+				Identifier: 1,
+			},
+			15: &fabrid_ext.PolicyIdentifier{
+				IsLocal:    false,
+				Identifier: 50,
+			},
+		},
+	}
+	manager.RemoteMapsCache[ia] = fabrid.RemoteMap{
+		Digest:   []byte{0x01, 0x02, 0x03, 0x04},
+		Detached: expectedMaps,
+	}
+
+	fetcher.EXPECT().GetRemoteMaps(gomock.Any(), ia).Times(0)
+
+	request := &experimental.RemoteMapsRequest{IsdAs: uint64(ia), Digest: []byte{0x01, 0x02,
+		0x03, 0x04}}
+	response, err := server.RemoteMaps(ctx, request)
+
+	assert.Nil(t, err)
+	assert.Equal(t, expectedMaps.SupportedIndicesMap, fabrid_ext.SupportedIndicesMapFromPB(
+		response.Maps.SupportedIndicesMap))
+	assert.Equal(t, expectedMaps.IndexIdentiferMap, fabrid_ext.IndexIdentifierMapFromPB(
+		response.Maps.IndexIdentifierMap))
+}
+
+func TestRemoteMaps_NonExistingCacheEntry(t *testing.T) {
+	ia := xtest.MustParseIA("1-ff00:00:100")
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	fetcher := mock_grpc.NewMockFabridControlPlaneFetcher(ctrl)
+	manager := &fabrid.FabridManager{
+		RemoteMapsCache: make(map[addr.IA]fabrid.RemoteMap),
+	}
+	server := Server{Fetcher: fetcher, FabridManager: manager}
+	expectedMaps := fabrid_ext.Detached{
+		SupportedIndicesMap: fabrid_ext.SupportedIndicesMap{
+			fabrid_ext.ConnectionPair{
+				Ingress: fabrid_ext.ConnectionPoint{
+					Type:   fabrid_ext.IPv4Range,
+					IP:     "192.168.2.0",
+					Prefix: 24,
+				},
+				Egress: fabrid_ext.ConnectionPoint{
+					Type:        fabrid_ext.Interface,
+					InterfaceId: 5,
+				},
+			}: []uint8{2, 8, 15}},
+		IndexIdentiferMap: fabrid_ext.IndexIdentifierMap{
+			2: &fabrid_ext.PolicyIdentifier{
+				IsLocal:    false,
+				Identifier: 22,
+			},
+			8: &fabrid_ext.PolicyIdentifier{
+				IsLocal:    true,
+				Identifier: 1,
+			},
+			15: &fabrid_ext.PolicyIdentifier{
+				IsLocal:    false,
+				Identifier: 50,
+			},
+		},
+	}
+
+	fetcher.EXPECT().GetRemoteMaps(gomock.Any(), ia).Times(1).DoAndReturn(func(
+		ctx context.Context,
+		remoteIA addr.IA,
+	) (*experimental.DetachedMapsResponse, error) {
+		return &experimental.DetachedMapsResponse{
+
+			Maps: &experimental.FABRIDDetachableMaps{
+				SupportedIndicesMap: fabrid_ext.SupportedIndicesMapToPB(expectedMaps.
+					SupportedIndicesMap),
+				IndexIdentifierMap: fabrid_ext.IndexIdentifierMapToPB(expectedMaps.
+					IndexIdentiferMap),
+			},
+		}, nil
+	})
+
+	request := &experimental.RemoteMapsRequest{IsdAs: uint64(ia), Digest: expectedMaps.Hash()}
+	response, err := server.RemoteMaps(ctx, request)
+
+	assert.Nil(t, err)
+	assert.Equal(t, expectedMaps.SupportedIndicesMap, fabrid_ext.SupportedIndicesMapFromPB(
+		response.Maps.SupportedIndicesMap))
+	assert.Equal(t, expectedMaps.IndexIdentiferMap, fabrid_ext.IndexIdentifierMapFromPB(
+		response.Maps.IndexIdentifierMap))
+
+	//Check if the request is cached.
+	assert.Equal(t, manager.RemoteMapsCache[ia].Digest, expectedMaps.Hash())
+	assert.Equal(t, manager.RemoteMapsCache[ia].SupportedIndicesMap,
+		expectedMaps.SupportedIndicesMap)
+	assert.Equal(t, manager.RemoteMapsCache[ia].IndexIdentiferMap, expectedMaps.IndexIdentiferMap)
+	// The request should now be cached, fetch again to test.
+	response, err = server.RemoteMaps(ctx, request)
+
+	assert.Nil(t, err)
+	assert.Equal(t, expectedMaps.SupportedIndicesMap, fabrid_ext.SupportedIndicesMapFromPB(
+		response.Maps.SupportedIndicesMap))
+	assert.Equal(t, expectedMaps.IndexIdentiferMap, fabrid_ext.IndexIdentifierMapFromPB(
+		response.Maps.IndexIdentifierMap))
 }
 
 func TestSupportedIndicesMap(t *testing.T) {

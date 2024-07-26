@@ -25,7 +25,8 @@ service FABRIDInterService{
     rpc SupportedIndicesMap(SupportedIndicesMapRequest) returns (SupportedIndicesMapResponse) {}
     // Gets the D-Map for a local AS, mapping policy indices to policy identifiers
     rpc IndexIdentifierMap(IndexIdentifierMapRequest) returns (IndexIdentifierMapResponse) {}
-// todo(jvanbommel): Q signatures on the maps ? (hash in pcb?)
+    // Gets the detached maps (both the supported indices map and index identifier map)
+    rpc DetachedMaps(DetachedMapsRequest) returns (DetachedMapsResponse) {}
     // Gets a string description for a local policy
     rpc LocalPolicyDescription(LocalPolicyDescriptionRequest) returns
         (LocalPolicyDescriptionResponse) {}
@@ -37,7 +38,9 @@ service FABRIDIntraService {
     // control service.
     rpc RemotePolicyDescription(RemotePolicyDescriptionRequest) returns
         (RemotePolicyDescriptionResponse) {}
-
+    // Used by a host in the AS to request the supported indices map, as well as the index
+    // identifier map for a remote AS.
+    rpc RemoteMaps(RemoteMapsRequest) returns (RemoteMapsResponse) {}
     // Used by border routers in the AS to request the mapping of supported policy indices to local MPLS labels
     rpc MPLSMap(MPLSMapRequest) returns (MPLSMapResponse) {}
 }
@@ -117,5 +120,24 @@ message LocalPolicyDescriptionResponse {
     string description = 1;
 }
 
+message RemoteMapsRequest {
+    // The digest corresponding to the maps that the end host is requesting, the end host
+    // receives this digest in a PCB.
+    bytes digest = 1;
+    // Remote ISD-AS
+    uint64 isd_as = 2;
+}
+
+message RemoteMapsResponse {
+    // The maps that the remote AS has detached from the PCB
+    FABRIDDetachableMaps maps = 1;
+}
+
+message DetachedMapsRequest { }
+
+message DetachedMapsResponse {
+    // The maps that the local AS has detached from the PCB
+    FABRIDDetachableMaps maps = 1;
+}
 
 

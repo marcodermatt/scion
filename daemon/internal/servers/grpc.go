@@ -31,6 +31,7 @@ import (
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
 	"github.com/scionproto/scion/pkg/experimental/fabrid"
+	libgrpc "github.com/scionproto/scion/pkg/grpc"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/ctrl/path_mgmt"
@@ -41,8 +42,10 @@ import (
 	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	pb_daemon "github.com/scionproto/scion/pkg/proto/daemon"
 	sdpb "github.com/scionproto/scion/pkg/proto/daemon"
+	fabrid_ext "github.com/scionproto/scion/pkg/segment/extensions/fabrid"
 	"github.com/scionproto/scion/pkg/snet"
 	snetpath "github.com/scionproto/scion/pkg/snet/path"
+	"github.com/scionproto/scion/private/path/combinator"
 	"github.com/scionproto/scion/private/revcache"
 	"github.com/scionproto/scion/private/topology"
 	"github.com/scionproto/scion/private/trust"
@@ -64,8 +67,8 @@ type DaemonServer struct {
 	RevCache    revcache.RevCache
 	ASInspector trust.Inspector
 	DRKeyClient *drkey_daemon.ClientEngine
-
-	Metrics Metrics
+	Dialer      libgrpc.Dialer
+	Metrics     Metrics
 
 	foregroundPathDedupe singleflight.Group
 	backgroundPathDedupe singleflight.Group
@@ -104,6 +107,13 @@ func (s *DaemonServer) paths(ctx context.Context,
 			"src", srcIA, "dst", dstIA, "refresh", req.Refresh)
 		return nil, err
 	}
+	if req.FetchFabridDetachedMaps {
+		detachedHops := findDetachedHops(paths)
+		if len(detachedHops) > 0 {
+			log.Info("Detached hops found", "hops", len(detachedHops))
+			updateFabridInfo(ctx, s.Dialer, detachedHops)
+		}
+	}
 	reply := &sdpb.PathsResponse{}
 	for _, p := range paths {
 		reply.Paths = append(reply.Paths, pathToPB(p))
@@ -111,6 +121,100 @@ func (s *DaemonServer) paths(ctx context.Context,
 	return reply, nil
 }
 
+type tempHopInfo struct {
+	IA      addr.IA
+	Meta    *snet.PathMetadata
+	fiIdx   int
+	Ingress uint16
+	Egress  uint16
+}
+
+// updateFabridInfo updates the FABRID info that is contained in the path Metadata for detached
+// hops, by fetching the corresponding FABRID maps from the corresponding AS.
+func updateFabridInfo(ctx context.Context, dialer libgrpc.Dialer, detachedHops []tempHopInfo) {
+	conn, err := dialer.Dial(ctx, &snet.SVCAddr{SVC: addr.SvcCS})
+	if err != nil {
+		log.FromCtx(ctx).Debug("Dialing CS failed", "err", err)
+	}
+	defer conn.Close()
+	client := experimental.NewFABRIDIntraServiceClient(conn)
+	fabridMaps := make(map[addr.IA]combinator.FabridMapEntry)
+	for _, detachedHop := range detachedHops {
+		if _, ok := fabridMaps[detachedHop.IA]; !ok {
+			fabridMaps[detachedHop.IA] = fetchMaps(ctx, detachedHop.IA, client,
+				detachedHop.Meta.FabridInfo[detachedHop.fiIdx].Digest)
+		}
+		detachedHop.Meta.FabridInfo[detachedHop.fiIdx] = *combinator.
+			GetFabridInfoForIntfs(detachedHop.IA, detachedHop.Ingress, detachedHop.Egress,
+				fabridMaps, true)
+	}
+}
+
+// findDetachedHops finds the hops where the FABRID maps have been detached in a given list of
+// paths.
+func findDetachedHops(paths []snet.Path) []tempHopInfo {
+	detachedHops := make([]tempHopInfo, 0)
+	for _, p := range paths {
+		if p.Metadata().FabridInfo[0].Enabled && p.Metadata().FabridInfo[0].Detached {
+			detachedHops = append(detachedHops, tempHopInfo{
+				IA:      p.Metadata().Interfaces[0].IA,
+				Meta:    p.Metadata(),
+				fiIdx:   0,
+				Ingress: 0,
+				Egress:  uint16(p.Metadata().Interfaces[0].ID),
+			})
+		}
+		for i := 1; i < len(p.Metadata().Interfaces)-1; i += 2 {
+			if p.Metadata().FabridInfo[(i+1)/2].Enabled &&
+				p.Metadata().FabridInfo[(i+1)/2].Detached {
+				detachedHops = append(detachedHops, tempHopInfo{
+					IA:      p.Metadata().Interfaces[i].IA,
+					Meta:    p.Metadata(),
+					fiIdx:   (i + 1) / 2,
+					Ingress: uint16(p.Metadata().Interfaces[i].ID),
+					Egress:  uint16(p.Metadata().Interfaces[i+1].ID),
+				})
+			}
+		}
+		if p.Metadata().FabridInfo[len(p.Metadata().Interfaces)/2].Enabled &&
+			p.Metadata().FabridInfo[len(p.Metadata().Interfaces)/2].Detached {
+			detachedHops = append(detachedHops, tempHopInfo{
+				IA:      p.Metadata().Interfaces[len(p.Metadata().Interfaces)-1].IA,
+				Meta:    p.Metadata(),
+				fiIdx:   len(p.Metadata().Interfaces) / 2,
+				Ingress: uint16(p.Metadata().Interfaces[len(p.Metadata().Interfaces)-1].ID),
+				Egress:  0,
+			})
+		}
+	}
+	return detachedHops
+}
+
+// fetchMaps retrieves FABRID maps from the Control Service for a given ISD-AS.
+// It uses the provided client to communicate with the Control Service and returns a FabridMapEntry
+// to be used directly in the combinator.
+func fetchMaps(ctx context.Context, ia addr.IA, client experimental.FABRIDIntraServiceClient,
+	digest []byte) combinator.FabridMapEntry {
+	maps, err := client.RemoteMaps(ctx, &experimental.RemoteMapsRequest{
+		Digest: digest,
+		IsdAs:  uint64(ia),
+	})
+	if err != nil || maps.Maps == nil {
+		log.FromCtx(ctx).Debug("Retrieving remote map from CS failed", "err", err, "ia",
+			ia)
+		return combinator.FabridMapEntry{}
+	}
+
+	detached := fabrid_ext.Detached{
+		SupportedIndicesMap: fabrid_ext.SupportedIndicesMapFromPB(maps.Maps.SupportedIndicesMap),
+		IndexIdentiferMap:   fabrid_ext.IndexIdentifierMapFromPB(maps.Maps.IndexIdentifierMap),
+	}
+	return combinator.FabridMapEntry{
+		Map:    &detached,
+		Ts:     time.Now(),
+		Digest: []byte{}, // leave empty, it can be calculated using detached.Hash()
+	}
+}
 func (s *DaemonServer) fetchPaths(
 	ctx context.Context,
 	group *singleflight.Group,
@@ -167,9 +271,9 @@ func pathToPB(path snet.Path) *sdpb.Path {
 	if nextHop := path.UnderlayNextHop(); nextHop != nil {
 		nextHopStr = nextHop.String()
 	}
-	fabridPolicies := make([]*sdpb.FabridPolicies, len(meta.FabridPolicies))
-	for i, v := range meta.FabridPolicies {
-		fabridPolicies[i] = fabridPoliciesToPB(v)
+	fabridInfo := make([]*sdpb.FabridInfo, len(meta.FabridInfo))
+	for i, v := range meta.FabridInfo {
+		fabridInfo[i] = fabridInfoToPB(&v)
 	}
 	epicAuths := &sdpb.EpicAuths{
 		AuthPhvf: append([]byte(nil), meta.EpicAuths.AuthPHVF...),
@@ -192,8 +296,7 @@ func pathToPB(path snet.Path) *sdpb.Path {
 		InternalHops:    meta.InternalHops,
 		Notes:           meta.Notes,
 		EpicAuths:       epicAuths,
-		FabridEnabled:   meta.FabridEnabled,
-		FabridPolicies:  fabridPolicies,
+		FabridInfo:      fabridInfo,
 	}
 }
 
@@ -207,13 +310,16 @@ func fabridPolicyToPB(fp *fabrid.Policy) *sdpb.FabridPolicy {
 	}
 }
 
-func fabridPoliciesToPB(fpList []*fabrid.Policy) *sdpb.FabridPolicies {
-	pbPolicies := make([]*sdpb.FabridPolicy, len(fpList))
-	for i, fp := range fpList {
+func fabridInfoToPB(fi *snet.FabridInfo) *sdpb.FabridInfo {
+	pbPolicies := make([]*sdpb.FabridPolicy, len(fi.Policies))
+	for i, fp := range fi.Policies {
 		pbPolicies[i] = fabridPolicyToPB(fp)
 	}
-	return &sdpb.FabridPolicies{
+	return &sdpb.FabridInfo{
+		Enabled:  fi.Enabled,
+		Digest:   fi.Digest,
 		Policies: pbPolicies,
+		Detached: fi.Detached,
 	}
 }
 func linkTypeToPB(lt snet.LinkType) sdpb.LinkType {

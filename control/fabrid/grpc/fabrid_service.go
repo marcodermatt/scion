@@ -27,7 +27,7 @@ import (
 
 type Server struct {
 	FabridManager *fabrid.FabridManager
-	Fetcher       PolicyFetcher
+	Fetcher       FabridControlPlaneFetcher
 }
 
 func (s Server) mplsIPMapToPB() map[uint32]*experimental.MPLSIPArray {
@@ -88,6 +88,35 @@ func (s Server) RemotePolicyDescription(ctx context.Context,
 	return &experimental.RemotePolicyDescriptionResponse{Description: policy.Description}, nil
 }
 
+func (s Server) RemoteMaps(ctx context.Context, request *experimental.RemoteMapsRequest) (
+	*experimental.RemoteMapsResponse, error) {
+
+	if val, ok := s.FabridManager.RemoteMapsCache[addr.IA(request.IsdAs)]; ok && bytes.Equal(val.
+		Digest, request.Digest) {
+		return &experimental.RemoteMapsResponse{
+			Maps: &experimental.FABRIDDetachableMaps{
+				SupportedIndicesMap: fabridext.SupportedIndicesMapToPB(val.SupportedIndicesMap),
+				IndexIdentifierMap:  fabridext.IndexIdentifierMapToPB(val.IndexIdentiferMap),
+			},
+		}, nil
+	}
+
+	maps, err := s.Fetcher.GetRemoteMaps(ctx, addr.IA(request.IsdAs))
+	if err != nil {
+		return &experimental.RemoteMapsResponse{}, err
+	}
+	detached := fabridext.Detached{
+		SupportedIndicesMap: fabridext.SupportedIndicesMapFromPB(maps.Maps.SupportedIndicesMap),
+		IndexIdentiferMap:   fabridext.IndexIdentifierMapFromPB(maps.Maps.IndexIdentifierMap),
+	}
+	s.FabridManager.RemoteMapsCache[addr.IA(request.IsdAs)] = fabrid.RemoteMap{
+		Detached: detached,
+		Digest:   detached.Hash(),
+	}
+
+	return &experimental.RemoteMapsResponse{Maps: maps.Maps}, nil
+}
+
 func (s Server) SupportedIndicesMap(_ context.Context,
 	_ *experimental.SupportedIndicesMapRequest) (*experimental.SupportedIndicesMapResponse, error) {
 	return &experimental.SupportedIndicesMapResponse{
@@ -100,6 +129,18 @@ func (s Server) IndexIdentifierMap(_ context.Context, _ *experimental.IndexIdent
 
 	return &experimental.IndexIdentifierMapResponse{
 		IndexIdentifierMap: fabridext.IndexIdentifierMapToPB(s.FabridManager.IndexIdentifierMap),
+	}, nil
+}
+
+func (s Server) DetachedMaps(_ context.Context, _ *experimental.DetachedMapsRequest) (
+	*experimental.DetachedMapsResponse, error) {
+	return &experimental.DetachedMapsResponse{
+		Maps: &experimental.FABRIDDetachableMaps{
+			SupportedIndicesMap: fabridext.SupportedIndicesMapToPB(s.FabridManager.
+				SupportedIndicesMap),
+			IndexIdentifierMap: fabridext.IndexIdentifierMapToPB(s.FabridManager.
+				IndexIdentifierMap),
+		},
 	}, nil
 }
 

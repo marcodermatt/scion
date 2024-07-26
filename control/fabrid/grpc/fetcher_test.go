@@ -27,6 +27,7 @@ import (
 	"github.com/scionproto/scion/control/fabrid/grpc"
 	"github.com/scionproto/scion/pkg/private/xtest"
 	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
+	fabrid_ext "github.com/scionproto/scion/pkg/segment/extensions/fabrid"
 	"github.com/scionproto/scion/pkg/snet"
 	"github.com/scionproto/scion/pkg/snet/mock_snet"
 )
@@ -81,11 +82,11 @@ func TestFetchRemotePolicy(t *testing.T) {
 				FabridManager: &fabrid.FabridManager{
 					IdentifierDescriptionMap: tc.IdentifierDescriptions,
 				},
-				Fetcher: &grpc.BasicPolicyFetcher{},
+				Fetcher: &grpc.BasicFabridControlPlaneFetcher{},
 			})
 			server.Start(t)
 
-			fetcher := grpc.BasicPolicyFetcher{
+			fetcher := grpc.BasicFabridControlPlaneFetcher{
 				Dialer:     server,
 				Router:     router,
 				MaxRetries: 1,
@@ -97,4 +98,74 @@ func TestFetchRemotePolicy(t *testing.T) {
 			tc.PostCheck(t, policy)
 		})
 	}
+}
+
+func TestFetchRemoteMap(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	path := mock_snet.NewMockPath(ctrl)
+	path.EXPECT().Metadata().AnyTimes().Return(&snet.PathMetadata{
+		Interfaces: []snet.PathInterface{},
+	})
+	path.EXPECT().Dataplane().AnyTimes().Return(nil)
+	path.EXPECT().UnderlayNextHop().AnyTimes().Return(&net.UDPAddr{})
+
+	router := mock_snet.NewMockRouter(ctrl)
+	router.EXPECT().AllRoutes(gomock.Any(), gomock.Any()).AnyTimes().Return([]snet.Path{path}, nil)
+	maps := fabrid_ext.Detached{
+		SupportedIndicesMap: fabrid_ext.SupportedIndicesMap{
+			fabrid_ext.ConnectionPair{
+				Ingress: fabrid_ext.ConnectionPoint{
+					Type:   fabrid_ext.IPv4Range,
+					IP:     "192.168.2.0",
+					Prefix: 24,
+				},
+				Egress: fabrid_ext.ConnectionPoint{
+					Type:        fabrid_ext.Interface,
+					InterfaceId: 5,
+				},
+			}: []uint8{2, 8, 15}},
+		IndexIdentiferMap: fabrid_ext.IndexIdentifierMap{
+			2: &fabrid_ext.PolicyIdentifier{
+				IsLocal:    false,
+				Identifier: 22,
+			},
+			8: &fabrid_ext.PolicyIdentifier{
+				IsLocal:    true,
+				Identifier: 1,
+			},
+			15: &fabrid_ext.PolicyIdentifier{
+				IsLocal:    false,
+				Identifier: 50,
+			},
+		},
+	}
+	t.Run("fabrid manager returns maps", func(t *testing.T) {
+		server := xtest.NewGRPCService()
+		experimental.RegisterFABRIDInterServiceServer(server.Server(), grpc.Server{
+			FabridManager: &fabrid.FabridManager{
+				SupportedIndicesMap: maps.SupportedIndicesMap,
+				IndexIdentifierMap:  maps.IndexIdentiferMap,
+			},
+			Fetcher: &grpc.BasicFabridControlPlaneFetcher{},
+		})
+		server.Start(t)
+
+		fetcher := grpc.BasicFabridControlPlaneFetcher{
+			Dialer:     server,
+			Router:     router,
+			MaxRetries: 1,
+		}
+
+		fetchedMaps, err := fetcher.GetRemoteMaps(context.Background(),
+			xtest.MustParseIA("1-ff00:0:111"))
+		assert.NoError(t, err)
+		require.Equal(t, fetchedMaps.Maps.SupportedIndicesMap,
+			fabrid_ext.SupportedIndicesMapToPB(maps.SupportedIndicesMap))
+		require.Equal(t, fetchedMaps.Maps.IndexIdentifierMap,
+			fabrid_ext.IndexIdentifierMapToPB(maps.IndexIdentiferMap))
+
+	})
+
 }

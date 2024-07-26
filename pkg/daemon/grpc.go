@@ -111,10 +111,11 @@ func (c grpcConn) Paths(ctx context.Context, dst, src addr.IA,
 
 	client := sdpb.NewDaemonServiceClient(c.conn)
 	response, err := client.Paths(ctx, &sdpb.PathsRequest{
-		SourceIsdAs:      uint64(src),
-		DestinationIsdAs: uint64(dst),
-		Hidden:           f.Hidden,
-		Refresh:          f.Refresh,
+		SourceIsdAs:             uint64(src),
+		DestinationIsdAs:        uint64(dst),
+		Hidden:                  f.Hidden,
+		Refresh:                 f.Refresh,
+		FetchFabridDetachedMaps: f.FetchFabridDetachedMaps,
 	})
 	if err != nil {
 		c.metrics.incPaths(err)
@@ -333,9 +334,9 @@ func convertPath(p *sdpb.Path, dst addr.IA) (path.Path, error) {
 		linkType[i] = linkTypeFromPB(v)
 	}
 
-	policyIdentifiers := make([][]*fabrid.Policy, len(p.FabridPolicies))
-	for i, v := range p.FabridPolicies {
-		policyIdentifiers[i] = fabridPoliciesFromPB(v)
+	fabridInfo := make([]snet.FabridInfo, len(p.FabridInfo))
+	for i, v := range p.FabridInfo {
+		fabridInfo[i] = fabridInfoFromPB(v)
 	}
 
 	res := path.Path{
@@ -356,8 +357,7 @@ func convertPath(p *sdpb.Path, dst addr.IA) (path.Path, error) {
 			LinkType:        linkType,
 			InternalHops:    p.InternalHops,
 			Notes:           p.Notes,
-			FabridEnabled:   p.FabridEnabled,
-			FabridPolicies:  policyIdentifiers,
+			FabridInfo:      fabridInfo,
 		},
 	}
 
@@ -371,16 +371,21 @@ func convertPath(p *sdpb.Path, dst addr.IA) (path.Path, error) {
 	return res, nil
 }
 
-func fabridPoliciesFromPB(fpList *sdpb.FabridPolicies) []*fabrid.Policy {
-	pbPolicies := make([]*fabrid.Policy, len(fpList.Policies))
-	for i, fp := range fpList.Policies {
+func fabridInfoFromPB(fi *sdpb.FabridInfo) snet.FabridInfo {
+	pbPolicies := make([]*fabrid.Policy, len(fi.Policies))
+	for i, fp := range fi.Policies {
 		pbPolicies[i] = &fabrid.Policy{
 			IsLocal:    fp.PolicyIdentifier.PolicyIsLocal,
 			Identifier: fp.PolicyIdentifier.PolicyIdentifier,
 			Index:      fabrid.PolicyID(fp.PolicyIndex),
 		}
 	}
-	return pbPolicies
+	return snet.FabridInfo{
+		Enabled:  fi.Enabled,
+		Policies: pbPolicies,
+		Digest:   fi.Digest,
+		Detached: fi.Detached,
+	}
 }
 
 func linkTypeFromPB(lt sdpb.LinkType) snet.LinkType {

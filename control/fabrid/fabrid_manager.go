@@ -22,6 +22,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/scionproto/scion/control/config"
+	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	fabrid_ext "github.com/scionproto/scion/pkg/segment/extensions/fabrid"
@@ -38,6 +39,10 @@ type RemotePolicyDescription struct {
 	Description string
 	Expires     time.Time
 }
+type RemoteMap struct {
+	Digest []byte
+	fabrid_ext.Detached
+}
 
 type FabridManager struct {
 	autoIncrIndex            int
@@ -47,6 +52,7 @@ type FabridManager struct {
 	IdentifierDescriptionMap map[uint32]string
 	MPLSMap                  *MplsMaps
 	RemotePolicyCache        map[RemotePolicyIdentifier]RemotePolicyDescription
+	RemoteMapsCache          map[addr.IA]RemoteMap
 	RemoteCacheValidity      time.Duration
 }
 
@@ -57,6 +63,7 @@ func NewFabridManager(asInterfaceIDs []uint16, remoteCacheValidity time.Duration
 		IdentifierDescriptionMap: map[uint32]string{},
 		MPLSMap:                  NewMplsMaps(),
 		RemotePolicyCache:        map[RemotePolicyIdentifier]RemotePolicyDescription{},
+		RemoteMapsCache:          map[addr.IA]RemoteMap{},
 		RemoteCacheValidity:      remoteCacheValidity,
 		autoIncrIndex:            1,
 		asInterfaceIDs:           asInterfaceIDs,

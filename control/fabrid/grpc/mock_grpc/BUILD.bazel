@@ -4,7 +4,7 @@ load("@io_bazel_rules_go//go:def.bzl", "gomock")
 gomock(
     name = "go_default_mock",
     out = "mock.go",
-    interfaces = ["PolicyFetcher"],
+    interfaces = ["FabridControlPlaneFetcher"],
     library = "//control/fabrid/grpc:go_default_library",
     package = "mock_grpc",
 )
