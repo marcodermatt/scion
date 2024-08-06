@@ -77,7 +77,3 @@ func TestAcceptedHop(t *testing.T) {
 		require.Equal(t, fabrid.PolicyID(200+i), *pol)
 	}
 }
-
-func TestPolicies(t *testing.T) {
-
-}

@@ -118,33 +118,36 @@ func VerifyAndUpdate(f *ext.FabridHopfieldMetadata, id *ext.IdentifierOption,
 	return nil
 }
 
-func ComputePolicyID(f *ext.FabridHopfieldMetadata, id *ext.IdentifierOption,
-	key []byte) (fabrid.PolicyID, error) {
-
+func calcPolicyEncryptionMask(key []byte, id *ext.IdentifierOption) ([]byte, error) {
 	cipher, err := aes.NewCipher(key)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	buf := make([]byte, aes.BlockSize)
 	if err = id.Serialize(buf); err != nil {
-		return 0, err
+		return nil, err
 	}
 	cipher.Encrypt(buf, buf)
+	return buf, nil
+}
+
+func ComputePolicyID(f *ext.FabridHopfieldMetadata, id *ext.IdentifierOption,
+	key []byte) (fabrid.PolicyID, error) {
+
+	buf, err := calcPolicyEncryptionMask(key, id)
+	if err != nil {
+		return 0, err
+	}
 	return fabrid.PolicyID(f.EncryptedPolicyID ^ buf[0]), nil
 }
 
 func EncryptPolicyID(f fabrid.PolicyID, id *ext.IdentifierOption,
 	key []byte) (uint8, error) {
 
-	cipher, err := aes.NewCipher(key)
+	buf, err := calcPolicyEncryptionMask(key, id)
 	if err != nil {
 		return 0, err
 	}
-	buf := make([]byte, aes.BlockSize)
-	if err = id.Serialize(buf); err != nil {
-		return 0, err
-	}
-	cipher.Encrypt(buf, buf)
 	return uint8(f) ^ buf[0], nil
 }
 
