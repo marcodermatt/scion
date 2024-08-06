@@ -190,18 +190,17 @@ On other errors, ping will exit with code 2.
 					cfg.LocalAddr = daemonIPString
 				}
 				opts = append(opts, path.WithFABRID(&path.FABRIDQuery{
-					Query:        flags.fabridQuery,
-					FabridConfig: cfg,
+					PrintSelectedPolicies: true,
+					Query:                 flags.fabridQuery,
+					FabridConfig:          cfg,
 				}))
 				opts = append(opts, path.WithFetchDetachedFabridMaps(flags.fetchDetached))
 			}
-			cs := path.DefaultColorScheme(false)
 			pingPath, err := path.Choose(traceCtx, sd, remote.IA, opts...)
 
 			if err != nil {
 				return err
 			}
-			fmt.Println(cs.Path(pingPath))
 
 			// If the EPIC flag is set, use the EPIC-HP path type
 			if flags.epic {

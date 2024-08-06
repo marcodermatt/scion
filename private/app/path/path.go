@@ -127,8 +127,15 @@ func Choose(
 			if err != nil {
 				return nil, serrors.WrapStr("creating fabrid path from scion path", err)
 			}
-			return snetpath.Path{Src: p.Source(), Dst: p.Destination(), DataplanePath: fabridPath,
-				NextHop: p.UnderlayNextHop(), Meta: *p.Metadata()}, nil
+			resPath := snetpath.Path{Src: p.Source(), Dst: p.Destination(),
+				DataplanePath: fabridPath, NextHop: p.UnderlayNextHop(), Meta: *p.Metadata()}
+
+			if o.fabrid.PrintSelectedPolicies {
+				cs := DefaultColorScheme(false)
+				fmt.Printf("Using selected FABRID policies:\n  %s\n\n", cs.FabridPath(resPath,
+					ml.SelectedPolicies))
+			}
+			return resPath, nil
 		}
 		return nil, serrors.New(
 			fmt.Sprintf("no fabrid paths available satisfying query '%s'",
@@ -333,7 +340,54 @@ func (cs ColorScheme) Policies(policies []snet.FabridInfo, idx int) string {
 		}
 	}
 	return fmt.Sprintf("~%s~", strings.Join(policyStr, ","))
+}
 
+func (cs ColorScheme) SelectedPolicy(policy *fabridquery.Policy) string {
+	if policy == nil {
+		return ""
+	} else if policy.Type == fabridquery.WILDCARD_POLICY_TYPE || policy.
+		Type == fabridquery.REJECT_POLICY_TYPE {
+		return cs.GlobalPolicy.Sprintf("~ZERO~")
+	} else if policy.IsLocal {
+		return cs.LocalPolicy.Sprintf("~%s~", policy.String())
+	} else {
+		return cs.GlobalPolicy.Sprintf("~%s~", policy.String())
+	}
+}
+
+// FabridPath prints the path with only the selected policies for each hop.
+func (cs ColorScheme) FabridPath(path snet.Path, policies []*fabridquery.Policy) string {
+	if path == nil {
+		return ""
+	}
+	intfs := path.Metadata().Interfaces
+	if len(intfs) == 0 {
+		return ""
+	}
+	var hops []string
+	intf := intfs[0]
+	hops = append(hops, cs.Values.Sprintf("%s %s %s",
+		cs.Values.Sprint(intf.IA),
+		cs.SelectedPolicy(policies[0]),
+		cs.Intf.Sprint(intf.ID),
+	))
+	for i := 1; i < len(intfs)-1; i += 2 {
+		inIntf := intfs[i]
+		outIntf := intfs[i+1]
+		hops = append(hops, cs.Values.Sprintf("%s %s %s %s",
+			cs.Intf.Sprint(inIntf.ID),
+			cs.Values.Sprint(inIntf.IA),
+			cs.SelectedPolicy(policies[(i+1)/2]),
+			cs.Intf.Sprint(outIntf.ID),
+		))
+	}
+	intf = intfs[len(intfs)-1]
+	hops = append(hops, cs.Values.Sprintf("%s %s %s",
+		cs.Intf.Sprint(intf.ID),
+		cs.Values.Sprint(intf.IA),
+		cs.SelectedPolicy(policies[len(intfs)/2]),
+	))
+	return fmt.Sprintf("[%s]", strings.Join(hops, cs.Link.Sprintf(">")))
 }
 
 func (cs ColorScheme) Path(path snet.Path) string {
@@ -380,8 +434,9 @@ type ProbeConfig struct {
 }
 
 type FABRIDQuery struct {
-	Query        string
-	FabridConfig snetpath.FabridConfig
+	Query                 string
+	FabridConfig          snetpath.FabridConfig
+	PrintSelectedPolicies bool
 }
 type options struct {
 	interactive             bool

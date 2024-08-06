@@ -15,8 +15,6 @@
 package fabridquery
 
 import (
-	"fmt"
-
 	"github.com/scionproto/scion/pkg/experimental/fabrid"
 )
 
@@ -60,14 +58,11 @@ func (ml MatchList) Policies() (pols []*fabrid.PolicyID) {
 	for i, selected := range ml.SelectedPolicies {
 		if selected == nil {
 			pols[i] = nil
-			fmt.Println(i, " is not using a policy")
 		} else if selected.Type == WILDCARD_POLICY_TYPE || selected.Type == REJECT_POLICY_TYPE {
 			zeroPol := fabrid.PolicyID(0)
 			pols[i] = &zeroPol
-			fmt.Println(i, " is using zero policy")
 		} else {
 			pols[i] = &selected.Policy.Index
-			fmt.Println(i, " is using policy ", selected.String(), " idx: ", selected.Policy.Index)
 		}
 	}
 	return pols
