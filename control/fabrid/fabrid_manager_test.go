@@ -34,7 +34,7 @@ func TestLoadInvalidPolicies(t *testing.T) {
 func TestLoadPolicyWithNonExistingInterfaces(t *testing.T) {
 	fm := NewFabridManager([]uint16{1}, 5*time.Second)
 	err := fm.Load("testdata/correct")
-	require.ErrorContains(t, err, "Interfaces do not exist")
+	require.ErrorContains(t, err, "Interface does not exist")
 }
 
 func TestLoadPolicies(t *testing.T) {

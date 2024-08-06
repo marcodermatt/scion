@@ -44,8 +44,8 @@ func TestIPRangePolicyWithInvalidIP(t *testing.T) {
 		IPAddress: "192.168.5",
 		Prefix:    24,
 	}
-	err := cp.Validate()
-	assert.ErrorContains(t, err, "Invalid IPv4 Address range for connection point")
+	err := cp.Validate([]uint16{})
+	assert.ErrorContains(t, err, "Invalid IPv4 address for connection point")
 }
 
 func TestFabridPolicyValidation(t *testing.T) {
@@ -121,6 +121,44 @@ local_description: Fabrid Example Policy`,
 local: true
 local_identifier: 55
 local_description: Fabrid Example Policy`,
+			assert: assert.Error,
+		},
+		"missing local identifier": {
+			Policy: `connections:
+    - ingress:
+        type: interface
+        interface: 1
+      egress:
+        type: ipv6
+        ip: 2001::1a2b
+        prefix: 33
+local: true
+local_description: Fabrid Example Policy`,
+			assert: assert.Error,
+		},
+		"missing local description": {
+			Policy: `connections:
+    - ingress:
+        type: interface
+        interface: 1
+      egress:
+        type: ipv6
+        ip: 2001::1a2b
+        prefix: 33
+local: true
+local_identifier: 55`,
+			assert: assert.Error,
+		},
+		"missing global identifier": {
+			Policy: `connections:
+    - ingress:
+        type: interface
+        interface: 1
+      egress:
+        type: ipv6
+        ip: 2001::1a2b
+        prefix: 33
+local: false`,
 			assert: assert.Error,
 		},
 	}

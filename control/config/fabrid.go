@@ -17,6 +17,7 @@ package config
 import (
 	"io"
 	"net"
+	"slices"
 	"strings"
 
 	"github.com/scionproto/scion/pkg/private/serrors"
@@ -34,17 +35,30 @@ type FABRIDPolicy struct {
 
 // Validate validates that all values are parsable.
 func (cfg *FABRIDPolicy) Validate(asInterfaceIDs []uint16) error {
-	for _, connectionPoint := range cfg.SupportedBy {
-		connectionPoint.asInterfaceIDs = asInterfaceIDs
-		if err := config.ValidateAll(&connectionPoint); err != nil {
-			return serrors.WrapStr("Validating supported interfaces failed", err)
+	for _, connectionPoints := range cfg.SupportedBy {
+		if err := connectionPoints.Validate(asInterfaceIDs); err != nil {
+			return serrors.WrapStr("Failed to validate connection points", err)
 		}
-		connectionPoint.asInterfaceIDs = nil
 	}
-	if cfg.IsLocalPolicy && (cfg.LocalIdentifier == 0 || cfg.LocalDescription == "") {
-		return serrors.New("Local policy configuration must not be empty.")
-	} else if !cfg.IsLocalPolicy && cfg.GlobalIdentifier == 0 {
-		return serrors.New("Global policy identifier must be valid.")
+	if cfg.IsLocalPolicy {
+		if cfg.LocalIdentifier == 0 {
+			return serrors.New("Local policy identifier missing.")
+		} else if cfg.LocalDescription == "" {
+			return serrors.New("Local policy description missing.")
+		} else if cfg.GlobalIdentifier != 0 {
+			return serrors.New("Unexpected global identifier",
+				"global_identifier", cfg.GlobalIdentifier)
+		}
+	} else {
+		if cfg.GlobalIdentifier == 0 {
+			return serrors.New("Global policy identifier missing.")
+		} else if cfg.LocalDescription != "" {
+			return serrors.New("Unexpected local description",
+				"local_description", cfg.LocalDescription)
+		} else if cfg.LocalIdentifier != 0 {
+			return serrors.New("Unexpected local identifier",
+				"local_identifier", cfg.LocalIdentifier)
+		}
 	}
 
 	return nil
@@ -59,49 +73,29 @@ type FABRIDConnectionPoints struct {
 	Ingress   FABRIDConnectionPoint `yaml:"ingress,omitempty"`
 	Egress    FABRIDConnectionPoint `yaml:"egress,omitempty"`
 	MPLSLabel uint32                `yaml:"mpls_label,omitempty"`
-	// asInterfaceIDs is manually set to verify that both the provided
-	// ingress and egress actually belong to valid AS interfaces if their
-	// type is interface
-	asInterfaceIDs []uint16
 }
 
 // Validate validates that all values are parsable.
-func (cfg *FABRIDConnectionPoints) Validate() error {
-	doInterfacesExist := func(connectionPoints ...*FABRIDConnectionPoint) bool {
-		for _, cp := range connectionPoints {
-			if cp.Type == fabrid.Interface {
-				found := cp.Interface == 0
-				for i := 0; i < len(cfg.asInterfaceIDs); i++ {
-					if cp.Interface == cfg.asInterfaceIDs[i] {
-						found = true
-						break
-					}
-				}
-				if !found {
-					return false
-				}
-			}
-		}
-		return true
-	}
+func (cfg *FABRIDConnectionPoints) Validate(asInterfaceIDs []uint16) error {
 	if cfg.Ingress.Type != fabrid.Interface && cfg.Ingress.Type != fabrid.Wildcard {
 		return serrors.New("FABRID policies are only supported from an interface to an IP" +
 			" range or other interface.")
-	} else if cfg.Ingress.Type == fabrid.Interface && cfg.Ingress.Interface == 0 {
-		return serrors.New("Invalid interface for connection point")
 	} else if cfg.Ingress.Type == fabrid.Interface && cfg.Egress.Type == fabrid.Interface && cfg.
 		Ingress.Interface == cfg.Egress.Interface {
-		return serrors.New("Interfaces should be distinct")
+		return serrors.New("Interfaces should be distinct.")
 	}
-	if !doInterfacesExist(&cfg.Ingress, &cfg.Egress) {
-		return serrors.New("Interfaces do not exist")
+	if err := cfg.Ingress.Validate(asInterfaceIDs); err != nil {
+		return serrors.WrapStr("Failed to validate ingress connection point", err)
+	}
+	if err := cfg.Egress.Validate(asInterfaceIDs); err != nil {
+		return serrors.WrapStr("Failed to validate egress connection point", err)
 	}
 
-	return config.ValidateAll(&cfg.Ingress, &cfg.Egress)
+	return nil
 }
 
-// A connection point describes a specific interface, or an IP range. A FABRID policy can be valid
-// for a pair of connection points.
+// FABRIDConnectionPoint describes a specific interface, or an IP range. A FABRID policy can be
+// supported on a pair of connection points.
 type FABRIDConnectionPoint struct {
 	Type      fabrid.ConnectionPointType `yaml:"type,omitempty"`
 	IPAddress string                     `yaml:"ip,omitempty"`
@@ -110,27 +104,49 @@ type FABRIDConnectionPoint struct {
 }
 
 // Validate validates that all values are parsable.
-func (cfg *FABRIDConnectionPoint) Validate() error {
+func (cfg *FABRIDConnectionPoint) Validate(asInterfaceIDs []uint16) error {
 	switch strings.ToLower(string(cfg.Type)) {
 	case string(fabrid.Wildcard):
 		cfg.Type = fabrid.Wildcard
 	case string(fabrid.IPv4Range):
 		cfg.Type = fabrid.IPv4Range
+		if net.ParseIP(cfg.IPAddress).To4() == nil {
+			return serrors.New("Invalid IPv4 address for connection point",
+				"ip", cfg.IPAddress)
+		} else if cfg.Prefix > 32 {
+			return serrors.New("IPv4 prefix too large",
+				"ip", cfg.IPAddress, "prefix", cfg.Prefix)
+		}
 	case string(fabrid.IPv6Range):
 		cfg.Type = fabrid.IPv6Range
+		ip := net.ParseIP(cfg.IPAddress)
+		if ip == nil || len(ip) != net.IPv6len {
+			return serrors.New("Invalid IPv6 address for connection point",
+				"ip", cfg.IPAddress)
+		} else if cfg.Prefix > 128 {
+			return serrors.New("IPv6 prefix too large",
+				"ip", cfg.IPAddress, "prefix", cfg.Prefix)
+		}
 	case string(fabrid.Interface):
 		cfg.Type = fabrid.Interface
+		if cfg.Interface == 0 {
+			return serrors.New("Interface ID missing", "type", cfg.Type)
+		}
+		if !slices.Contains(asInterfaceIDs, cfg.Interface) {
+			return serrors.New("Interface does not exist", "interface", cfg.Interface)
+		}
 	default:
-		return serrors.New("unknown FABRID connection point", "type", cfg.Type)
+		return serrors.New("Unknown FABRID connection point", "type", cfg.Type)
 	}
 
-	if cfg.Type == fabrid.IPv6Range && (net.ParseIP(cfg.IPAddress) == nil || cfg.Prefix > 128) {
-		return serrors.New("Invalid IPv6 Address range for connection point",
-			"ip", cfg.IPAddress, "prefix", cfg.Prefix)
-	} else if cfg.Type == fabrid.IPv4Range &&
-		(net.ParseIP(cfg.IPAddress) == nil || cfg.Prefix > 32) {
-		return serrors.New("Invalid IPv4 Address range for connection point",
-			"ip", cfg.IPAddress, "prefix", cfg.Prefix)
+	if cfg.Type != fabrid.Interface && cfg.Interface != 0 {
+		return serrors.New("Unexpected interface ID", "type", cfg.Type)
+	} else if cfg.Type != fabrid.IPv4Range && cfg.Type != fabrid.IPv6Range {
+		if cfg.IPAddress != "" {
+			return serrors.New("Unexpected IP address", "type", cfg.Type, "ip", cfg.IPAddress)
+		} else if cfg.Prefix != 0 {
+			return serrors.New("Unexpected prefix", "type", cfg.Type, "prefix", cfg.Prefix)
+		}
 	}
 	return nil
 }
