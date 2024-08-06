@@ -179,7 +179,7 @@ func VerifyPathValidator(f *ext.FabridOption, tmpBuffer []byte, pathKey []byte) 
 // path validator.
 func InitValidators(f *ext.FabridOption, id *ext.IdentifierOption, s *slayers.SCION,
 	tmpBuffer []byte, pathKey *drkey.FabridKey, asHostKeys map[addr.IA]*drkey.FabridKey,
-	asAsKeys map[addr.IA]drkey.FabridKey, hops []snet.HopInterface) error {
+	asAsKeys map[addr.IA]*drkey.FabridKey, hops []snet.HopInterface) error {
 
 	outBuffer := make([]byte, 16)
 	var pathValInputLength int
@@ -190,24 +190,19 @@ func InitValidators(f *ext.FabridOption, id *ext.IdentifierOption, s *slayers.SC
 	}
 	for i, meta := range f.HopfieldMetadata {
 		if meta.FabridEnabled {
-			var key drkey.Key
+			var key *drkey.FabridKey
+			var found bool
 			if meta.ASLevelKey {
-				asAsKey, found := asAsKeys[hops[i].IA]
-				if !found {
-					return serrors.New("InitValidators expected AS to AS key but was not in"+
-						" dictionary", "AS", hops[i].IA)
-				}
-				key = asAsKey.Key
+				key, found = asAsKeys[hops[i].IA]
 			} else {
-				asHostKey, found := asHostKeys[hops[i].IA]
-				if !found {
-					return serrors.New("InitValidators expected AS to AS key but was not in"+
-						" dictionary", "AS", hops[i].IA)
-				}
-				key = asHostKey.Key
+				key, found = asHostKeys[hops[i].IA]
+			}
+			if !found {
+				return serrors.New("InitValidators expected AS to AS key but was not in"+
+					" dictionary", "AS", hops[i].IA)
 			}
 
-			err := computeFabridHVF(meta, id, s, tmpBuffer, outBuffer, key[:],
+			err := computeFabridHVF(meta, id, s, tmpBuffer, outBuffer, key.Key[:],
 				uint16(hops[i].IgIf), uint16(hops[i].EgIf))
 			if err != nil {
 				return err

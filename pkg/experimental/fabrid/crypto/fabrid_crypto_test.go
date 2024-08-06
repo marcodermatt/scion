@@ -93,7 +93,7 @@ func TestFailedValidation(t *testing.T) {
 					Key: drkey.Key{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
 				}
 				asHostKeys := make(map[addr.IA]*drkey.FabridKey)
-				asAsKeys := make(map[addr.IA]drkey.FabridKey)
+				asAsKeys := make(map[addr.IA]*drkey.FabridKey)
 				hops := make([]snet.HopInterface, len(f.HopfieldMetadata))
 
 				for i := 0; i < len(f.HopfieldMetadata); i++ {
@@ -109,7 +109,7 @@ func TestFailedValidation(t *testing.T) {
 					}
 					keyBytes := drkey.Key{16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1}
 					if f.HopfieldMetadata[i].ASLevelKey {
-						asAsKeys[hops[i].IA] = drkey.FabridKey{Key: keyBytes}
+						asAsKeys[hops[i].IA] = &drkey.FabridKey{Key: keyBytes}
 					} else {
 						asHostKeys[hops[i].IA] = &drkey.FabridKey{Key: keyBytes}
 					}
@@ -227,10 +227,8 @@ func TestSuccessfullValidators(t *testing.T) {
 					copy(keyBytes[:], generateRandomBytes(16))
 					pathKey := &drkey.FabridKey{Key: keyBytes}
 					asHostKeys := make(map[addr.IA]*drkey.FabridKey)
-					asAsKeys := make(map[addr.IA]drkey.FabridKey)
+					asAsKeys := make(map[addr.IA]*drkey.FabridKey)
 					hops := make([]snet.HopInterface, len(f.HopfieldMetadata))
-					//ingresses := []uint16{}
-					//egresses := []uint16{}
 
 					for i := 0; i < len(f.HopfieldMetadata); i++ {
 						hops[i] = snet.HopInterface{
@@ -246,7 +244,7 @@ func TestSuccessfullValidators(t *testing.T) {
 						keyBytes = drkey.Key{}
 						copy(keyBytes[:], generateRandomBytes(16))
 						if f.HopfieldMetadata[i].ASLevelKey {
-							asAsKeys[hops[i].IA] = drkey.FabridKey{Key: keyBytes}
+							asAsKeys[hops[i].IA] = &drkey.FabridKey{Key: keyBytes}
 						} else {
 							asHostKeys[hops[i].IA] = &drkey.FabridKey{Key: keyBytes}
 						}

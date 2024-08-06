@@ -20,6 +20,7 @@ package config
 import (
 	"io"
 	"runtime"
+	"slices"
 	"time"
 
 	"github.com/scionproto/scion/pkg/log"
@@ -87,18 +88,9 @@ func (cfg *RouterConfig) Validate() error {
 	if cfg.NumSlowPathProcessors < 1 {
 		return serrors.New("Provided router config is invalid. NumSlowPathProcessors < 1")
 	}
-	if cfg.Fabrid {
-		fabrid_drkey := false
-		for _, protocol := range cfg.DRKey {
-			if protocol == "FABRID" {
-				fabrid_drkey = true
-				break
-			}
-		}
-		if !fabrid_drkey {
-			return serrors.New("Provided router config is invalid." +
-				"Enabling FABRID requires adding it to the DRKey protocols.")
-		}
+	if cfg.Fabrid && !slices.Contains(cfg.DRKey, "FABRID") {
+		return serrors.New("Provided router config is invalid." +
+			"Enabling FABRID requires adding it to the DRKey protocols.")
 	}
 	if cfg.DispatchedPortStart != nil {
 		if cfg.DispatchedPortEnd == nil {

@@ -100,7 +100,7 @@ func ipPoliciesMapFromPB(mplsPolicyResp map[uint32]*experimental.
 
 		for _, ipRange := range ipArray.Entry {
 			var m net.IPMask
-			if len(ipRange.Ip) == 4 { //TODO(jvanbommel): test this
+			if len(ipRange.Ip) == 4 {
 				m = net.CIDRMask(int(ipRange.Prefix), 8*net.IPv4len)
 			} else {
 				m = net.CIDRMask(int(ipRange.Prefix), 8*net.IPv6len)

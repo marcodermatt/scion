@@ -56,9 +56,6 @@ func (d *DRKeyProvider) Init() {
 }
 
 func (d *DRKeyProvider) AddSecret(protocolID int32, sv SecretValue) error {
-	if d == nil {
-		return serrors.New("Error while adding new drkey. DRKeyProvider not initialized.")
-	}
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	if d.drKeySecrets == nil {
@@ -78,6 +75,9 @@ func (d *DRKeyProvider) AddSecret(protocolID int32, sv SecretValue) error {
 }
 
 func (d *DRKeyProvider) getSecret(protocolID int32, t time.Time) (*SecretValue, error) {
+	if d.drKeySecrets == nil {
+		return nil, errDRKeyNotInitialized
+	}
 	secrets := d.drKeySecrets[protocolID]
 	since := time.Since(t)
 	if since > pastValidity {
