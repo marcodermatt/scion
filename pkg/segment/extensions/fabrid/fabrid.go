@@ -75,8 +75,8 @@ type ConnectionPoint struct {
 	InterfaceId uint16
 }
 
-// To ensure that the connection point strings are identical, i.e. without padding,
-// parse using the net library
+// IPConnectionPointFromString parses a string IP address and Prefix, then masks the IP with the
+// prefix and returns a ConnectionPoint with the parsed IP, type and prefix.
 func IPConnectionPointFromString(IP string, Prefix uint32,
 	Type ConnectionPointType) ConnectionPoint {
 	var m net.IPMask

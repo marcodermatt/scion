@@ -43,7 +43,7 @@ type ClientEngine struct {
 func (e *ClientEngine) FabridKeys(ctx context.Context, meta drkey.FabridKeysMeta,
 ) (drkey.FabridKeysResponse, error) {
 	now := time.Now()
-	var hostHostKey drkey.FabridKey = drkey.FabridKey{}
+	hostHostKey := drkey.FabridKey{}
 	if meta.DstHost != nil && len(meta.PathASes) > 0 {
 		key, err := e.GetHostHostKey(ctx, drkey.HostHostMeta{
 			ProtoId:  drkey.FABRID,

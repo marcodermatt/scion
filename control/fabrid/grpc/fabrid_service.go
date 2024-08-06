@@ -65,7 +65,8 @@ func (s Server) MPLSMap(ctx context.Context, request *experimental.MPLSMapReques
 func (s Server) RemotePolicyDescription(ctx context.Context,
 	request *experimental.RemotePolicyDescriptionRequest) (
 	*experimental.RemotePolicyDescriptionResponse, error) {
-	//TODO(jvanbommel): signature / hash?
+	//TODO(jvanbommel): In a future PR we will add a third description map, which maps identifiers
+	// to descriptions, protecting this data by adding it into the digest in the signed AS entry.
 	identifier := fabrid.RemotePolicyIdentifier{
 		ISDAS:      request.IsdAs,
 		Identifier: request.PolicyIdentifier,

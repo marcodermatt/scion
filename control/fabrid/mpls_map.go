@@ -83,9 +83,8 @@ func sortedKeys[K uint32 | uint64, V any](m map[K]V) []K {
 	return keys
 }
 
-// This method is to be called after all inserts and removes from the internal map
-// TODO(jvanbommel): this feels too expensive for what a relatively simple synchronization need.
-// Revise?
+// This method is to be called after all inserts and removes from the internal map and calculates
+// the hash for the MPLS map according to the entries. The order of insertion is not relevant here.
 func (m *MplsMaps) UpdateHash() {
 	h := fnv.New64()
 	for _, polIdx := range sortedKeys(m.IPPoliciesMap) {

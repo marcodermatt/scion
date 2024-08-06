@@ -47,7 +47,11 @@ func TestDecodeEncode(t *testing.T) {
 						Type:        fabrid.Interface,
 						InterfaceId: 44,
 					}}: []uint8{1}},
-			IndexIdentiferMap: fabrid.IndexIdentifierMap{},
+			IndexIdentiferMap: fabrid.IndexIdentifierMap{
+				1: &fabrid.PolicyIdentifier{
+					IsLocal:    false,
+					Identifier: 22,
+				}},
 		}
 
 		var d digest.Digest
