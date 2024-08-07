@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package combinator
+package graphutils
 
 import (
 	"time"
@@ -34,7 +34,7 @@ type FabridMapEntry struct {
 	Digest []byte
 }
 
-func collectFabridPolicies(ifaces []snet.PathInterface,
+func CollectFabridPolicies(ifaces []snet.PathInterface,
 	maps map[addr.IA]FabridMapEntry) []snet.FabridInfo {
 
 	switch {
