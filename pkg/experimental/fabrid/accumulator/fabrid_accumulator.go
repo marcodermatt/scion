@@ -12,30 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package combinator
+package accumulator
 
 import (
-	"time"
-
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/experimental/fabrid"
-	fabrid_ext "github.com/scionproto/scion/pkg/segment/extensions/fabrid"
 	"github.com/scionproto/scion/pkg/snet"
 )
 
-// We go through the list of ASEntries and store for each IA a pointer to the FABRID
-// Map found in the ASEntries' extensions.  If there is already a map stored, check the info time,
-// and replace with the newer FABRID maps. This results in a map[IA]FabridMapEntry, which can be
-// used to find the policies that are available for each of the interface pairs on the path.
-type FabridMapEntry struct {
-	Map *fabrid_ext.Detached
-	Ts  time.Time
-	// The Digest of the Fabrid Maps, this can be empty.
-	Digest []byte
-}
-
-func collectFabridPolicies(ifaces []snet.PathInterface,
-	maps map[addr.IA]FabridMapEntry) []snet.FabridInfo {
+func CollectFabridPolicies(ifaces []snet.PathInterface,
+	maps map[addr.IA]fabrid.FabridMapEntry) []snet.FabridInfo {
 
 	switch {
 	case len(ifaces)%2 != 0:
@@ -55,7 +41,7 @@ func collectFabridPolicies(ifaces []snet.PathInterface,
 	}
 }
 
-func GetFabridInfoForIntfs(ia addr.IA, ig, eg uint16, maps map[addr.IA]FabridMapEntry,
+func GetFabridInfoForIntfs(ia addr.IA, ig, eg uint16, maps map[addr.IA]fabrid.FabridMapEntry,
 	allowIpPolicies bool) *snet.FabridInfo {
 	policies := make([]*fabrid.Policy, 0)
 	fabridMap, exist := maps[ia]

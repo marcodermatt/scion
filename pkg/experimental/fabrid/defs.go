@@ -14,7 +14,12 @@
 
 package fabrid
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+
+	fabrid_ext "github.com/scionproto/scion/pkg/segment/extensions/fabrid"
+)
 
 type PolicyID uint8
 
@@ -30,4 +35,15 @@ func (fpi *Policy) String() string {
 	} else {
 		return fmt.Sprintf("G%d", fpi.Identifier)
 	}
+}
+
+// We go through the list of ASEntries and store for each IA a pointer to the FABRID
+// Map found in the ASEntries' extensions.  If there is already a map stored, check the info time,
+// and replace with the newer FABRID maps. This results in a map[IA]FabridMapEntry, which can be
+// used to find the policies that are available for each of the interface pairs on the path.
+type FabridMapEntry struct {
+	Map *fabrid_ext.Detached
+	Ts  time.Time
+	// The Digest of the Fabrid Maps, this can be empty.
+	Digest []byte
 }

@@ -31,6 +31,7 @@ import (
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
 	"github.com/scionproto/scion/pkg/experimental/fabrid"
+	fabrid_accumulator "github.com/scionproto/scion/pkg/experimental/fabrid/accumulator"
 	libgrpc "github.com/scionproto/scion/pkg/grpc"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/common"
@@ -45,7 +46,6 @@ import (
 	fabrid_ext "github.com/scionproto/scion/pkg/segment/extensions/fabrid"
 	"github.com/scionproto/scion/pkg/snet"
 	snetpath "github.com/scionproto/scion/pkg/snet/path"
-	"github.com/scionproto/scion/private/path/combinator"
 	"github.com/scionproto/scion/private/revcache"
 	"github.com/scionproto/scion/private/topology"
 	"github.com/scionproto/scion/private/trust"
@@ -138,13 +138,13 @@ func updateFabridInfo(ctx context.Context, dialer libgrpc.Dialer, detachedHops [
 	}
 	defer conn.Close()
 	client := experimental.NewFABRIDIntraServiceClient(conn)
-	fabridMaps := make(map[addr.IA]combinator.FabridMapEntry)
+	fabridMaps := make(map[addr.IA]fabrid.FabridMapEntry)
 	for _, detachedHop := range detachedHops {
 		if _, ok := fabridMaps[detachedHop.IA]; !ok {
 			fabridMaps[detachedHop.IA] = fetchMaps(ctx, detachedHop.IA, client,
 				detachedHop.Meta.FabridInfo[detachedHop.fiIdx].Digest)
 		}
-		detachedHop.Meta.FabridInfo[detachedHop.fiIdx] = *combinator.
+		detachedHop.Meta.FabridInfo[detachedHop.fiIdx] = *fabrid_accumulator.
 			GetFabridInfoForIntfs(detachedHop.IA, detachedHop.Ingress, detachedHop.Egress,
 				fabridMaps, true)
 	}
@@ -194,7 +194,7 @@ func findDetachedHops(paths []snet.Path) []tempHopInfo {
 // It uses the provided client to communicate with the Control Service and returns a FabridMapEntry
 // to be used directly in the combinator.
 func fetchMaps(ctx context.Context, ia addr.IA, client experimental.FABRIDIntraServiceClient,
-	digest []byte) combinator.FabridMapEntry {
+	digest []byte) fabrid.FabridMapEntry {
 	maps, err := client.RemoteMaps(ctx, &experimental.RemoteMapsRequest{
 		Digest: digest,
 		IsdAs:  uint64(ia),
@@ -202,14 +202,14 @@ func fetchMaps(ctx context.Context, ia addr.IA, client experimental.FABRIDIntraS
 	if err != nil || maps.Maps == nil {
 		log.FromCtx(ctx).Debug("Retrieving remote map from CS failed", "err", err, "ia",
 			ia)
-		return combinator.FabridMapEntry{}
+		return fabrid.FabridMapEntry{}
 	}
 
 	detached := fabrid_ext.Detached{
 		SupportedIndicesMap: fabrid_ext.SupportedIndicesMapFromPB(maps.Maps.SupportedIndicesMap),
 		IndexIdentiferMap:   fabrid_ext.IndexIdentifierMapFromPB(maps.Maps.IndexIdentifierMap),
 	}
-	return combinator.FabridMapEntry{
+	return fabrid.FabridMapEntry{
 		Map:    &detached,
 		Ts:     time.Now(),
 		Digest: []byte{}, // leave empty, it can be calculated using detached.Hash()
