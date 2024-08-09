@@ -657,3 +657,20 @@ func requestToHostHostMeta(req *sdpb.DRKeyHostHostRequest) (drkey.HostHostMeta, 
 		DstHost:  req.DstHost,
 	}, nil
 }
+
+func (s *DaemonServer) RemotePolicyDescription(ctx context.Context,
+	request *experimental.RemotePolicyDescriptionRequest) (
+	*experimental.RemotePolicyDescriptionResponse, error) {
+	conn, err := s.Dialer.Dial(ctx, &snet.SVCAddr{SVC: addr.SvcCS})
+	if err != nil {
+		log.FromCtx(ctx).Debug("Dialing CS failed", "err", err)
+	}
+	defer conn.Close()
+	client := experimental.NewFABRIDIntraServiceClient(conn)
+	response, err := client.RemotePolicyDescription(ctx, request)
+	if err != nil {
+		return &experimental.RemotePolicyDescriptionResponse{}, err
+	}
+
+	return response, nil
+}

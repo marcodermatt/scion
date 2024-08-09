@@ -22,6 +22,7 @@ import "google/protobuf/timestamp.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/empty.proto";
 import "proto/drkey/v1/drkey.proto";
+import "proto/control_plane/experimental/v1/fabrid.proto";
 import "proto/control_plane/experimental/v1/fabrid_extensions.proto";
 
 service DaemonService {
@@ -47,6 +48,11 @@ service DaemonService {
     rpc DRKeyHostHost (DRKeyHostHostRequest) returns (DRKeyHostHostResponse) {}
     // FabridKeys returns the DRKeys for FABRID
     rpc FabridKeys (FabridKeysRequest) returns (FabridKeysResponse) {}
+    // Used by a host inside the AS to request a policy description for another AS. The control
+    // service will request the policy description from the remote AS if it is unknown to the
+    // control service.
+    rpc RemotePolicyDescription(proto.control_plane.experimental.v1.RemotePolicyDescriptionRequest) returns
+        (proto.control_plane.experimental.v1.RemotePolicyDescriptionResponse) {}
 }
 
 message PathsRequest {
