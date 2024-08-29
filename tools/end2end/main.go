@@ -314,7 +314,7 @@ func (s server) handlePingFabrid(conn snet.PacketConn) error {
 		}
 
 		tmpBuffer := make([]byte, (len(fabridOption.HopfieldMetadata)*3+15)&^15+16)
-		_, err = crypto.VerifyPathValidator(fabridOption, tmpBuffer, hostHostKey.Key[:])
+		_, _, _, err = crypto.VerifyPathValidator(fabridOption, tmpBuffer, hostHostKey.Key[:])
 		if err != nil {
 			return err
 		}
