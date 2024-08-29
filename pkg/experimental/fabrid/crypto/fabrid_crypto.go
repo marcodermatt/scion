@@ -184,7 +184,7 @@ func VerifyPathValidator(f *ext.FabridOption, tmpBuffer []byte,
 // path validator.
 func InitValidators(f *ext.FabridOption, id *ext.IdentifierOption, s *slayers.SCION,
 	tmpBuffer []byte, pathKey *drkey.FabridKey, asHostKeys map[addr.IA]*drkey.FabridKey,
-	asAsKeys map[addr.IA]*drkey.FabridKey, hops []snet.HopInterface) error {
+	asAsKeys map[addr.IA]*drkey.FabridKey, hops []snet.HopInterface) (uint8, uint32, error) {
 
 	outBuffer := make([]byte, 16)
 	var pathValInputLength int
@@ -203,14 +203,14 @@ func InitValidators(f *ext.FabridOption, id *ext.IdentifierOption, s *slayers.SC
 				key, found = asHostKeys[hops[i].IA]
 			}
 			if !found {
-				return serrors.New("InitValidators expected AS to AS key but was not in"+
+				return 0, 0, serrors.New("InitValidators expected AS to AS key but was not in"+
 					" dictionary", "AS", hops[i].IA)
 			}
 
 			err := computeFabridHVF(meta, id, s, tmpBuffer, outBuffer, key.Key[:],
 				uint16(hops[i].IgIf), uint16(hops[i].EgIf))
 			if err != nil {
-				return err
+				return 0, 0, err
 			}
 			outBuffer[0] &= 0x3f // ignore first two (left) bits
 			outBuffer[3] &= 0x3f // ignore first two (left) bits
@@ -224,11 +224,11 @@ func InitValidators(f *ext.FabridOption, id *ext.IdentifierOption, s *slayers.SC
 		err := macBlock(pathKey.Key[:], tmpBuffer[:16], pathValBuffer[:pathValInputLength],
 			pathValBuffer)
 		if err != nil {
-			return err
+			return 0, 0, err
 		}
 		copy(f.PathValidator[:4], pathValBuffer[:4])
 	}
-	return nil
+	return pathValBuffer[4], binary.BigEndian.Uint32(pathValBuffer[5:9]), nil
 }
 
 func computeFabridControlValidator(fc *ext.FabridControlOption, id *ext.IdentifierOption,
@@ -245,8 +245,11 @@ func computeFabridControlValidator(fc *ext.FabridControlOption, id *ext.Identifi
 	tmpBuf := make([]byte, 16)
 	macInputBuf[0] = uint8(fc.Type)
 	copy(macInputBuf[1:1+dataLen], fc.Data)
-	binary.BigEndian.PutUint32(macInputBuf[1+dataLen:5+dataLen], id.GetRelativeTimestamp())
-	binary.BigEndian.PutUint32(macInputBuf[5+dataLen:9+dataLen], id.PacketID)
+	switch fc.Type {
+	case ext.ValidationConfig, ext.StatisticsRequest:
+		binary.BigEndian.PutUint32(macInputBuf[1+dataLen:5+dataLen], id.GetRelativeTimestamp())
+		binary.BigEndian.PutUint32(macInputBuf[5+dataLen:9+dataLen], id.PacketID)
+	}
 
 	err := macBlock(pathKey, tmpBuf, macInputBuf[:fcMacInputLength], resultBuffer)
 	//log.Debug("Computing FABRID control validator",

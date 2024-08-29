@@ -18,18 +18,15 @@ import (
 	"context"
 	crand "crypto/rand"
 	"github.com/scionproto/scion/pkg/addr"
-	drhelper "github.com/scionproto/scion/pkg/daemon/helper"
+	"github.com/scionproto/scion/pkg/daemon"
 	"github.com/scionproto/scion/pkg/drkey"
-	"github.com/scionproto/scion/pkg/drkey/specific"
 	"github.com/scionproto/scion/pkg/experimental/fabrid"
 	"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
-	drpb "github.com/scionproto/scion/pkg/proto/control_plane"
 	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/slayers/extension"
 	"github.com/scionproto/scion/pkg/snet"
-	"google.golang.org/grpc"
 	"time"
 )
 
@@ -53,7 +50,7 @@ type Statistics struct {
 }
 
 type ClientConnection struct {
-	Source              snet.UDPAddr
+	Source              snet.SCIONAddress
 	ValidationRatio     uint8
 	Stats               Statistics
 	fabridControlBuffer []byte
@@ -63,7 +60,7 @@ type ClientConnection struct {
 
 type Server struct {
 	Local              snet.UDPAddr
-	grpcConn           *grpc.ClientConn
+	sdConn             daemon.Connector
 	Connections        map[string]*ClientConnection
 	ASKeyCache         map[addr.IA]drkey.HostASKey
 	MaxValidationRatio uint8
@@ -78,7 +75,7 @@ type Client struct {
 	Paths               map[snet.PathFingerprint]*PathState
 	Config              SimpleFabridConfig
 	drkeyPathFn         func(context.Context, drkey.HostHostMeta) (drkey.HostHostKey, error)
-	GrpcConn            *grpc.ClientConn
+	SDConn              daemon.Connector
 }
 
 type validationIdentifier struct {
@@ -95,14 +92,14 @@ type PathState struct {
 }
 
 func NewFabridClient(remote snet.UDPAddr, config SimpleFabridConfig,
-	grpcConn *grpc.ClientConn) *Client {
+	sdConn daemon.Connector) *Client {
 	state := &Client{
 		Destination:         remote,
 		validationRatio:     config.ValidationRatio,
 		fabridControlBuffer: make([]byte, 20*3),
 		Paths:               make(map[snet.PathFingerprint]*PathState),
 		Config:              config,
-		GrpcConn:            grpcConn,
+		SDConn:              sdConn,
 	}
 	return state
 }
@@ -138,10 +135,10 @@ func (c *Client) SetValidationRatio(newRatio uint8) {
 	c.validationRatio = newRatio
 }
 
-func NewFabridServer(local *snet.UDPAddr, grpcConn *grpc.ClientConn) *Server {
+func NewFabridServer(local *snet.UDPAddr, sdConn daemon.Connector) *Server {
 	server := &Server{
 		Local:       *local,
-		grpcConn:    grpcConn,
+		sdConn:      sdConn,
 		Connections: make(map[string]*ClientConnection),
 		ASKeyCache:  make(map[addr.IA]drkey.HostASKey),
 		ValidationHandler: func(_ *ClientConnection, _ *extension.IdentifierOption, _ bool) error {
@@ -151,73 +148,48 @@ func NewFabridServer(local *snet.UDPAddr, grpcConn *grpc.ClientConn) *Server {
 	return server
 }
 
-func (s *Server) fetchHostASKey(t time.Time, dstIA addr.IA) (drkey.HostASKey, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	drkeyClient := drpb.NewDRKeyIntraServiceClient(s.grpcConn)
-	meta := drkey.HostASMeta{
-		Validity: t,
+func (s *Server) FetchHostHostKey(dstHost snet.SCIONAddress, validity time.Time) (drkey.Key, error) {
+	meta := drkey.HostHostMeta{
+		Validity: validity,
 		SrcIA:    s.Local.IA,
 		SrcHost:  s.Local.Host.IP.String(),
-		DstIA:    dstIA,
+		DstIA:    dstHost.IA,
+		DstHost:  dstHost.Host.IP().String(),
 		ProtoId:  drkey.FABRID,
 	}
-	rep, err := drkeyClient.DRKeyHostAS(ctx, drhelper.HostASMetaToProtoRequest(meta))
+	hostHostKey, err := s.sdConn.DRKeyGetHostHostKey(context.Background(), meta)
 	if err != nil {
-		return drkey.HostASKey{}, err
+		return drkey.Key{}, serrors.WrapStr("getting host key", err)
 	}
-	key, err := drhelper.GetHostASKeyFromReply(rep, meta)
-	if err != nil {
-		return drkey.HostASKey{}, err
-	}
-	return key, nil
+	return hostHostKey.Key, nil
 }
 
-func (s *Server) DeriveHostHostKey(dstHost snet.UDPAddr) (drkey.Key, error) {
-	var err error
-	hostAsKey, ok := s.ASKeyCache[dstHost.IA]
-	if !ok {
-		hostAsKey, err = s.fetchHostASKey(time.Now(), dstHost.IA)
-		if err != nil {
-			return drkey.Key{}, err
-		}
-		s.ASKeyCache[dstHost.IA] = hostAsKey
-	}
-
-	d := specific.Deriver{}
-	hostHostKey, err := d.DeriveHostHost(dstHost.Host.IP.String(), hostAsKey.Key)
-	if err != nil {
-		return drkey.Key{}, err
-	}
-	return hostHostKey, nil
-}
-
-func (s *Server) HandleFabridPacket(remote snet.UDPAddr, fabridOption *extension.FabridOption,
+func (s *Server) HandleFabridPacket(remote snet.SCIONAddress, fabridOption *extension.FabridOption,
 	identifierOption *extension.IdentifierOption,
 	controlOptions []*extension.FabridControlOption) (*slayers.EndToEndExtn, error) {
 	client, found := s.Connections[remote.String()]
 	if !found {
-		log.Info("Opening new connection", "remote", remote.String())
-		pathKey, err := s.DeriveHostHostKey(remote)
+		pathKey, err := s.FetchHostHostKey(remote, identifierOption.Timestamp)
 		if err != nil {
 			return nil, err
 		}
 		client = &ClientConnection{
 			Source:              remote,
-			ValidationRatio:     0,
+			ValidationRatio:     255,
 			Stats:               Statistics{},
 			fabridControlBuffer: make([]byte, 28*3),
 			tmpBuffer:           make([]byte, 192),
 			pathKey:             pathKey,
 		}
 		s.Connections[remote.String()] = client
+		log.Info("Opened new connection", "remote", remote.String())
 	}
 
 	client.Stats.TotalPackets++
 	validationNumber, validationReply, success, err := crypto.VerifyPathValidator(fabridOption,
 		client.tmpBuffer, client.pathKey[:])
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 	err = s.ValidationHandler(client, identifierOption, success)
 	if err != nil {
@@ -322,7 +294,7 @@ func (s *Server) HandleFabridPacket(remote snet.UDPAddr, fabridOption *extension
 func (c *Client) RenewPathKey(t time.Time) error {
 	if c.PathKey.Epoch.NotAfter.Before(t) {
 		// key is expired, renew it
-		newKey, err := c.fetchHostHostKey(t)
+		newKey, err := c.FetchHostHostKey(t)
 		if err != nil {
 			return err
 		}
@@ -331,27 +303,20 @@ func (c *Client) RenewPathKey(t time.Time) error {
 	return nil
 }
 
-func (c *Client) fetchHostHostKey(t time.Time) (drkey.HostHostKey, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	drkeyClient := drpb.NewDRKeyIntraServiceClient(c.GrpcConn)
+func (c *Client) FetchHostHostKey(validity time.Time) (drkey.HostHostKey, error) {
 	meta := drkey.HostHostMeta{
-		Validity: t,
+		Validity: validity,
 		SrcIA:    c.Config.DestinationIA,
 		SrcHost:  c.Config.DestinationAddr,
 		DstIA:    c.Config.LocalIA,
 		DstHost:  c.Config.LocalAddr,
 		ProtoId:  drkey.FABRID,
 	}
-	rep, err := drkeyClient.DRKeyHostHost(ctx, drhelper.HostHostMetaToProtoRequest(meta))
+	hostHostKey, err := c.SDConn.DRKeyGetHostHostKey(context.Background(), meta)
 	if err != nil {
-		return drkey.HostHostKey{}, err
+		return drkey.HostHostKey{}, serrors.WrapStr("getting host key", err)
 	}
-	key, err := drhelper.GetHostHostKeyFromReply(rep, meta)
-	if err != nil {
-		return drkey.HostHostKey{}, err
-	}
-	return key, nil
+	return hostHostKey, nil
 }
 
 func (c *Client) HandleFabridControlOption(fp snet.PathFingerprint,

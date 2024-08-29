@@ -28,6 +28,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	common2 "github.com/scionproto/scion/pkg/experimental/fabrid/common"
 	"net"
 	"os"
 	"time"
@@ -37,9 +38,7 @@ import (
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/daemon"
-	"github.com/scionproto/scion/pkg/drkey"
 	libfabrid "github.com/scionproto/scion/pkg/experimental/fabrid"
-	"github.com/scionproto/scion/pkg/experimental/fabrid/crypto"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/serrors"
@@ -137,7 +136,9 @@ func validateFlags() {
 	log.Info("Flags", "timeout", timeout, "epic", epic, "fabrid", fabrid, "remote", remote)
 }
 
-type server struct{}
+type server struct {
+	fabridServer *common2.Server
+}
 
 func (s server) run() {
 	log.Info("Starting server", "isd_as", integration.Local.IA)
@@ -167,6 +168,14 @@ func (s server) run() {
 		}
 		log.Info("Listening", "local",
 			fmt.Sprintf("%v:%d", integration.Local.Host.IP, localAddr.Port))
+		s.fabridServer = common2.NewFabridServer(&integration.Local, integration.SDConn())
+		s.fabridServer.ValidationHandler = func(connection *common2.ClientConnection, option *extension.IdentifierOption, b bool) error {
+			log.Debug("Validation handler", "connection", connection, "success", b)
+			if !b {
+				return serrors.New("Failed validation")
+			}
+			return nil
+		}
 		// Receive ping message
 		for {
 			if err := s.handlePingFabrid(conn); err != nil {
@@ -259,6 +268,8 @@ func (s server) handlePingFabrid(conn snet.PacketConn) error {
 		return serrors.WrapStr("reading packet", err)
 	}
 
+	var valResponse *slayers.EndToEndExtn
+
 	// If the packet is from remote IA, validate the FABRID path
 	if p.Source.IA != integration.Local.IA {
 		if p.HbhExtension == nil {
@@ -268,6 +279,7 @@ func (s server) handlePingFabrid(conn snet.PacketConn) error {
 		// Check extensions for relevant options
 		var identifierOption *extension.IdentifierOption
 		var fabridOption *extension.FabridOption
+		var controlOptions []*extension.FabridControlOption
 		var err error
 
 		for _, opt := range p.HbhExtension.Options {
@@ -291,6 +303,19 @@ func (s server) handlePingFabrid(conn snet.PacketConn) error {
 				}
 			}
 		}
+		if p.E2eExtension != nil {
+
+			for _, opt := range p.E2eExtension.Options {
+				switch opt.OptType {
+				case slayers.OptTypeFabridControl:
+					controlOption, err := extension.ParseFabridControlOption(opt)
+					if err != nil {
+						return err
+					}
+					controlOptions = append(controlOptions, controlOption)
+				}
+			}
+		}
 
 		if identifierOption == nil {
 			return serrors.New("Missing identifier option")
@@ -299,22 +324,7 @@ func (s server) handlePingFabrid(conn snet.PacketConn) error {
 		if fabridOption == nil {
 			return serrors.New("Missing FABRID option")
 		}
-
-		meta := drkey.HostHostMeta{
-			Validity: identifierOption.Timestamp,
-			SrcIA:    integration.Local.IA,
-			SrcHost:  integration.Local.Host.IP.String(),
-			DstIA:    p.Source.IA,
-			DstHost:  p.Source.Host.IP().String(),
-			ProtoId:  drkey.FABRID,
-		}
-		hostHostKey, err := integration.SDConn().DRKeyGetHostHostKey(context.Background(), meta)
-		if err != nil {
-			return serrors.WrapStr("getting host key", err)
-		}
-
-		tmpBuffer := make([]byte, (len(fabridOption.HopfieldMetadata)*3+15)&^15+16)
-		_, _, _, err = crypto.VerifyPathValidator(fabridOption, tmpBuffer, hostHostKey.Key[:])
+		valResponse, err = s.fabridServer.HandleFabridPacket(p.Source, fabridOption, identifierOption, controlOptions)
 		if err != nil {
 			return err
 		}
@@ -382,7 +392,7 @@ func (s server) handlePingFabrid(conn snet.PacketConn) error {
 
 	// Remove header extension for reverse path
 	p.HbhExtension = nil
-	p.E2eExtension = nil
+	p.E2eExtension = valResponse
 
 	// reverse path
 	rpath, ok := p.Path.(snet.RawPath)
@@ -586,6 +596,22 @@ func (c *client) getRemote(ctx context.Context, n int) (snet.Path, error) {
 			}
 			remote.Path = fabridPath
 			fabridPath.RegisterDRKeyFetcher(c.sdConn.FabridKeys)
+			polIdentifier := libfabrid.Policy{
+				IsLocal:    false,
+				Identifier: 0,
+				Index:      0,
+			}
+			clientConfig := common2.SimpleFabridConfig{
+				DestinationIA:     remote.IA,
+				DestinationAddr:   remote.Host.IP.String(),
+				LocalIA:           integration.Local.IA,
+				LocalAddr:         integration.Local.Host.IP.String(),
+				ValidationRatio:   255,
+				Policy:            polIdentifier,
+				ValidationHandler: nil,
+			}
+
+			common2.NewFabridClient(remote, clientConfig, integration.SDConn())
 		} else {
 			log.Info("FABRID flag was set for client in non-FABRID AS. Proceeding without FABRID.")
 			remote.Path = path.Dataplane()
