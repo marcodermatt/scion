@@ -115,7 +115,7 @@ func TestFailedValidation(t *testing.T) {
 					}
 				}
 
-				err := crypto.InitValidators(f, id, s, tmpBuffer, pathKey, asHostKeys,
+				_, _, err := crypto.InitValidators(f, id, s, tmpBuffer, pathKey, asHostKeys,
 					asAsKeys, hops)
 				assert.NoError(t, err)
 
@@ -250,7 +250,7 @@ func TestSuccessfullValidators(t *testing.T) {
 						}
 					}
 
-					err := crypto.InitValidators(f, id, s, tmpBuffer, pathKey, asHostKeys,
+					_, _, err := crypto.InitValidators(f, id, s, tmpBuffer, pathKey, asHostKeys,
 						asAsKeys, hops)
 					assert.NoError(t, err)
 

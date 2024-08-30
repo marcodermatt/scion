@@ -15,10 +15,12 @@
 package extension_test
 
 import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+
 	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/slayers/extension"
-	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestFabridControlDecode(t *testing.T) {

@@ -27,6 +27,7 @@ package extension
 
 import (
 	"encoding/binary"
+
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/slayers"
 )
@@ -50,6 +51,14 @@ type FabridControlOption struct {
 	// E2E MAC of the option content
 	Auth [4]byte
 	Data []byte
+}
+
+func NewFabridControlOption(t FabridControlOptionType) *FabridControlOption {
+	return &FabridControlOption{
+		Type: t,
+		Auth: [4]byte{},
+		Data: make([]byte, BaseFabridControlLen+FabridControlOptionDataLen(t)),
+	}
 }
 
 // Validates the length of FabridControlOption. Requires Type to be set

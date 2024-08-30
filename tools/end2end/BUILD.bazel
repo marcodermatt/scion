@@ -9,10 +9,9 @@ go_library(
     deps = [
         "//pkg/addr:go_default_library",
         "//pkg/daemon:go_default_library",
-        "//pkg/drkey:go_default_library",
         "//pkg/experimental/fabrid:go_default_library",
         "//pkg/experimental/fabrid/common:go_default_library",
-        "//pkg/experimental/fabrid/crypto:go_default_library",
+        "//pkg/experimental/fabrid/server:go_default_library",
         "//pkg/log:go_default_library",
         "//pkg/private/common:go_default_library",
         "//pkg/private/serrors:go_default_library",

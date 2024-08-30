@@ -28,8 +28,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	common2 "github.com/scionproto/scion/pkg/experimental/fabrid/common"
 	"net"
+	"net/netip"
 	"os"
 	"time"
 
@@ -39,6 +39,8 @@ import (
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/daemon"
 	libfabrid "github.com/scionproto/scion/pkg/experimental/fabrid"
+	common2 "github.com/scionproto/scion/pkg/experimental/fabrid/common"
+	fabridserver "github.com/scionproto/scion/pkg/experimental/fabrid/server"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/serrors"
@@ -137,7 +139,7 @@ func validateFlags() {
 }
 
 type server struct {
-	fabridServer *common2.Server
+	fabridServer *fabridserver.Server
 }
 
 func (s server) run() {
@@ -168,8 +170,9 @@ func (s server) run() {
 		}
 		log.Info("Listening", "local",
 			fmt.Sprintf("%v:%d", integration.Local.Host.IP, localAddr.Port))
-		s.fabridServer = common2.NewFabridServer(&integration.Local, integration.SDConn())
-		s.fabridServer.ValidationHandler = func(connection *common2.ClientConnection, option *extension.IdentifierOption, b bool) error {
+		s.fabridServer = fabridserver.NewFabridServer(&integration.Local, integration.SDConn())
+		s.fabridServer.ValidationHandler = func(connection *fabridserver.ClientConnection,
+			option *extension.IdentifierOption, b bool) error {
 			log.Debug("Validation handler", "connection", connection, "success", b)
 			if !b {
 				return serrors.New("Failed validation")
@@ -324,7 +327,8 @@ func (s server) handlePingFabrid(conn snet.PacketConn) error {
 		if fabridOption == nil {
 			return serrors.New("Missing FABRID option")
 		}
-		valResponse, err = s.fabridServer.HandleFabridPacket(p.Source, fabridOption, identifierOption, controlOptions)
+		valResponse, err = s.fabridServer.HandleFabridPacket(p.Source, fabridOption,
+			identifierOption, controlOptions)
 		if err != nil {
 			return err
 		}
@@ -416,6 +420,7 @@ func (s server) handlePingFabrid(conn snet.PacketConn) error {
 type client struct {
 	network *snet.SCIONNetwork
 	conn    *snet.Conn
+	rawConn snet.PacketConn
 	sdConn  daemon.Connector
 
 	errorPaths map[snet.PathFingerprint]struct{}
@@ -468,20 +473,42 @@ func (c *client) attemptRequest(n int) bool {
 		return err
 	}
 
-	// Send ping
-	close, err := c.ping(ctx, n, path)
-	if err != nil {
-		logger.Error("Could not send packet", "err", withTag(err))
-		return false
-	}
-	defer close()
-	// Receive pong
-	if err := c.pong(ctx); err != nil {
-		logger.Error("Error receiving pong", "err", withTag(err))
-		if path != nil {
-			c.errorPaths[snet.Fingerprint(path)] = struct{}{}
+	if fabrid && remote.IA != integration.Local.IA {
+		for i := 0; i < 10; i++ {
+
+			// Send ping
+			close, err := c.fabridPing(ctx, n, path)
+			if err != nil {
+				logger.Error("Could not send packet", "err", withTag(err))
+				return false
+			}
+			defer close()
+			// Receive FABRID pong
+			if err := c.fabridPong(ctx); err != nil {
+				logger.Error("Error receiving pong", "err", withTag(err))
+				if path != nil {
+					c.errorPaths[snet.Fingerprint(path)] = struct{}{}
+				}
+				return false
+			}
 		}
-		return false
+	} else {
+		// Send ping
+		close, err := c.ping(ctx, n, path)
+		if err != nil {
+			logger.Error("Could not send packet", "err", withTag(err))
+			return false
+		}
+		defer close()
+
+		// Receive pong
+		if err := c.pong(ctx); err != nil {
+			logger.Error("Error receiving pong", "err", withTag(err))
+			if path != nil {
+				c.errorPaths[snet.Fingerprint(path)] = struct{}{}
+			}
+			return false
+		}
 	}
 	return true
 }
@@ -509,6 +536,56 @@ func (c *client) ping(ctx context.Context, n int, path snet.Path) (func(), error
 	}
 	closer := func() {
 		if err := c.conn.Close(); err != nil {
+			log.Error("Unable to close connection", "err", err)
+		}
+	}
+	return closer, nil
+}
+
+func (c *client) fabridPing(ctx context.Context, n int, path snet.Path) (func(), error) {
+	rawPing, err := json.Marshal(Ping{
+		Server:  remote.IA,
+		Message: ping,
+		Trace:   tracing.IDFromCtx(ctx),
+	})
+	if err != nil {
+		return nil, serrors.WrapStr("packing ping", err)
+	}
+	log.FromCtx(ctx).Info("Dialing", "remote", remote)
+	c.rawConn, err = c.network.OpenRaw(ctx, integration.Local.Host)
+	if err != nil {
+		return nil, serrors.WrapStr("dialing conn", err)
+	}
+	if err := c.rawConn.SetWriteDeadline(getDeadline(ctx)); err != nil {
+		return nil, serrors.WrapStr("setting write deadline", err)
+	}
+	log.Info("sending ping", "attempt", n, "remote", remote, "local", c.rawConn.LocalAddr())
+	localAddr := c.rawConn.LocalAddr().(*net.UDPAddr)
+	hostIP, _ := netip.AddrFromSlice(remote.Host.IP)
+	dst := snet.SCIONAddress{IA: remote.IA, Host: addr.HostIP(hostIP)}
+	localHostIP, _ := netip.AddrFromSlice(integration.Local.Host.IP)
+	pkt := &snet.Packet{
+		Bytes: make([]byte, common.SupportedMTU),
+		PacketInfo: snet.PacketInfo{
+			Destination: dst,
+			Source: snet.SCIONAddress{
+				IA:   integration.Local.IA,
+				Host: addr.HostIP(localHostIP),
+			},
+			Path: remote.Path,
+			Payload: snet.UDPPayload{
+				SrcPort: uint16(localAddr.Port),
+				DstPort: uint16(remote.Host.Port),
+				Payload: rawPing,
+			},
+		},
+	}
+	log.Info("sending packet", "packet", pkt)
+	if err := c.rawConn.WriteTo(pkt, remote.NextHop); err != nil {
+		return nil, err
+	}
+	closer := func() {
+		if err := c.rawConn.Close(); err != nil {
 			log.Error("Unable to close connection", "err", err)
 		}
 	}
@@ -579,6 +656,14 @@ func (c *client) getRemote(ctx context.Context, n int) (snet.Path, error) {
 				DestinationIA:   remote.IA,
 				DestinationAddr: remote.Host.IP.String(),
 			}
+			fabridConfig.ValidationHandler = func(ps *common2.PathState,
+				option *extension.FabridControlOption, b bool) error {
+				log.Debug("Validation handler", "pathState", ps, "success", b)
+				if !b {
+					return serrors.New("Failed validation")
+				}
+				return nil
+			}
 			hops := path.Metadata().Hops()
 			log.Info("Fabrid path", "path", path, "hops", hops)
 			// Use ZERO policy for all hops with fabrid, to just do path validation
@@ -590,28 +675,13 @@ func (c *client) getRemote(ctx context.Context, n int) (snet.Path, error) {
 				}
 			}
 			fabridPath, err := snetpath.NewFABRIDDataplanePath(scionPath, hops,
-				policies, fabridConfig)
+				policies, fabridConfig, 125)
 			if err != nil {
 				return nil, serrors.New("Error creating FABRID path", "err", err)
 			}
 			remote.Path = fabridPath
 			fabridPath.RegisterDRKeyFetcher(c.sdConn.FabridKeys)
-			polIdentifier := libfabrid.Policy{
-				IsLocal:    false,
-				Identifier: 0,
-				Index:      0,
-			}
-			clientConfig := common2.SimpleFabridConfig{
-				DestinationIA:     remote.IA,
-				DestinationAddr:   remote.Host.IP.String(),
-				LocalIA:           integration.Local.IA,
-				LocalAddr:         integration.Local.Host.IP.String(),
-				ValidationRatio:   255,
-				Policy:            polIdentifier,
-				ValidationHandler: nil,
-			}
 
-			common2.NewFabridClient(remote, clientConfig, integration.SDConn())
 		} else {
 			log.Info("FABRID flag was set for client in non-FABRID AS. Proceeding without FABRID.")
 			remote.Path = path.Dataplane()
@@ -647,6 +717,74 @@ func (c *client) pong(ctx context.Context) error {
 		return serrors.New("unexpected contents received", "data", pld, "expected", expected)
 	}
 	log.Info("Received pong", "server", serverAddr)
+	return nil
+}
+
+func (c *client) fabridPong(ctx context.Context) error {
+
+	if err := c.rawConn.SetReadDeadline(getDeadline(ctx)); err != nil {
+		return serrors.WrapStr("setting read deadline", err)
+	}
+	var p snet.Packet
+	var ov net.UDPAddr
+	err := readFromFabrid(c.rawConn, &p, &ov)
+	if err != nil {
+		return serrors.WrapStr("reading packet", err)
+	}
+	if p.Source.IA != integration.Local.IA {
+		// Check extensions for relevant options
+		var controlOptions []*extension.FabridControlOption
+
+		if p.E2eExtension != nil {
+
+			for _, opt := range p.E2eExtension.Options {
+				switch opt.OptType {
+				case slayers.OptTypeFabridControl:
+					controlOption, err := extension.ParseFabridControlOption(opt)
+					if err != nil {
+						return err
+					}
+					controlOptions = append(controlOptions, controlOption)
+					log.Debug("Parsed control option", "option", controlOption)
+				}
+			}
+		}
+		switch s := remote.Path.(type) {
+		case *snetpath.FABRID:
+			for _, option := range controlOptions {
+				err := s.HandleFabridControlOption(option, nil)
+				if err != nil {
+					return err
+				}
+			}
+
+		default:
+			return serrors.New("unsupported path type")
+		}
+	}
+
+	udp, ok := p.Payload.(snet.UDPPayload)
+	if !ok {
+		return serrors.New("unexpected payload received",
+			"source", p.Source,
+			"destination", p.Destination,
+			"type", common.TypeOf(p.Payload),
+		)
+	}
+	var pld Pong
+	if err := json.Unmarshal(udp.Payload, &pld); err != nil {
+		return serrors.WrapStr("unpacking pong", err, "data", string(udp.Payload))
+	}
+
+	expected := Pong{
+		Client:  integration.Local.IA,
+		Server:  remote.IA,
+		Message: pong,
+	}
+	if pld.Client != expected.Client || pld.Server != expected.Server || pld.Message != pong {
+		return serrors.New("unexpected contents received", "data", pld, "expected", expected)
+	}
+	log.Info("Received pong", "server", ov)
 	return nil
 }
 

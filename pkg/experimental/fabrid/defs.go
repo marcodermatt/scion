@@ -14,7 +14,9 @@
 
 package fabrid
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type PolicyID uint8
 
