@@ -42,6 +42,8 @@ type IdentifierOption struct {
 	BaseTimestamp uint32
 }
 
+// GetRelativeTimestamp returns the time difference between id.Timestamp and id.BaseTimestamp
+// as milliseconds.
 func (id *IdentifierOption) GetRelativeTimestamp() uint32 {
 	return uint32(id.Timestamp.UnixMilli()-int64(id.BaseTimestamp)*1000) & 0x7FFFFFF
 }
@@ -65,6 +67,8 @@ func (id *IdentifierOption) decode(b []byte) error {
 	return nil
 }
 
+// Serialize writes the packet ID and the relative timestamp to a byte slice.
+// Requires that id.Timestamp, id.PacketID and id.BaseTimestamp are set accordingly.
 func (id *IdentifierOption) Serialize(b []byte) error {
 	if id == nil {
 		return serrors.New("identifier option must not be nil")
@@ -77,6 +81,7 @@ func (id *IdentifierOption) Serialize(b []byte) error {
 	return nil
 }
 
+// ParseIdentifierOption parses the Identifier HBH extension.
 func ParseIdentifierOption(o *slayers.HopByHopOption, baseTimestamp uint32) (
 	*IdentifierOption, error) {
 	if o.OptType != slayers.OptTypeIdentifier {

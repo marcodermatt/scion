@@ -78,6 +78,7 @@ func computeFabridHVF(f *ext.FabridHopfieldMetadata, id *ext.IdentifierOption,
 	return nil
 }
 
+// Computes and sets the base HVF for the provided FABRID Hopfield
 func ComputeBaseHVF(f *ext.FabridHopfieldMetadata, id *ext.IdentifierOption,
 	s *slayers.SCION, tmpBuffer []byte, key []byte, ingress uint16, egress uint16) error {
 	computedHVF := make([]byte, 16)
@@ -90,6 +91,7 @@ func ComputeBaseHVF(f *ext.FabridHopfieldMetadata, id *ext.IdentifierOption,
 	return nil
 }
 
+// Computes and sets the verified HVF for the provided FABRID Hopfield
 func ComputeVerifiedHVF(f *ext.FabridHopfieldMetadata, id *ext.IdentifierOption,
 	s *slayers.SCION, tmpBuffer []byte, key []byte, ingress uint16, egress uint16) error {
 	computedHVF := make([]byte, 16)
@@ -102,6 +104,8 @@ func ComputeVerifiedHVF(f *ext.FabridHopfieldMetadata, id *ext.IdentifierOption,
 	return nil
 }
 
+// VerifyAndUpdate recomputes the FABRID HVF and verifies that the provided HVF
+// matches the base HVF. In that case it overwrites the provided HVF with the verified HVF.
 func VerifyAndUpdate(f *ext.FabridHopfieldMetadata, id *ext.IdentifierOption,
 	s *slayers.SCION, tmpBuffer []byte, key []byte, ingress uint16, egress uint16) error {
 	computedHVF := make([]byte, 16)
@@ -131,6 +135,7 @@ func calcPolicyEncryptionMask(key []byte, id *ext.IdentifierOption) ([]byte, err
 	return buf, nil
 }
 
+// ComputePolicyID acts as a decryptor for an encrypted FABRID policy index.
 func ComputePolicyID(f *ext.FabridHopfieldMetadata, id *ext.IdentifierOption,
 	key []byte) (fabrid.PolicyID, error) {
 
@@ -141,6 +146,7 @@ func ComputePolicyID(f *ext.FabridHopfieldMetadata, id *ext.IdentifierOption,
 	return fabrid.PolicyID(f.EncryptedPolicyID ^ buf[0]), nil
 }
 
+// EncryptPolicyID encrypts a FABRID policy index.
 func EncryptPolicyID(f fabrid.PolicyID, id *ext.IdentifierOption,
 	key []byte) (uint8, error) {
 

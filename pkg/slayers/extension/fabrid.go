@@ -129,6 +129,7 @@ func (f *FabridOption) DecodeForHF(b []byte, currHf uint8, numHfs uint8) error {
 	return nil
 }
 
+// DecodeFull decodes the full FABRID extension including the PathValidator.
 func (f *FabridOption) DecodeFull(b []byte, numHfs uint8) error {
 	if err := f.validate(b, 0, numHfs); err != nil {
 		return err
@@ -167,10 +168,13 @@ func (f *FabridOption) SerializeTo(b []byte) error {
 	return nil
 }
 
+// FabridOptionLen returns the number of bytes it takes to store the FABRID HBH option consisting
+// of a certain number of hopfields.
 func FabridOptionLen(numHopfields uint8) uint8 {
 	return baseFabridLen + numHopfields*uint8(FabridMetadataLen)
 }
 
+// ParseFabridOptionFullExtension parses the full FABRID HBH extension including the PathValidator.
 func ParseFabridOptionFullExtension(o *slayers.HopByHopOption, numHfs uint8) (
 	*FabridOption, error) {
 
@@ -186,6 +190,8 @@ func ParseFabridOptionFullExtension(o *slayers.HopByHopOption, numHfs uint8) (
 	return f, nil
 }
 
+// ParseFabridOptionCurrentHop parses only the metadata of the current hop and stores it in
+// f.HopfieldMetadata[0]. The PathValidator will not be decoded.
 func ParseFabridOptionCurrentHop(o *slayers.HopByHopOption, currHf uint8, numHfs uint8) (
 	*FabridOption, error) {
 

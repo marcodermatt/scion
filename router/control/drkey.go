@@ -40,6 +40,7 @@ type DRKeyProvider struct {
 	mtx                      sync.Mutex
 }
 
+// Init initializes the necessary data structures for the DRKeyProvider.
 func (d *DRKeyProvider) Init() {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
@@ -55,6 +56,9 @@ func (d *DRKeyProvider) Init() {
 	d.drKeySecretNextOverwrite = make([]uint8, numDRKeyProtocols)
 }
 
+// AddSecret registers the DRKey secret value for a particular protocol.
+// The DRKeyProvider holds at most 2 secret values for a protocol and when registering a new one
+// it will overwrite the older secret value.
 func (d *DRKeyProvider) AddSecret(protocolID int32, sv SecretValue) error {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
@@ -74,6 +78,8 @@ func (d *DRKeyProvider) AddSecret(protocolID int32, sv SecretValue) error {
 	return nil
 }
 
+// Returns the secret value for a protocol that is valid at a specific point in time,
+// or an error, if no matching secret value is stored.
 func (d *DRKeyProvider) getSecret(protocolID int32, t time.Time) (*SecretValue, error) {
 	if d.drKeySecrets == nil {
 		return nil, errDRKeyNotInitialized
@@ -92,6 +98,8 @@ func (d *DRKeyProvider) getSecret(protocolID int32, t time.Time) (*SecretValue, 
 	return nil, errDRKeySecretInvalid
 }
 
+// DeriveASASKey derives an Level1 DRKey that is valid for a specific protocol and AS at a
+// specific point in time, given a matching secret value is stored.
 func (d *DRKeyProvider) DeriveASASKey(protocolID int32, t time.Time, srcAS addr.IA) ([16]byte,
 	error) {
 	drv := specific.Deriver{}
@@ -106,6 +114,8 @@ func (d *DRKeyProvider) DeriveASASKey(protocolID int32, t time.Time, srcAS addr.
 	return asToAsKey, nil
 }
 
+// DeriveASASKey derives an AS-Host DRKey that is valid for a specific protocol and AS-Host at a
+// specific point in time, given a matching secret value is stored.
 func (d *DRKeyProvider) DeriveASHostKey(protocolID int32, t time.Time, srcAS addr.IA, src string) (
 	[16]byte, error) {
 
