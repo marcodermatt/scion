@@ -1,4 +1,4 @@
-# DRKey demo
+# FABRID demo
 
 This demo shows how two hosts can obtain a shared key with the DRKey system.
 The "server" side host can locally derive keys for any other host.
@@ -19,7 +19,7 @@ The demo consists of the following steps:
 ## Run the demo
 
 1. [set up the development environment](https://docs.scion.org/en/latest/build/setup.html)
-1. `bazel test --test_output=streamed --cache_test_results=no //demo/drkey:test`
+1. `bazel test --test_output=streamed --cache_test_results=no //demo/fabrid:test`
 
 Note: this demo works on any SCION network topology. To run the demo on a
 different network topology, modify the `topo` parameter in `BUILD.bazel` to

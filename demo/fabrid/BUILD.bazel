@@ -7,16 +7,17 @@ topogen_test(
     name = "test",
     src = "test.py",
     args = [
-        "--executable=drkey-demo:$(location //demo/drkey:drkey-demo)",
+        "--executable=fabrid-demo:$(location //demo/fabrid:fabrid-demo)",
     ],
-    data = ["//demo/drkey:drkey-demo"],
+    data = ["//demo/fabrid:fabrid-demo"],
     topo = "//topology:tiny4.topo",
+    fabrid = True,
 )
 
 go_library(
     name = "go_default_library",
     srcs = ["main.go"],
-    importpath = "github.com/scionproto/scion/demo/drkey",
+    importpath = "github.com/scionproto/scion/demo/fabrid",
     visibility = ["//visibility:private"],
     deps = [
         "//pkg/addr:go_default_library",
@@ -37,13 +38,13 @@ go_library(
 )
 
 scion_go_binary(
-    name = "drkey-demo",
+    name = "fabrid-demo",
     embed = [":go_default_library"],
     visibility = ["//visibility:public"],
 )
 
 go_binary(
-    name = "drkey",
+    name = "fabrid",
     embed = [":go_default_library"],
     visibility = ["//visibility:public"],
 )

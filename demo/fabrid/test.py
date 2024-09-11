@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright 2022 ETH Zurich
+# Copyright 2024 ETH Zurich
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,47 +43,15 @@ class Test(base.TestTopogen):
         random.seed(os.path.getctime(as_list))
         self.server_isd_as, self.client_isd_as = random.choices(self.isd_ases, k=2)
 
-    def setup_prepare(self):
-        super().setup_prepare()
-
-        self._init_as_list()
-
-        # Enable DRKey in all CSes and SDs
-        for isd_as in self.isd_ases:
-            conf_dir = self._conf_dir(isd_as)
-            scion.update_toml({
-                "drkey": {
-                    "level1_db": {
-                        "connection": "/share/cache/cs%s-1.drkey_level1.db" % isd_as.file_fmt(),
-                    },
-                    "secret_value_db": {
-                        "connection": "/share/cache/cs%s-1.secret_value.db" % isd_as.file_fmt()
-                    }
-                }
-            }, conf_dir // "cs*-1.toml")
-
-            scion.update_toml({
-                "drkey_level2_db": {
-                    "connection": "/share/cache/sd%s.drkey_level2.db" % isd_as.file_fmt()
-                }
-            }, [conf_dir / "sd.toml"])
-
-        # Enable delegation for tester host on the fast side (server side), i.e.
-        # allow the tester host to directly request the secret value from which
-        # keys can be derived locally for any host.
-        tester_ip = self._container_ip("disp_tester_%s" % self.server_isd_as.file_fmt())
-        cs_config = self._conf_dir(self.server_isd_as) // "cs*-1.toml"
-        scion.update_toml({"drkey.delegation.scmp": [tester_ip]}, cs_config)
-
     def _run(self):
         time.sleep(10)  # wait until CSes are all up and running
 
         self._init_as_list()
 
         # install demo binary in tester containers:
-        drkey_demo = local["realpath"](self.get_executable("drkey-demo").executable).strip()
+        fabrid_demo = local["realpath"](self.get_executable("fabrid-demo").executable).strip()
         for ia in {self.server_isd_as, self.client_isd_as}:
-            self.dc("cp", drkey_demo, "tester_%s" % ia.file_fmt() + ":/bin/")
+            self.dc("cp", fabrid_demo, "endhost_%s" % ia.file_fmt() + ":/bin/")
 
         # Define DRKey protocol identifiers and derivation typ for test
         for test in [
@@ -102,15 +70,15 @@ class Test(base.TestTopogen):
             client_addr = "%s,%s" % (self.client_isd_as, client_ip)
 
             # Demonstrate deriving key (fast) on server side
-            rs = self.dc.execute("tester_%s" % self.server_isd_as.file_fmt(),
-                                 "drkey-demo", "--server",
+            rs = self.dc.execute("endhost_%s" % self.server_isd_as.file_fmt(),
+                                 "fabrid-demo", "--server",
                                  "--protocol", test["protocol"], test["fetch_sv"],
                                  "--server-addr", server_addr, "--client-addr", client_addr)
             print(rs)
 
             # Demonstrate obtaining key (slow) on client side
-            rc = self.dc.execute("tester_%s" % self.client_isd_as.file_fmt(),
-                                 "drkey-demo", "--protocol", test["protocol"],
+            rc = self.dc.execute("endhost_%s" % self.client_isd_as.file_fmt(),
+                                 "fabrid-demo", "--protocol", test["protocol"],
                                  "--server-addr", server_addr, "--client-addr", client_addr)
             print(rc)
 
@@ -133,7 +101,7 @@ class Test(base.TestTopogen):
         """ Determine the IP used for the end host (client or server) in the given ISD-AS """
         # The address must be the daemon IP (as it makes requests to the control
         # service on behalf of the end host application).
-        return self._container_ip("sd%s" % isd_as.file_fmt())
+        return self._container_ip("endhost_%s" % isd_as.file_fmt())
 
     def _container_ip(self, container: str) -> str:
         """ Determine the IP of the container """
