@@ -18,7 +18,6 @@ package daemon
 
 import (
 	"context"
-	"github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	"net/netip"
 
 	"github.com/scionproto/scion/pkg/addr"
@@ -91,7 +90,7 @@ type Connector interface {
 	DRKeyGetHostHostKey(ctx context.Context, meta drkey.HostHostMeta) (drkey.HostHostKey, error)
 	// FabridKeys requests FABRID DRKeys for all provided ASes and the path validation key
 	FabridKeys(ctx context.Context, meta drkey.FabridKeysMeta) (drkey.FabridKeysResponse, error)
-	RemotePolicyDescription(context.Context, *experimental.RemotePolicyDescriptionRequest) (*experimental.RemotePolicyDescriptionResponse, error)
+	RemotePolicyDescription(ctx context.Context, identifier uint32, ia addr.IA) (string, error)
 	// Close shuts down the connection to the daemon.
 	Close() error
 }

@@ -4,7 +4,7 @@ go_library(
     name = "go_default_library",
     srcs = [
         "config.go",
-        "showpaths.go",
+        "fabrid.go",
     ],
     importpath = "github.com/scionproto/scion/scion/fabrid",
     visibility = ["//visibility:public"],

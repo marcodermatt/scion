@@ -24,7 +24,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	fabrid_control "github.com/scionproto/scion/control/fabrid"
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/drkey"
 	"github.com/scionproto/scion/pkg/experimental/fabrid"
@@ -280,17 +279,17 @@ func (c grpcConn) FabridKeys(ctx context.Context, meta drkey.FabridKeysMeta,
 }
 
 func (c grpcConn) RemotePolicyDescription(ctx context.Context,
-	identifier fabrid_control.RemotePolicyIdentifier) (fabrid_control.RemotePolicyDescription, error) {
+	identifier uint32, ia addr.IA) (string, error) {
 
 	client := sdpb.NewDaemonServiceClient(c.conn)
 	response, err := client.RemotePolicyDescription(ctx, &cppb.RemotePolicyDescriptionRequest{
-		PolicyIdentifier: identifier.Identifier,
-		IsdAs:            identifier.ISDAS,
+		PolicyIdentifier: identifier,
+		IsdAs:            uint64(ia),
 	})
 	if err != nil {
-		return fabrid_control.RemotePolicyDescription{}, err
+		return "", nil
 	}
-	return fabrid_control.RemotePolicyDescription{Description: }, err
+	return response.Description, err
 }
 
 func (c grpcConn) Close() error {

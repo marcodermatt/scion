@@ -72,10 +72,6 @@ description of a specific policy.`,
 			if flags.json && !cmd.Flags().Lookup("format").Changed {
 				flags.format = "json"
 			}
-			printf, err := getPrintf(flags.format, cmd.OutOrStdout())
-			if err != nil {
-				return serrors.WrapStr("get formatting", err)
-			}
 
 			cmd.SilenceUsage = true
 
@@ -100,18 +96,10 @@ description of a specific policy.`,
 			if err != nil {
 				return err
 			}
-
+			fmt.Println(res.Destination, res.Description)
 			switch flags.format {
 			case "human":
-				if res.IsLocal() {
-					printf("Empty path, destination is local AS %s\n", res.Destination)
-					return nil
-				}
-				printf("Available policies at %s\n", res.Destination)
-				if len(res.Paths) == 0 {
-					return app.WithExitCode(serrors.New("no policies found"), 1)
-				}
-				res.Human(cmd.OutOrStdout(), flags.extended, !flags.noColor)
+				return nil
 			case "json":
 				return serrors.New("Not implemented", "format", flags.format)
 			case "yaml":
@@ -119,7 +107,6 @@ description of a specific policy.`,
 			default:
 				return serrors.New("output format not supported", "format", flags.format)
 			}
-			return nil
 		},
 	}
 
