@@ -683,12 +683,10 @@ func (s *DaemonServer) PolicyDescription(ctx context.Context,
 		}
 		description = response.Description
 	} else {
-		globalPolicyURL := "https://raw.githubusercontent.com/marcodermatt/fabrid-global-policies/main/policy-descriptions.json"
-
-		// Fetch the global policy from the URL
-		policy, err := FetchGlobalPolicy(globalPolicyURL)
+		// Fetch the global policy map from the URL
+		policy, err := FetchGlobalPolicy(fabrid.GlobalPolicyURL)
 		if err != nil {
-			return nil, serrors.WrapStr("fetching global policy", err)
+			return nil, serrors.WrapStr("fetching global policy map", err)
 		}
 
 		// Retrieve the description for the given identifier

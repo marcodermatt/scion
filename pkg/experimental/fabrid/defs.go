@@ -16,6 +16,8 @@ package fabrid
 
 import "fmt"
 
+const GlobalPolicyURL = "https://raw.githubusercontent.com/marcodermatt/fabrid-global-policies/main/policy-descriptions.json"
+
 type PolicyID uint8
 
 type Policy struct {
