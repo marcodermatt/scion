@@ -277,18 +277,22 @@ func (c grpcConn) FabridKeys(ctx context.Context, meta drkey.FabridKeysMeta,
 	}, nil
 }
 
-func (c grpcConn) RemotePolicyDescription(ctx context.Context,
-	identifier uint32, ia addr.IA) (string, error) {
+func (c grpcConn) PolicyDescription(ctx context.Context,
+	isLocal bool, identifier uint32, ia *addr.IA) (string, error) {
 
 	client := sdpb.NewDaemonServiceClient(c.conn)
-	response, err := client.PolicyDescription(ctx, &sdpb.PolicyDescriptionRequest{
+	request := &sdpb.PolicyDescriptionRequest{
+		IsLocal:          isLocal,
 		PolicyIdentifier: identifier,
-		IsdAs:            uint64(ia),
-	})
-	if err != nil {
-		return "", nil
 	}
-	return response.Description, err
+	if isLocal {
+		request.IsdAs = uint64(*ia)
+	}
+	response, err := client.PolicyDescription(ctx, request)
+	if err != nil {
+		return "", err
+	}
+	return response.Description, nil
 }
 
 func (c grpcConn) Close() error {

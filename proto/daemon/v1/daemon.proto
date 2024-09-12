@@ -22,7 +22,6 @@ import "google/protobuf/timestamp.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/empty.proto";
 import "proto/drkey/v1/drkey.proto";
-import "proto/control_plane/experimental/v1/fabrid.proto";
 import "proto/control_plane/experimental/v1/fabrid_extensions.proto";
 
 service DaemonService {
@@ -178,14 +177,16 @@ message FabridKeysResponse {
 }
 
 message PolicyDescriptionRequest {
+    // Whether the policy is local or global
+    bool is_local = 1;
     // The identifier for the policy
-    uint32 policy_identifier = 1;
-    // Remote ISD-AS of the non-global policy identifier
-    uint64 isd_as = 2;
+    uint32 policy_identifier = 2;
+    // Remote ISD-AS if the policy identifier is local
+    uint64 isd_as = 3;
 }
 
 message PolicyDescriptionResponse {
-    // A description of the local policy.
+    // The string description of the policy.
     string description = 1;
 }
 

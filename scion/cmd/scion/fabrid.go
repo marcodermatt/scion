@@ -94,7 +94,7 @@ description of a specific policy.`,
 				if err != nil {
 					return serrors.WrapStr("invalid policy  identifier", err)
 				}
-				_, err = fabrid.Run(ctx, nil, uint32(identifier), flags.cfg)
+				_, err = fabrid.Run(ctx, false, nil, uint32(identifier), flags.cfg)
 				if err != nil {
 					return err
 				}
@@ -108,7 +108,7 @@ description of a specific policy.`,
 				if err != nil {
 					return serrors.WrapStr("invalid policy  identifier", err)
 				}
-				_, err = fabrid.Run(ctx, &dst, uint32(identifier), flags.cfg)
+				_, err = fabrid.Run(ctx, true, &dst, uint32(identifier), flags.cfg)
 				if err != nil {
 					return err
 				}

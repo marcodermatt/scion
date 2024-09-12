@@ -90,7 +90,9 @@ type Connector interface {
 	DRKeyGetHostHostKey(ctx context.Context, meta drkey.HostHostMeta) (drkey.HostHostKey, error)
 	// FabridKeys requests FABRID DRKeys for all provided ASes and the path validation key
 	FabridKeys(ctx context.Context, meta drkey.FabridKeysMeta) (drkey.FabridKeysResponse, error)
-	RemotePolicyDescription(ctx context.Context, identifier uint32, ia addr.IA) (string, error)
+	// PolicyDescription reqests the string description for a FABRID policy
+	PolicyDescription(ctx context.Context, isLocal bool, identifier uint32,
+		ia *addr.IA) (string, error)
 	// Close shuts down the connection to the daemon.
 	Close() error
 }

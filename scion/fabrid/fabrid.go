@@ -16,10 +16,7 @@ package fabrid
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"net/http"
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/daemon"
@@ -33,75 +30,23 @@ type Result struct {
 }
 
 // Run lists information for FABRID policies to stdout.
-func Run(ctx context.Context, dst *addr.IA, identifier uint32, cfg Config) (*Result, error) {
+func Run(ctx context.Context, isLocal bool, dst *addr.IA, identifier uint32, cfg Config) (*Result,
+	error) {
 	var description string
-	if dst != nil {
-		sdConn, err := daemon.NewService(cfg.Daemon).Connect(ctx)
-		if err != nil {
-			return nil, serrors.WrapStr("connecting to the SCION Daemon", err, "addr", cfg.Daemon)
-		}
-		defer sdConn.Close()
+	daemonService := &daemon.Service{
+		Address: cfg.Daemon,
+	}
+	sdConn, err := daemonService.Connect(ctx)
+	if err != nil {
+		return nil, serrors.WrapStr("connecting to the SCION Daemon", err, "addr", cfg.Daemon)
+	}
+	defer sdConn.Close()
 
-		description, err = sdConn.RemotePolicyDescription(ctx, identifier, *dst)
-		if err != nil {
-			return nil, serrors.WrapStr("retrieving description from the SCION Daemon", err)
-		}
-	} else {
-		globalPolicyURL := "https://raw.githubusercontent.com/marcodermatt/fabrid-global-policies/main/policy-descriptions.json"
-
-		// Fetch the global policy from the URL
-		policy, err := FetchGlobalPolicy(globalPolicyURL)
-		if err != nil {
-			return nil, serrors.WrapStr("fetching global policy", err)
-		}
-
-		// Retrieve the description for the given identifier
-		description, err = GetPolicyDescription(policy, identifier)
-		if err != nil {
-			return nil, serrors.WrapStr("getting global policy description", err)
-		}
-
+	description, err = sdConn.PolicyDescription(ctx, isLocal, identifier, dst)
+	if err != nil {
+		return nil, serrors.WrapStr("retrieving description from the SCION Daemon", err)
 	}
 	// Output the description
 	fmt.Printf("Policy %d: %s\n", identifier, description)
 	return &Result{Destination: dst, Description: description}, nil
-}
-
-// GlobalPolicy holds the mapping of uint32 identifiers to their string descriptions
-type GlobalPolicy map[uint32]string
-
-// FetchGlobalPolicy fetches and parses the global policy from the given URL
-func FetchGlobalPolicy(url string) (GlobalPolicy, error) {
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, serrors.WrapStr("failed to fetch global policy", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, serrors.New("failed to fetch global policy", "StatusCode", resp.StatusCode)
-	}
-
-	// Read the response body
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, serrors.WrapStr("failed to read response body", err)
-	}
-
-	// Unmarshal the JSON data into a map
-	var policy GlobalPolicy
-	if err = json.Unmarshal(body, &policy); err != nil {
-		return nil, serrors.WrapStr("failed to unmarshal policy JSON", err)
-	}
-
-	return policy, nil
-}
-
-// GetPolicyDescription retrieves the description for the given identifier
-func GetPolicyDescription(policy GlobalPolicy, identifier uint32) (string, error) {
-	description, exists := policy[identifier]
-	if !exists {
-		return "", serrors.New("no policy found", "identifier", identifier)
-	}
-	return description, nil
 }
