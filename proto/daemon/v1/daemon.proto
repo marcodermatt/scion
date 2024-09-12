@@ -48,11 +48,10 @@ service DaemonService {
     rpc DRKeyHostHost (DRKeyHostHostRequest) returns (DRKeyHostHostResponse) {}
     // FabridKeys returns the DRKeys for FABRID
     rpc FabridKeys (FabridKeysRequest) returns (FabridKeysResponse) {}
-    // Used by a host inside the AS to request a policy description for another AS. The control
-    // service will request the policy description from the remote AS if it is unknown to the
-    // control service.
-    rpc RemotePolicyDescription(proto.control_plane.experimental.v1.RemotePolicyDescriptionRequest) returns
-        (proto.control_plane.experimental.v1.RemotePolicyDescriptionResponse) {}
+    // Used by a host inside the AS to request a policy description. Global policies are fetched
+    // from GitHub, non-global policies are handled by the control service.
+    rpc PolicyDescription(PolicyDescriptionRequest) returns
+        (PolicyDescriptionResponse) {}
 }
 
 message PathsRequest {
@@ -176,6 +175,18 @@ message FabridKeysResponse {
     repeated FabridKeyResponse as_host_keys = 1;
     // The FABRID path key
     optional FabridKeyResponse host_host_key = 2;
+}
+
+message PolicyDescriptionRequest {
+    // The identifier for the policy
+    uint32 policy_identifier = 1;
+    // Remote ISD-AS of the non-global policy identifier
+    uint64 isd_as = 2;
+}
+
+message PolicyDescriptionResponse {
+    // A description of the local policy.
+    string description = 1;
 }
 
 message EpicAuths {

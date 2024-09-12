@@ -18,11 +18,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/daemon"
 	"github.com/scionproto/scion/pkg/private/serrors"
-	"io/ioutil"
-	"net/http"
 )
 
 // Result contains all the discovered paths.
@@ -46,7 +47,6 @@ func Run(ctx context.Context, dst *addr.IA, identifier uint32, cfg Config) (*Res
 			return nil, serrors.WrapStr("retrieving description from the SCION Daemon", err)
 		}
 	} else {
-		// Replace with the raw URL of your GitHub content (e.g., https://raw.githubusercontent.com/user/repo/branch/path/to/policies.json)
 		globalPolicyURL := "https://raw.githubusercontent.com/marcodermatt/fabrid-global-policies/main/policy-descriptions.json"
 
 		// Fetch the global policy from the URL

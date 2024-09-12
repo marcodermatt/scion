@@ -21,6 +21,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
@@ -28,7 +30,6 @@ import (
 	"github.com/scionproto/scion/private/app/flag"
 	"github.com/scionproto/scion/private/tracing"
 	"github.com/scionproto/scion/scion/fabrid"
-	"github.com/spf13/cobra"
 )
 
 func newFabrid(pather CommandPather) *cobra.Command {

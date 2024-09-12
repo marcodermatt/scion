@@ -31,7 +31,6 @@ import (
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/ctrl/path_mgmt"
 	"github.com/scionproto/scion/pkg/private/serrors"
-	cppb "github.com/scionproto/scion/pkg/proto/control_plane/experimental"
 	sdpb "github.com/scionproto/scion/pkg/proto/daemon"
 	dkpb "github.com/scionproto/scion/pkg/proto/drkey"
 	"github.com/scionproto/scion/pkg/scrypto/cppki"
@@ -282,7 +281,7 @@ func (c grpcConn) RemotePolicyDescription(ctx context.Context,
 	identifier uint32, ia addr.IA) (string, error) {
 
 	client := sdpb.NewDaemonServiceClient(c.conn)
-	response, err := client.RemotePolicyDescription(ctx, &cppb.RemotePolicyDescriptionRequest{
+	response, err := client.PolicyDescription(ctx, &sdpb.PolicyDescriptionRequest{
 		PolicyIdentifier: identifier,
 		IsdAs:            uint64(ia),
 	})
