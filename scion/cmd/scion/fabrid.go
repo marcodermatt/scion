@@ -17,28 +17,23 @@ package main
 import (
 	"context"
 	"fmt"
-	"net"
 	"strconv"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/scionproto/scion/pkg/addr"
-	"github.com/scionproto/scion/pkg/log"
+	"github.com/scionproto/scion/pkg/daemon"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/private/app"
 	"github.com/scionproto/scion/private/app/flag"
 	"github.com/scionproto/scion/private/tracing"
-	"github.com/scionproto/scion/scion/fabrid"
 )
 
 func newFabrid(pather CommandPather) *cobra.Command {
 	var envFlags flag.SCIONEnvironment
 	var flags struct {
 		timeout  time.Duration
-		cfg      fabrid.Config
-		extended bool
-		json     bool
 		logLevel string
 		noColor  bool
 		tracer   string
@@ -46,19 +41,49 @@ func newFabrid(pather CommandPather) *cobra.Command {
 	}
 
 	var cmd = &cobra.Command{
-		Use:   "fabrid",
+		Use:   "fabrid identifier [remote_as]",
 		Short: "Display FABRID policy information",
 		Args:  cobra.RangeArgs(1, 2),
-		Example: fmt.Sprintf(`  %[1]s showpaths 1-ff00:0:110 --extended
-  %[1]s showpaths 1-ff00:0:110 --local 127.0.0.55 --json
-  %[1]s showpaths 1-ff00:0:111 --sequence="0-0#2 0*" # outgoing IfID=2
-  %[1]s showpaths 1-ff00:0:111 --sequence="0* 0-0#41" # incoming IfID=41 at dstIA
-  %[1]s showpaths 1-ff00:0:111 --sequence="0* 1-ff00:0:112 0*" # 1-ff00:0:112 on the path
-  %[1]s showpaths 1-ff00:0:110 --no-probe`, pather.CommandPath()),
-		Long: `'fabrid' lists available policies at a remote AS, or shows the
-description of a specific policy.`,
+		Example: fmt.Sprintf(`  %[1]s fabrid G1001
+  %[1]s fabrid L1101 1-ff00:0:110
+  %[1]s fabrid L1101 1-ff00:0:110 --log.level debug'`, pather.CommandPath()),
+		Long: `'fabrid' fetches the description of a global or local FABRID policy.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := app.SetupLog(flags.logLevel); err != nil {
+			if len(args[0]) < 2 {
+				return serrors.New("Invalid identifier format", "identifier", args[0])
+			}
+
+			identifierPrefix := args[0][0]
+			var isLocal bool
+			switch identifierPrefix {
+			case 'L':
+				isLocal = true
+			case 'G':
+				isLocal = false
+			default:
+				return serrors.New("invalid identifier prefix", "prefix", string(identifierPrefix))
+			}
+
+			identifier, err := strconv.ParseUint(args[0][1:], 10, 32)
+			if err != nil {
+				return serrors.New("invalid identifier format", "identifier", args[0])
+			}
+
+			if isLocal && len(args) == 1 {
+				return serrors.New("missing destination ISD-AS for local policy")
+			}
+			var dst addr.IA
+			if len(args) > 1 {
+				if !isLocal {
+					return serrors.New(
+						"unexpected argument. Global policies require no destination AS.")
+				}
+				dst, err = addr.ParseIA(args[1])
+				if err != nil {
+					return serrors.WrapStr("invalid destination ISD-AS", err)
+				}
+			}
+			if err = app.SetupLog(flags.logLevel); err != nil {
 				return serrors.WrapStr("setting up logging", err)
 			}
 			closer, err := setupTracer("fabrid", flags.tracer)
@@ -67,88 +92,51 @@ description of a specific policy.`,
 			}
 			defer closer()
 
-			if flags.json && !cmd.Flags().Lookup("format").Changed {
-				flags.format = "json"
-			}
-
 			cmd.SilenceUsage = true
 
-			if err := envFlags.LoadExternalVars(); err != nil {
+			if err = envFlags.LoadExternalVars(); err != nil {
 				return err
 			}
 
-			flags.cfg.Daemon = envFlags.Daemon()
-			flags.cfg.Local = net.IP(envFlags.Local().AsSlice())
-			log.Debug("Resolved SCION environment flags",
-				"daemon", flags.cfg.Daemon,
-				"local", flags.cfg.Local,
-			)
+			daemonAddr := envFlags.Daemon()
 
 			span, traceCtx := tracing.CtxWith(context.Background(), "run")
 			defer span.Finish()
+			span.SetTag("dst.isd_as", dst)
 
 			ctx, cancel := context.WithTimeout(traceCtx, flags.timeout)
 			defer cancel()
-			if len(args) == 1 {
-				identifier, err := strconv.ParseUint(args[0], 10, 32)
-				if err != nil {
-					return serrors.WrapStr("invalid policy  identifier", err)
-				}
-				_, err = fabrid.Run(ctx, false, nil, uint32(identifier), flags.cfg)
-				if err != nil {
-					return err
-				}
 
-			} else if len(args) == 2 {
-				dst, err := addr.ParseIA(args[0])
-				if err != nil {
-					return serrors.WrapStr("invalid destination ISD-AS", err)
-				}
-				identifier, err := strconv.ParseUint(args[1], 10, 32)
-				if err != nil {
-					return serrors.WrapStr("invalid policy  identifier", err)
-				}
-				_, err = fabrid.Run(ctx, true, &dst, uint32(identifier), flags.cfg)
-				if err != nil {
-					return err
-				}
-				span.SetTag("dst.isd_as", dst)
+			var description string
+			daemonService := &daemon.Service{
+				Address: daemonAddr,
 			}
-			switch flags.format {
-			case "human":
-				return nil
-			case "json":
-				return serrors.New("Not implemented", "format", flags.format)
-			case "yaml":
-				return serrors.New("Not implemented", "format", flags.format)
-			default:
-				return serrors.New("output format not supported", "format", flags.format)
+			sdConn, err := daemonService.Connect(ctx)
+			if err != nil {
+				return serrors.WrapStr("connecting to the SCION Daemon", err, "addr", daemonAddr)
 			}
+			defer sdConn.Close()
+
+			description, err = sdConn.PolicyDescription(ctx, isLocal, uint32(identifier), &dst)
+			if err != nil {
+				return serrors.WrapStr("retrieving description from the SCION Daemon", err)
+			}
+			// Output the description
+			if isLocal {
+				fmt.Printf("Policy L%d@%s\n%s\n", identifier, dst, description)
+			} else {
+				fmt.Printf("Policy G%d\n%s\n", identifier, description)
+			}
+			return nil
 		},
 	}
 
 	envFlags.Register(cmd.Flags())
 	cmd.Flags().DurationVar(&flags.timeout, "timeout", 5*time.Second, "Timeout")
-	cmd.Flags().StringVar(&flags.cfg.Sequence, "sequence", "", app.SequenceUsage)
-	cmd.Flags().IntVarP(&flags.cfg.MaxPaths, "maxpaths", "m", 10,
-		"Maximum number of paths that are displayed")
-	cmd.Flags().BoolVarP(&flags.extended, "extended", "e", false,
-		"Show extended path meta data information")
-	cmd.Flags().BoolVarP(&flags.cfg.Refresh, "refresh", "r", false,
-		"Set refresh flag for SCION Daemon path request")
-	cmd.Flags().BoolVar(&flags.cfg.NoProbe, "no-probe", false,
-		"Do not probe the paths and print the health status")
-	cmd.Flags().BoolVarP(&flags.json, "json", "j", false,
-		"Write the output as machine readable json")
 	cmd.Flags().StringVar(&flags.format, "format", "human",
 		"Specify the output format (human|json|yaml)")
 	cmd.Flags().BoolVar(&flags.noColor, "no-color", false, "disable colored output")
 	cmd.Flags().StringVar(&flags.logLevel, "log.level", "", app.LogLevelUsage)
 	cmd.Flags().StringVar(&flags.tracer, "tracing.agent", "", "Tracing agent address")
-	cmd.Flags().BoolVar(&flags.cfg.Epic, "epic", false, "Enable EPIC.")
-	err := cmd.Flags().MarkDeprecated("json", "json flag is deprecated, use format flag")
-	if err != nil {
-		panic(err)
-	}
 	return cmd
 }
