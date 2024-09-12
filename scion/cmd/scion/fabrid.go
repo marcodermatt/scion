@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/scionproto/scion/pkg/addr"
@@ -46,7 +47,7 @@ func newFabrid(pather CommandPather) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "fabrid",
 		Short: "Display FABRID policy information",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.RangeArgs(1, 2),
 		Example: fmt.Sprintf(`  %[1]s showpaths 1-ff00:0:110 --extended
   %[1]s showpaths 1-ff00:0:110 --local 127.0.0.55 --json
   %[1]s showpaths 1-ff00:0:111 --sequence="0-0#2 0*" # outgoing IfID=2
@@ -56,10 +57,6 @@ func newFabrid(pather CommandPather) *cobra.Command {
 		Long: `'fabrid' lists available policies at a remote AS, or shows the
 description of a specific policy.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dst, err := addr.ParseIA(args[0])
-			if err != nil {
-				return serrors.WrapStr("invalid destination ISD-AS", err)
-			}
 			if err := app.SetupLog(flags.logLevel); err != nil {
 				return serrors.WrapStr("setting up logging", err)
 			}
@@ -87,16 +84,35 @@ description of a specific policy.`,
 			)
 
 			span, traceCtx := tracing.CtxWith(context.Background(), "run")
-			span.SetTag("dst.isd_as", dst)
 			defer span.Finish()
 
 			ctx, cancel := context.WithTimeout(traceCtx, flags.timeout)
 			defer cancel()
-			res, err := fabrid.Run(ctx, dst, flags.cfg)
-			if err != nil {
-				return err
+			if len(args) == 1 {
+				identifier, err := strconv.ParseUint(args[0], 10, 32)
+				if err != nil {
+					return serrors.WrapStr("invalid policy  identifier", err)
+				}
+				_, err = fabrid.Run(ctx, nil, uint32(identifier), flags.cfg)
+				if err != nil {
+					return err
+				}
+
+			} else if len(args) == 2 {
+				dst, err := addr.ParseIA(args[0])
+				if err != nil {
+					return serrors.WrapStr("invalid destination ISD-AS", err)
+				}
+				identifier, err := strconv.ParseUint(args[1], 10, 32)
+				if err != nil {
+					return serrors.WrapStr("invalid policy  identifier", err)
+				}
+				_, err = fabrid.Run(ctx, &dst, uint32(identifier), flags.cfg)
+				if err != nil {
+					return err
+				}
+				span.SetTag("dst.isd_as", dst)
 			}
-			fmt.Println(res.Destination, res.Description)
 			switch flags.format {
 			case "human":
 				return nil
