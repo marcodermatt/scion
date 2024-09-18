@@ -16,6 +16,7 @@ package path
 
 import (
 	"crypto/rand"
+	"github.com/scionproto/scion/pkg/snet"
 	"hash"
 	"math/big"
 	"time"
@@ -67,4 +68,8 @@ func NewOneHop(
 	}
 	ohp.FirstHop.Mac = path.MAC(mac, ohp.Info, ohp.FirstHop, nil)
 	return ohp, nil
+}
+
+func (p OneHop) SetExtensions(s *slayers.SCION, pi *snet.PacketInfo) error {
+	return nil
 }
