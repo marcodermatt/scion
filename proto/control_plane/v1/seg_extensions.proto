@@ -111,7 +111,9 @@ message BandwidthInfo {
 // all paths (cross-over, shortcut, peering) based on this ASEntry.
 // All values are in grams of CO2 emitted per terabyte of traffic.
 message CarbonIntensityInfo {
+    // The intra-AS carbon intensity info
     map<uint64, uint64> intra = 1;
+    // The inter-AS carbon intensity info
     map<uint64, uint64> inter = 2;
 }
 
